@@ -4,8 +4,8 @@ Registers all Parquet files as lazy DuckDB views for zero-copy querying
 with predicate pushdown. No data is loaded into memory until queried.
 
 Usage:
-    import loader
-    db = loader.connect()
+    import nucl_parquet
+    db = nucl_parquet.connect()
 
     # Cross-section query:
     db.sql("SELECT * FROM tendl_2024 WHERE target_A=63 AND residual_Z=30")
@@ -20,7 +20,7 @@ Usage:
     db.sql("SELECT * FROM coincidences WHERE Z=27 AND A=60")
 
     # Decay chain (recursive):
-    db.sql(loader.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
+    db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
-ROOT = Path(__file__).parent
+from .download import data_dir as _resolve_data_dir
 
 
 def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
@@ -39,12 +39,16 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     Args:
         data_dir: Path to the nucl-parquet data directory.
-                  Defaults to the directory containing this file.
+                  Defaults to automatic resolution via download.data_dir().
 
     Returns:
         A DuckDB connection with lazy Parquet views.
     """
-    data_dir = Path(data_dir) if data_dir else ROOT
+    if data_dir is not None:
+        data_dir = Path(data_dir)
+    else:
+        data_dir = _resolve_data_dir()
+
     db = duckdb.connect()
 
     catalog_path = data_dir / "catalog.json"
@@ -66,7 +70,6 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         glob_path = str(lib_dir / "*.parquet")
 
         if lib_info.get("data_type") == "experimental_cross_sections":
-            # EXFOR has a different schema — register as-is
             db.execute(f"""
                 CREATE VIEW {view_name} AS
                 SELECT *, '{lib_key}' AS library
@@ -241,7 +244,7 @@ _PROJECTILES = {
     "p":   (1, 1, "PSTAR"),
     "d":   (2, 1, "PSTAR"),
     "t":   (3, 1, "PSTAR"),
-    "h":   (3, 2, "ASTAR"),   # ³He
+    "h":   (3, 2, "ASTAR"),   # 3He
     "he3": (3, 2, "ASTAR"),
     "a":   (4, 2, "ASTAR"),
     "he4": (4, 2, "ASTAR"),
@@ -284,10 +287,10 @@ def elemental_dedx(
     target_Z: int,
     energy_MeV: float | np.ndarray,
 ) -> np.ndarray:
-    """Mass stopping power [MeV cm²/g] for a projectile in a pure element.
+    """Mass stopping power [MeV cm2/g] for a projectile in a pure element.
 
-    Supports p, d, t, ³He (h), α (a). Deuteron/triton are velocity-scaled
-    from PSTAR; ³He is velocity-scaled from ASTAR.
+    Supports p, d, t, 3He (h), alpha (a). Deuteron/triton are velocity-scaled
+    from PSTAR; 3He is velocity-scaled from ASTAR.
 
     Args:
         db: DuckDB connection from connect().
@@ -296,7 +299,7 @@ def elemental_dedx(
         energy_MeV: Projectile kinetic energy [MeV].
 
     Returns:
-        Mass stopping power [MeV cm²/g].
+        Mass stopping power [MeV cm2/g].
     """
     energy_MeV = np.atleast_1d(np.asarray(energy_MeV, dtype=float))
     proj_A, proj_Z, ref_source = _PROJECTILES[projectile.lower()]
@@ -311,7 +314,7 @@ def elemental_dedx(
         lookup_E = energy_MeV / proj_A
         return _interp_loglog(log_E, log_S, lookup_E)
     else:
-        # ASTAR is for alpha (A=4, Z=2), velocity-scale for ³He:
+        # ASTAR is for alpha (A=4, Z=2), velocity-scale for 3He:
         # same velocity means E_alpha = E_proj * (4 / A_proj)
         lookup_E = energy_MeV * (4.0 / proj_A)
         return _interp_loglog(log_E, log_S, lookup_E)
@@ -325,7 +328,7 @@ def compound_dedx(
 ) -> np.ndarray:
     """Compound stopping power via Bragg additivity.
 
-    S_compound(E) = Σ wᵢ × Sᵢ(E)
+    S_compound(E) = sum(wi * Si(E))
 
     Args:
         db: DuckDB connection from connect().
@@ -334,7 +337,7 @@ def compound_dedx(
         energy_MeV: Projectile energy [MeV].
 
     Returns:
-        Compound mass stopping power [MeV cm²/g].
+        Compound mass stopping power [MeV cm2/g].
     """
     energy_MeV = np.atleast_1d(np.asarray(energy_MeV, dtype=float))
     total = np.zeros_like(energy_MeV)
@@ -350,19 +353,5 @@ def linear_dedx(
     density_g_cm3: float,
     energy_MeV: float | np.ndarray,
 ) -> np.ndarray:
-    """Linear stopping power [MeV/cm] = S [MeV cm²/g] × ρ [g/cm³]."""
+    """Linear stopping power [MeV/cm] = S [MeV cm2/g] * rho [g/cm3]."""
     return compound_dedx(db, projectile, composition, energy_MeV) * density_g_cm3
-
-
-if __name__ == "__main__":
-    db = connect()
-
-    # Print summary of registered views
-    views = db.sql("SELECT table_name FROM information_schema.tables WHERE table_type='VIEW' ORDER BY table_name").fetchall()
-    print(f"Registered {len(views)} views:")
-    for (name,) in views:
-        try:
-            count = db.sql(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
-            print(f"  {name:25s} {count:>12,} rows")
-        except Exception:
-            print(f"  {name:25s} (empty or unavailable)")

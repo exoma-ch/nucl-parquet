@@ -1,18 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "nucl-parquet"
-version = "0.1.0"
-description = "Nuclear data (cross-sections, stopping powers, decay) as Parquet files"
+version = "0.2.0"
+description = "Nuclear data as Parquet — queryable with DuckDB"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
-dependencies = [
-    "duckdb>=1.5.0",
-]
+dependencies = ["duckdb>=1.5.0", "numpy>=1.24"]
+
+[project.optional-dependencies]
+dev = ["polars>=1.0", "pytest>=8.0", "requests>=2.31"]
 
 [dependency-groups]
-dev = [
-    "polars>=1.0",
-    "pytest>=8.0",
-    "requests>=2.31",
-    "matplotlib>=3.8",
-    "scipy>=1.12",
-    "endf>=0.1.10",
-]
+dev = ["polars>=1.0", "pytest>=8.0", "requests>=2.31"]
+
+[project.urls]
+Homepage = "https://github.com/exoma-ch/nucl-parquet"
+Repository = "https://github.com/exoma-ch/nucl-parquet"
+
+[tool.setuptools.packages.find]
+include = ["nucl_parquet*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["data: requires parquet data files"]
