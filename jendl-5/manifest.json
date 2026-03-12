@@ -1,0 +1,22 @@
+{
+  "library": "jendl-5",
+  "sublibrary": "a",
+  "files": 10,
+  "total_rows": 13244,
+  "source_files": 18,
+  "projectiles": [
+    "a"
+  ],
+  "elements": [
+    "Al",
+    "B",
+    "Be",
+    "C",
+    "F",
+    "Li",
+    "N",
+    "Na",
+    "O",
+    "Si"
+  ]
+}
