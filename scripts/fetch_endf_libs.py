@@ -282,10 +282,10 @@ def mt_to_residual(
 # Reversed (BROND): n_2925_29-Cu-63.zip
 # Metastable: n_095-Am-244M_9553.zip
 FILENAME_RE = re.compile(
-    r"[a-z]+_(\d{2,3})-([A-Za-z]+)-(\d+)[A-Za-z]*_(\d+)\.zip"
+    r"[a-z0-9]+_(\d{2,3})-([A-Za-z]+)-(\d+)[A-Za-z]*_(\d+)\.zip"
 )
 FILENAME_RE_ALT = re.compile(
-    r"[a-z]+_(\d+)_(\d{2,3})-([A-Za-z]+)-(\d+)[A-Za-z]*\.zip"
+    r"[a-z0-9]+_(\d+)_(\d{1,3})-([A-Za-z]+)-(\d+)[A-Za-z]*\.zip"
 )
 
 

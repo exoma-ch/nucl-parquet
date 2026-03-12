@@ -1,0 +1,13 @@
+{
+  "library": "iaea-medical",
+  "sublibrary": "d",
+  "files": 1,
+  "total_rows": 487,
+  "source_files": 1,
+  "projectiles": [
+    "d"
+  ],
+  "elements": [
+    "N"
+  ]
+}
