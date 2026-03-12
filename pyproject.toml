@@ -11,4 +11,5 @@ dev = [
     "requests>=2.31",
     "matplotlib>=3.8",
     "scipy>=1.12",
+    "endf>=0.1.10",
 ]

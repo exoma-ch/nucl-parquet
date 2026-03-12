@@ -5,18 +5,108 @@
   "libraries": {
     "tendl-2024": {
       "name": "TENDL-2024",
-      "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA)",
+      "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)",
       "source_url": "https://tendl.web.psi.ch/tendl_2024/tendl2024.html",
       "projectiles": ["p", "d", "t", "h", "a"],
       "data_type": "cross_sections",
       "version": "2024",
       "path": "tendl-2024/xs/"
     },
+    "endfb-8.1": {
+      "name": "ENDF/B-VIII.1",
+      "description": "US Evaluated Nuclear Data File (NNDC/BNL)",
+      "source_url": "https://www.nndc.bnl.gov/endf-b8.1/",
+      "projectiles": ["n", "p", "d", "t", "h", "a"],
+      "data_type": "cross_sections",
+      "version": "VIII.1",
+      "path": "endfb-8.1/xs/"
+    },
+    "jeff-4.0": {
+      "name": "JEFF-4.0",
+      "description": "Joint Evaluated Fission and Fusion File (NEA)",
+      "source_url": "https://www.oecd-nea.org/dbdata/jeff/",
+      "projectiles": ["n", "p"],
+      "data_type": "cross_sections",
+      "version": "4.0",
+      "path": "jeff-4.0/xs/"
+    },
+    "jendl-5": {
+      "name": "JENDL-5",
+      "description": "Japanese Evaluated Nuclear Data Library (JAEA)",
+      "source_url": "https://wwwndc.jaea.go.jp/jendl/j5/j5.html",
+      "projectiles": ["n", "p", "d", "a"],
+      "data_type": "cross_sections",
+      "version": "5",
+      "path": "jendl-5/xs/"
+    },
+    "tendl-2025": {
+      "name": "TENDL-2025",
+      "description": "TALYS Evaluated Nuclear Data Library 2025 (PSI)",
+      "source_url": "https://tendl.web.psi.ch/",
+      "projectiles": ["n", "p", "d", "t", "h", "a"],
+      "data_type": "cross_sections",
+      "version": "2025",
+      "path": "tendl-2025/xs/"
+    },
+    "cendl-3.2": {
+      "name": "CENDL-3.2",
+      "description": "Chinese Evaluated Nuclear Data Library (CIAE)",
+      "source_url": "http://www.nuclear.csdb.cn/",
+      "projectiles": ["n"],
+      "data_type": "cross_sections",
+      "version": "3.2",
+      "path": "cendl-3.2/xs/"
+    },
+    "brond-3.1": {
+      "name": "BROND-3.1",
+      "description": "Russian Evaluated Nuclear Data Library (IPPE)",
+      "source_url": "https://vant.ippe.ru/",
+      "projectiles": ["n"],
+      "data_type": "cross_sections",
+      "version": "3.1",
+      "path": "brond-3.1/xs/"
+    },
+    "fendl-3.2": {
+      "name": "FENDL-3.2",
+      "description": "Fusion Evaluated Nuclear Data Library (IAEA)",
+      "source_url": "https://www-nds.iaea.org/fendl/",
+      "projectiles": ["n"],
+      "data_type": "cross_sections",
+      "version": "3.2",
+      "path": "fendl-3.2/xs/"
+    },
+    "eaf-2010": {
+      "name": "EAF-2010",
+      "description": "European Activation File (CCFE)",
+      "source_url": "https://fispact.ukaea.uk/",
+      "projectiles": ["n"],
+      "data_type": "cross_sections",
+      "version": "2010",
+      "path": "eaf-2010/xs/"
+    },
+    "irdff-2": {
+      "name": "IRDFF-II",
+      "description": "International Reactor Dosimetry and Fusion File (IAEA)",
+      "source_url": "https://www-nds.iaea.org/IRDFF/",
+      "projectiles": ["n"],
+      "data_type": "cross_sections",
+      "version": "II",
+      "path": "irdff-2/xs/"
+    },
+    "iaea-medical": {
+      "name": "IAEA-Medical",
+      "description": "Medical isotope production cross-sections (IAEA)",
+      "source_url": "https://www-nds.iaea.org/medical/",
+      "projectiles": ["n", "p", "d", "h", "a"],
+      "data_type": "cross_sections",
+      "version": "latest",
+      "path": "iaea-medical/xs/"
+    },
     "exfor": {
       "name": "EXFOR",
       "description": "Experimental nuclear reaction data (IAEA NDS)",
       "source_url": "https://www-nds.iaea.org/exfor/",
-      "projectiles": ["p", "d", "t", "h", "a"],
+      "projectiles": ["n", "p", "d", "t", "h", "a"],
       "data_type": "experimental_cross_sections",
       "version": "latest",
       "path": "exfor/"

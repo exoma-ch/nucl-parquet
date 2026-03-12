@@ -39,6 +39,7 @@ RATE_LIMIT_S = 0.5
 
 # Projectile codes: nucl-parquet shorthand -> IAEA API inc_pt
 PROJECTILE_MAP = {
+    "n": "N",
     "p": "P",
     "d": "D",
     "t": "T",
@@ -344,16 +345,27 @@ def fetch_element(
     return len(df)
 
 
-def get_tendl_elements(projectile: str) -> list[str]:
-    """Get list of elements available in TENDL for a projectile."""
-    xs_dir = ROOT / "tendl-2024" / "xs"
-    elements = []
-    for f in sorted(xs_dir.glob(f"{projectile}_*.parquet")):
-        elem = f.stem.split("_", 1)[1]
-        # Skip Z-only names (no element symbol in periodic table)
-        if not elem.startswith("Z"):
-            elements.append(elem)
-    return elements
+def get_available_elements(projectile: str) -> list[str]:
+    """Get list of elements available across all libraries for a projectile."""
+    seen: set[str] = set()
+    # Scan all library xs/ directories
+    for lib_dir in ROOT.iterdir():
+        xs_dir = lib_dir / "xs"
+        if not xs_dir.is_dir():
+            continue
+        for f in xs_dir.glob(f"{projectile}_*.parquet"):
+            elem = f.stem.split("_", 1)[1]
+            if not elem.startswith("Z"):
+                seen.add(elem)
+
+    # Fallback: use the elements table for neutron (all elements are valid targets)
+    if not seen and projectile == "n":
+        elements_path = ROOT / "meta" / "elements.parquet"
+        if elements_path.exists():
+            df = pl.read_parquet(elements_path)
+            seen = set(df["symbol"].to_list())
+
+    return sorted(seen)
 
 
 def main() -> None:
@@ -361,7 +373,7 @@ def main() -> None:
         description="Fetch EXFOR experimental data from IAEA DataExplorer API.",
     )
     parser.add_argument(
-        "--projectile", choices=["p", "d", "t", "h", "a"],
+        "--projectile", choices=["n", "p", "d", "t", "h", "a"],
         help="Projectile type (default: all if --all)",
     )
     parser.add_argument(
@@ -389,7 +401,7 @@ def main() -> None:
 
     for proj in projectiles:
         if args.all:
-            elements = get_tendl_elements(proj)
+            elements = get_available_elements(proj)
         else:
             elements = [args.element]
 

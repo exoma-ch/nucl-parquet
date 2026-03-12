@@ -116,14 +116,24 @@ def generate_element_page(
     total_plots = 0
 
     for proj in projectiles:
-        tendl_path = ROOT / "tendl-2024" / "xs" / f"{proj}_{element}.parquet"
-        if not tendl_path.exists():
+        # Collect unique reactions across ALL libraries for this projectile
+        all_reaction_dfs: list[pl.DataFrame] = []
+        for lib_dir in ROOT.iterdir():
+            xs_path = lib_dir / "xs" / f"{proj}_{element}.parquet"
+            if xs_path.exists():
+                try:
+                    df = pl.read_parquet(xs_path)
+                    all_reaction_dfs.append(
+                        df.select("target_A", "residual_Z", "residual_A", "state")
+                    )
+                except Exception:
+                    continue
+
+        if not all_reaction_dfs:
             continue
 
-        df = pl.read_parquet(tendl_path)
         reactions = (
-            df.select("target_A", "residual_Z", "residual_A", "state")
-            .unique()
+            pl.concat(all_reaction_dfs).unique()
             .sort("target_A", "residual_Z", "residual_A", "state")
         )
 
@@ -229,14 +239,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate Markdown cross-section catalog.",
     )
-    parser.add_argument("--projectile", choices=["p", "d", "t", "h", "a"])
+    parser.add_argument("--projectile", choices=["n", "p", "d", "t", "h", "a"])
     parser.add_argument("--element", help="Element symbol")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--plot", action="store_true", help="Generate plots before catalog")
     parser.add_argument("--output", type=Path, default=ROOT)
     args = parser.parse_args()
 
-    projectiles = [args.projectile] if args.projectile else ["p", "d", "t", "h", "a"]
+    projectiles = [args.projectile] if args.projectile else ["n", "p", "d", "t", "h", "a"]
 
     # Optionally generate plots first
     if args.plot:

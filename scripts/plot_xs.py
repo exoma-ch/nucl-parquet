@@ -56,13 +56,43 @@ _SYMBOL_TO_Z: dict[str, int] = {sym: z for z, sym in _ELEMENT_SYMBOLS.items()}
 
 PROJECTILE_NAMES = {"p": "proton", "d": "deuteron", "t": "triton", "h": "³He", "a": "alpha"}
 
-# Plot styling
-EVAL_COLORS = {
-    "tendl-2024": "#2563eb",
-    "endfb-8.1": "#dc2626",
-    "jendl-5": "#16a34a",
-}
+# Plot styling — colors for evaluated libraries (auto-discovered from catalog)
+EVAL_PALETTE = [
+    "#2563eb",  # blue
+    "#dc2626",  # red
+    "#16a34a",  # green
+    "#9333ea",  # purple
+    "#ea580c",  # orange
+    "#0891b2",  # cyan
+    "#be185d",  # pink
+    "#854d0e",  # brown
+    "#4338ca",  # indigo
+    "#059669",  # emerald
+    "#7c3aed",  # violet
+    "#b91c1c",  # dark red
+]
 EXFOR_CMAP = plt.cm.Set2
+
+# Line styles to further distinguish libraries
+EVAL_LINESTYLES = ["-", "--", "-.", ":", "-", "--", "-.", ":", "-", "--", "-.", ":"]
+
+
+def _get_eval_libraries() -> list[tuple[str, str]]:
+    """Discover evaluated libraries from catalog.json.
+
+    Returns list of (lib_key, lib_name) for all non-experimental libraries.
+    """
+    catalog_path = ROOT / "catalog.json"
+    if not catalog_path.exists():
+        return [("tendl-2024", "TENDL-2024")]
+
+    import json
+    catalog = json.loads(catalog_path.read_text())
+    libs = []
+    for key, info in catalog.get("libraries", {}).items():
+        if info.get("data_type") != "experimental_cross_sections":
+            libs.append((key, info.get("name", key)))
+    return libs
 
 
 def _sym(z: int) -> str:
@@ -120,9 +150,10 @@ def plot_reaction(
 
     has_data = False
 
-    # --- Evaluated libraries ---
-    for lib_name, color in EVAL_COLORS.items():
-        lib_path = ROOT / lib_name / "xs" / f"{projectile}_{element}.parquet"
+    # --- Evaluated libraries (auto-discovered) ---
+    eval_libs = _get_eval_libraries()
+    for i, (lib_key, lib_label) in enumerate(eval_libs):
+        lib_path = ROOT / lib_key / "xs" / f"{projectile}_{element}.parquet"
         if not lib_path.exists():
             continue
 
@@ -139,9 +170,13 @@ def plot_reaction(
         energies = df["energy_MeV"].to_numpy()
         xs = df["xs_mb"].to_numpy()
 
+        color = EVAL_PALETTE[i % len(EVAL_PALETTE)]
+        ls = EVAL_LINESTYLES[i % len(EVAL_LINESTYLES)]
+
         # Interpolate for smooth curve
         e_smooth, xs_smooth = _interpolate_eval(energies, xs)
-        ax.plot(e_smooth, xs_smooth, color=color, linewidth=1.5, label=lib_name, zorder=3)
+        ax.plot(e_smooth, xs_smooth, color=color, linestyle=ls,
+                linewidth=1.5, label=lib_label, zorder=3)
         has_data = True
 
     # --- EXFOR experimental data ---
@@ -223,23 +258,28 @@ def plot_element(
     output_dir: Path,
 ) -> list[Path]:
     """Plot all reactions for an element + projectile."""
-    tendl_path = ROOT / "tendl-2024" / "xs" / f"{projectile}_{element}.parquet"
-    if not tendl_path.exists():
-        logger.warning("No TENDL data for %s_%s", projectile, element)
-        return []
-
-    df = pl.read_parquet(tendl_path)
-    target_z_vals = df.select(pl.col("residual_Z")).unique()  # Just to get Z context
-
-    # Get target Z from element
+    # Collect unique reactions across ALL libraries
     target_z = _SYMBOL_TO_Z.get(element)
     if target_z is None:
         return []
 
-    # Get unique reactions
+    all_dfs: list[pl.DataFrame] = []
+    for lib_dir in ROOT.iterdir():
+        xs_path = lib_dir / "xs" / f"{projectile}_{element}.parquet"
+        if xs_path.exists():
+            try:
+                df = pl.read_parquet(xs_path)
+                all_dfs.append(df.select("target_A", "residual_Z", "residual_A", "state"))
+            except Exception:
+                continue
+
+    if not all_dfs:
+        logger.warning("No data for %s_%s in any library", projectile, element)
+        return []
+
+    combined = pl.concat(all_dfs)
     reactions = (
-        df.select("target_A", "residual_Z", "residual_A", "state")
-        .unique()
+        combined.unique()
         .sort("target_A", "residual_Z", "residual_A", "state")
     )
 
@@ -262,21 +302,29 @@ def plot_element(
     return paths
 
 
-def get_tendl_elements(projectile: str) -> list[str]:
-    """Get elements available in TENDL for a projectile."""
-    xs_dir = ROOT / "tendl-2024" / "xs"
-    return sorted(
-        f.stem.split("_", 1)[1]
-        for f in xs_dir.glob(f"{projectile}_*.parquet")
-        if not f.stem.split("_", 1)[1].startswith("Z")
-    )
+def get_available_elements(projectile: str) -> list[str]:
+    """Get elements available across all libraries for a projectile."""
+    seen: set[str] = set()
+    for lib_dir in ROOT.iterdir():
+        xs_dir = lib_dir / "xs"
+        if not xs_dir.is_dir():
+            continue
+        for f in xs_dir.glob(f"{projectile}_*.parquet"):
+            elem = f.stem.split("_", 1)[1]
+            if not elem.startswith("Z"):
+                seen.add(elem)
+    return sorted(seen)
+
+
+# Backward compat alias
+get_tendl_elements = get_available_elements
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate SVG cross-section comparison plots.",
     )
-    parser.add_argument("--projectile", choices=["p", "d", "t", "h", "a"])
+    parser.add_argument("--projectile", choices=["n", "p", "d", "t", "h", "a"])
     parser.add_argument("--element", help="Element symbol")
     parser.add_argument("--target-a", type=int, help="Target mass number")
     parser.add_argument("--residual-z", type=int)
@@ -303,7 +351,7 @@ def main() -> None:
         paths = plot_element(args.projectile, args.element, args.output)
         total = len(paths)
     elif args.all:
-        projectiles = [args.projectile] if args.projectile else ["p", "d", "t", "h", "a"]
+        projectiles = [args.projectile] if args.projectile else ["n", "p", "d", "t", "h", "a"]
         for proj in projectiles:
             for elem in get_tendl_elements(proj):
                 paths = plot_element(proj, elem, args.output)
