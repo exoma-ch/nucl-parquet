@@ -3,6 +3,9 @@ name = "nucl-parquet"
 version = "0.1.0"
 description = "Nuclear data (cross-sections, stopping powers, decay) as Parquet files"
 requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.5.0",
+]
 
 [dependency-groups]
 dev = [
