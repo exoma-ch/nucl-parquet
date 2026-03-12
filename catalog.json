@@ -97,7 +97,7 @@
       "name": "IAEA-Medical",
       "description": "Medical isotope production cross-sections (IAEA)",
       "source_url": "https://www-nds.iaea.org/medical/",
-      "projectiles": ["n", "p", "d", "h", "a"],
+      "projectiles": ["p", "d", "h", "a"],
       "data_type": "cross_sections",
       "version": "latest",
       "path": "iaea-medical/xs/"

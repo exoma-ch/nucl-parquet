@@ -138,7 +138,7 @@ LIBRARIES: dict[str, LibraryDef] = {
         iaea_path="IAEA-Medical",
         description="Medical isotope production cross-sections (IAEA)",
         source_url="https://www-nds.iaea.org/medical/",
-        sublibraries={"n": "n", "p": "p", "d": "d", "h": "he3", "a": "he4"},
+        sublibraries={"p": "p", "d": "d", "h": "he3", "a": "he4"},
     ),
 }
 
@@ -278,9 +278,29 @@ def mt_to_residual(
 # ---------------------------------------------------------------------------
 
 # Filename pattern: n_029-Cu-63_2925.zip or similar
+# Standard: n_029-Cu-63_2925.zip  |  No zero-pad: n_95-Am-241_9543.zip
+# Reversed (BROND): n_2925_29-Cu-63.zip
+# Metastable: n_095-Am-244M_9553.zip
 FILENAME_RE = re.compile(
-    r"[a-z]+_(\d{3})-([A-Za-z]+)-(\d+)_(\d+)\.zip"
+    r"[a-z]+_(\d{2,3})-([A-Za-z]+)-(\d+)[A-Za-z]*_(\d+)\.zip"
 )
+FILENAME_RE_ALT = re.compile(
+    r"[a-z]+_(\d+)_(\d{2,3})-([A-Za-z]+)-(\d+)[A-Za-z]*\.zip"
+)
+
+
+def _parse_endf_filename(filename: str) -> tuple[int, int] | None:
+    """Extract (target_Z, target_A) from ENDF filename.
+
+    Handles both standard and reversed naming conventions.
+    """
+    m = FILENAME_RE.match(filename)
+    if m:
+        return int(m.group(1)), int(m.group(3))
+    m = FILENAME_RE_ALT.match(filename)
+    if m:
+        return int(m.group(2)), int(m.group(4))
+    return None
 
 
 def parse_endf_file(
@@ -421,13 +441,12 @@ def download_and_parse(
     url = f"{IAEA_MIRROR}/{lib.iaea_path}/{sublib_dir}/{filename}"
 
     # Parse target Z, A from filename
-    m = FILENAME_RE.match(filename)
-    if not m:
+    parsed = _parse_endf_filename(filename)
+    if parsed is None:
         logger.warning("Cannot parse filename: %s", filename)
         return []
 
-    target_z = int(m.group(1))
-    target_a = int(m.group(3))
+    target_z, target_a = parsed
 
     try:
         resp = session.get(url, timeout=60)
@@ -485,11 +504,11 @@ def fetch_library(
         if not rows:
             continue
 
-        m = FILENAME_RE.match(fname)
-        if not m:
+        parsed = _parse_endf_filename(fname)
+        if parsed is None:
             continue
 
-        target_z = int(m.group(1))
+        target_z = parsed[0]
         elem = _ELEMENT_SYMBOLS.get(target_z, f"Z{target_z}")
         element_rows.setdefault(elem, []).extend(rows)
         total_files += 1
