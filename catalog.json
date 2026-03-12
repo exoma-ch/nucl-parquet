@@ -1,0 +1,33 @@
+{
+  "$schema": "./catalog.schema.json",
+  "version": 1,
+  "description": "Registry of available nuclear data libraries",
+  "libraries": {
+    "tendl-2024": {
+      "name": "TENDL-2024",
+      "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA)",
+      "source_url": "https://tendl.web.psi.ch/tendl_2024/tendl2024.html",
+      "projectiles": ["p", "d", "t", "h", "a"],
+      "data_type": "cross_sections",
+      "version": "2024",
+      "path": "tendl-2024/xs/"
+    }
+  },
+  "shared": {
+    "meta": {
+      "path": "meta/",
+      "files": {
+        "abundances": "abundances.parquet",
+        "decay": "decay.parquet",
+        "elements": "elements.parquet"
+      }
+    },
+    "stopping": {
+      "path": "stopping/",
+      "files": {
+        "stopping": "stopping.parquet"
+      },
+      "sources": ["PSTAR", "ASTAR", "ICRU73", "MSTAR"]
+    }
+  }
+}

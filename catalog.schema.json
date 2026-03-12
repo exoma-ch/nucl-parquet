@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "nucl-parquet catalog",
+  "type": "object",
+  "required": ["version", "libraries", "shared"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "description": { "type": "string" },
+    "libraries": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "projectiles", "data_type", "version", "path"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "source_url": { "type": "string", "format": "uri" },
+          "projectiles": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["p", "d", "t", "h", "a"] }
+          },
+          "data_type": { "type": "string", "enum": ["cross_sections"] },
+          "version": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    },
+    "shared": {
+      "type": "object",
+      "properties": {
+        "meta": {
+          "type": "object",
+          "required": ["path", "files"],
+          "properties": {
+            "path": { "type": "string" },
+            "files": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        },
+        "stopping": {
+          "type": "object",
+          "required": ["path", "files"],
+          "properties": {
+            "path": { "type": "string" },
+            "files": { "type": "object", "additionalProperties": { "type": "string" } },
+            "sources": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}
