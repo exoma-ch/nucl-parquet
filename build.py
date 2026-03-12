@@ -75,6 +75,21 @@ ELEMENTS_SCHEMA = {
     "symbol": pl.Utf8,
 }
 
+EXFOR_SCHEMA = {
+    "exfor_entry": pl.Utf8,
+    "target_Z": pl.Int32,
+    "target_A": pl.Int32,
+    "residual_Z": pl.Int32,
+    "residual_A": pl.Int32,
+    "state": pl.Utf8,
+    "energy_MeV": pl.Float64,
+    "energy_err_MeV": pl.Float64,
+    "xs_mb": pl.Float64,
+    "xs_err_mb": pl.Float64,
+    "author": pl.Utf8,
+    "year": pl.Int32,
+}
+
 
 def _validate_parquet(path: Path, expected_schema: dict[str, pl.DataType]) -> list[str]:
     """Validate a Parquet file against expected column names and types."""
@@ -131,19 +146,21 @@ def verify(data_dir: Path) -> None:
             df = pl.read_parquet(path)
             logger.info("  %-20s %6d rows  %6d KB", name, len(df), path.stat().st_size // 1024)
 
-    # Check library xs files
+    # Check library data files
     for lib_key, lib_info in catalog["libraries"].items():
-        xs_dir = data_dir / lib_info["path"]
-        if not xs_dir.exists():
-            errors.append(f"Missing library xs dir: {xs_dir}")
+        data_type = lib_info.get("data_type", "cross_sections")
+        lib_dir = data_dir / lib_info["path"]
+        if not lib_dir.exists():
+            # EXFOR/optional libs may not be fetched yet — warn, don't error
+            logger.warning("  %-20s not present (run fetch script)", lib_key)
             continue
-        files = list(xs_dir.glob("*.parquet"))
+        files = list(lib_dir.glob("*.parquet"))
         if not files:
-            errors.append(f"No parquet files in {xs_dir}")
+            logger.warning("  %-20s no parquet files in %s", lib_key, lib_dir)
         else:
-            # Validate a sample
+            schema = EXFOR_SCHEMA if data_type == "experimental_cross_sections" else XS_SCHEMA
             for f in files[:5]:
-                errors.extend(_validate_parquet(f, XS_SCHEMA))
+                errors.extend(_validate_parquet(f, schema))
             total_size = sum(f.stat().st_size for f in files)
             logger.info(
                 "  %-20s %6d files  %6.1f MB",

@@ -11,6 +11,15 @@
       "data_type": "cross_sections",
       "version": "2024",
       "path": "tendl-2024/xs/"
+    },
+    "exfor": {
+      "name": "EXFOR",
+      "description": "Experimental nuclear reaction data (IAEA NDS)",
+      "source_url": "https://www-nds.iaea.org/exfor/",
+      "projectiles": ["p", "d", "t", "h", "a"],
+      "data_type": "experimental_cross_sections",
+      "version": "latest",
+      "path": "exfor/"
     }
   },
   "shared": {
