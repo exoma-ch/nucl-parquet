@@ -103,6 +103,13 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
 
+    # --- Dose constants ---
+    _register_parquet(db, data_dir / "meta" / "dose_constants.parquet", "dose_constants")
+
+    # --- XCOM photon attenuation ---
+    _register_parquet(db, data_dir / "meta" / "xcom_elements.parquet", "xcom_elements")
+    _register_parquet(db, data_dir / "meta" / "xcom_compounds.parquet", "xcom_compounds")
+
     return db
 
 

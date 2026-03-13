@@ -43,6 +43,29 @@ ELEMENTS_SCHEMA = {
     "symbol": "Utf8",
 }
 
+DOSE_CONSTANTS_SCHEMA = {
+    "Z": "Int32",
+    "A": "Int32",
+    "state": "Utf8",
+    "k_uSv_m2_MBq_h": "Float64",
+    "dominant_gamma_keV": "Float64",
+    "n_photon_lines": "Int32",
+}
+
+XCOM_ELEMENTS_SCHEMA = {
+    "Z": "Int32",
+    "energy_MeV": "Float64",
+    "mu_rho_cm2_g": "Float64",
+    "mu_en_rho_cm2_g": "Float64",
+}
+
+XCOM_COMPOUNDS_SCHEMA = {
+    "material": "Utf8",
+    "energy_MeV": "Float64",
+    "mu_rho_cm2_g": "Float64",
+    "mu_en_rho_cm2_g": "Float64",
+}
+
 EXFOR_SCHEMA = {
     "exfor_entry": "Utf8",
     "target_Z": "Int32",

@@ -15,7 +15,12 @@ dependencies = ["duckdb>=1.5.0", "numpy>=1.24"]
 dev = ["polars>=1.0", "pytest>=8.0", "requests>=2.31"]
 
 [dependency-groups]
-dev = ["polars>=1.0", "pytest>=8.0", "requests>=2.31"]
+dev = [
+    "endf>=0.1.12",
+    "polars>=1.0",
+    "pytest>=8.0",
+    "requests>=2.31",
+]
 
 [project.urls]
 Homepage = "https://github.com/exoma-ch/nucl-parquet"
