@@ -2,19 +2,30 @@ name: Release
 
 on:
   push:
-    tags: ["py_*"]
+    tags: ["v*"]
 
 permissions:
+  contents: write
   id-token: write
 
 jobs:
-  publish:
-    name: Build and publish to PyPI
+  pypi:
+    name: Publish to PyPI
     runs-on: ubuntu-latest
     environment: pypi
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v5
       - run: uv build
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  go-tag:
+    name: Mirror Go module tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Go module tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          git tag -a "go/nucl-parquet/v${VERSION}" -m "Go v${VERSION}"
+          git push origin "go/nucl-parquet/v${VERSION}"
