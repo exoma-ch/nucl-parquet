@@ -16,8 +16,6 @@ import time
 from pathlib import Path
 from urllib.request import urlopen
 
-import numpy as np
-
 from .download import data_dir as _resolve_data_dir
 
 _BASE_URL = "https://physics.nist.gov/PhysRefData/XrayMassCoef"
@@ -69,9 +67,7 @@ def _parse_nist_table(html: str) -> list[tuple[float, float, float]]:
     """
     rows = []
     # Match lines with 3 scientific-notation numbers
-    pattern = re.compile(
-        r"(\d+\.\d+E[+-]\d+)\s+(\d+\.\d+E[+-]\d+)\s+(\d+\.\d+E[+-]\d+)"
-    )
+    pattern = re.compile(r"(\d+\.\d+E[+-]\d+)\s+(\d+\.\d+E[+-]\d+)\s+(\d+\.\d+E[+-]\d+)")
     for match in pattern.finditer(html):
         e = float(match.group(1))
         mu = float(match.group(2))
@@ -119,12 +115,14 @@ def build(data_dir: Path | None = None) -> None:
             print(f"  Z={z:3d}: FAILED ({exc})")
         time.sleep(0.3)  # polite rate limiting
 
-    df_elem = pl.DataFrame({
-        "Z": pl.Series(elem_Z, dtype=pl.Int32),
-        "energy_MeV": pl.Series(elem_E, dtype=pl.Float64),
-        "mu_rho_cm2_g": pl.Series(elem_mu, dtype=pl.Float64),
-        "mu_en_rho_cm2_g": pl.Series(elem_mu_en, dtype=pl.Float64),
-    }).sort("Z", "energy_MeV")
+    df_elem = pl.DataFrame(
+        {
+            "Z": pl.Series(elem_Z, dtype=pl.Int32),
+            "energy_MeV": pl.Series(elem_E, dtype=pl.Float64),
+            "mu_rho_cm2_g": pl.Series(elem_mu, dtype=pl.Float64),
+            "mu_en_rho_cm2_g": pl.Series(elem_mu_en, dtype=pl.Float64),
+        }
+    ).sort("Z", "energy_MeV")
 
     out_elem = data_dir / "meta" / "xcom_elements.parquet"
     df_elem.write_parquet(out_elem, compression="zstd")
@@ -152,12 +150,14 @@ def build(data_dir: Path | None = None) -> None:
             print(f"  {slug}: FAILED ({exc})")
         time.sleep(0.3)
 
-    df_comp = pl.DataFrame({
-        "material": pl.Series(comp_name, dtype=pl.Utf8),
-        "energy_MeV": pl.Series(comp_E, dtype=pl.Float64),
-        "mu_rho_cm2_g": pl.Series(comp_mu, dtype=pl.Float64),
-        "mu_en_rho_cm2_g": pl.Series(comp_mu_en, dtype=pl.Float64),
-    }).sort("material", "energy_MeV")
+    df_comp = pl.DataFrame(
+        {
+            "material": pl.Series(comp_name, dtype=pl.Utf8),
+            "energy_MeV": pl.Series(comp_E, dtype=pl.Float64),
+            "mu_rho_cm2_g": pl.Series(comp_mu, dtype=pl.Float64),
+            "mu_en_rho_cm2_g": pl.Series(comp_mu_en, dtype=pl.Float64),
+        }
+    ).sort("material", "energy_MeV")
 
     out_comp = data_dir / "meta" / "xcom_compounds.parquet"
     df_comp.write_parquet(out_comp, compression="zstd")

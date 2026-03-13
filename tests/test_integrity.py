@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import duckdb
-import numpy as np
 import pytest
 
 
@@ -17,9 +16,7 @@ def test_cu63_abundance(data_dir_path: Path) -> None:
     """Cu-63 natural abundance should be ~69.15%."""
     db = duckdb.connect()
     path = data_dir_path / "meta" / "abundances.parquet"
-    result = db.sql(
-        f"SELECT abundance FROM read_parquet('{path}') WHERE Z=29 AND A=63"
-    ).fetchone()
+    result = db.sql(f"SELECT abundance FROM read_parquet('{path}') WHERE Z=29 AND A=63").fetchone()
     assert result is not None, "Cu-63 not found in abundances"
     assert result[0] == pytest.approx(0.6915, abs=0.005)
 
@@ -29,10 +26,7 @@ def test_co60_half_life(data_dir_path: Path) -> None:
     """Co-60 half-life should be ~5.2714 years = ~1.663e8 s."""
     db = duckdb.connect()
     path = data_dir_path / "meta" / "decay.parquet"
-    result = db.sql(
-        f"SELECT half_life_s FROM read_parquet('{path}') "
-        "WHERE Z=27 AND A=60 LIMIT 1"
-    ).fetchone()
+    result = db.sql(f"SELECT half_life_s FROM read_parquet('{path}') WHERE Z=27 AND A=60 LIMIT 1").fetchone()
     assert result is not None, "Co-60 not found in decay data"
     expected_s = 5.2714 * 365.25 * 24 * 3600  # ~1.663e8 s
     assert result[0] == pytest.approx(expected_s, rel=0.05)
@@ -60,9 +54,7 @@ def test_element_symbols(data_dir_path: Path) -> None:
     path = data_dir_path / "meta" / "elements.parquet"
     checks = {1: "H", 6: "C", 26: "Fe", 29: "Cu", 79: "Au", 92: "U"}
     for z, expected_sym in checks.items():
-        result = db.sql(
-            f"SELECT symbol FROM read_parquet('{path}') WHERE Z={z}"
-        ).fetchone()
+        result = db.sql(f"SELECT symbol FROM read_parquet('{path}') WHERE Z={z}").fetchone()
         assert result is not None, f"Z={z} not found"
         assert result[0] == expected_sym, f"Z={z}: expected {expected_sym}, got {result[0]}"
 

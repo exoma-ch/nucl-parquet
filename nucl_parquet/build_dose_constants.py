@@ -18,7 +18,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import duckdb
@@ -30,17 +29,66 @@ from .download import data_dir as _resolve_data_dir
 # NIST XCOM µ_en/ρ for dry air (cm²/g)
 # Source: https://physics.nist.gov/PhysRefData/XrayMassCoef/ComTab/air.html
 # ---------------------------------------------------------------------------
-_MU_EN_E_KEV = np.array([
-    10, 15, 20, 30, 40, 50, 60, 80, 100, 150,
-    200, 300, 400, 500, 600, 800, 1000, 1250, 1500, 2000,
-    3000, 4000, 5000, 6000, 8000, 10000,
-])
-_MU_EN = np.array([
-    4.742, 1.334, 0.5389, 0.1537, 0.06833, 0.04098, 0.03041, 0.02407,
-    0.02325, 0.02496, 0.02672, 0.02872, 0.02949, 0.02966, 0.02953,
-    0.02882, 0.02789, 0.02666, 0.02547, 0.02345,
-    0.02057, 0.01870, 0.01740, 0.01647, 0.01525, 0.01450,
-])
+_MU_EN_E_KEV = np.array(
+    [
+        10,
+        15,
+        20,
+        30,
+        40,
+        50,
+        60,
+        80,
+        100,
+        150,
+        200,
+        300,
+        400,
+        500,
+        600,
+        800,
+        1000,
+        1250,
+        1500,
+        2000,
+        3000,
+        4000,
+        5000,
+        6000,
+        8000,
+        10000,
+    ]
+)
+_MU_EN = np.array(
+    [
+        4.742,
+        1.334,
+        0.5389,
+        0.1537,
+        0.06833,
+        0.04098,
+        0.03041,
+        0.02407,
+        0.02325,
+        0.02496,
+        0.02672,
+        0.02872,
+        0.02949,
+        0.02966,
+        0.02953,
+        0.02882,
+        0.02789,
+        0.02666,
+        0.02547,
+        0.02345,
+        0.02057,
+        0.01870,
+        0.01740,
+        0.01647,
+        0.01525,
+        0.01450,
+    ]
+)
 _LOG_E = np.log(_MU_EN_E_KEV)
 _LOG_MU = np.log(_MU_EN)
 
@@ -78,10 +126,7 @@ def build(data_dir: Path | None = None) -> None:
 
     Z = np.array(rows["Z"], dtype=np.int32)
     A = np.array(rows["A"], dtype=np.int32)
-    dataset = np.array(rows["dataset"], dtype=np.int32)
     parent_level = np.array(rows["parent_level_keV"], dtype=np.float64)
-    decay_mode = np.array(rows["decay_mode"], dtype=object)
-    rad_subtype = np.array(rows["rad_subtype"], dtype=object)
     E_keV = np.array(rows["energy_keV"], dtype=np.float64)
     I_pct = np.array(rows["intensity_pct"], dtype=np.float64)
 
@@ -108,7 +153,7 @@ def build(data_dir: Path | None = None) -> None:
 
     # Step 1: collect indices per (Z, A, parent_level_rounded)
     state_groups = {}  # (Z, A, state_str) -> [indices]
-    za_levels = {}     # (Z, A) -> set of rounded parent levels
+    za_levels = {}  # (Z, A) -> set of rounded parent levels
 
     for i in range(len(Z)):
         z_i, a_i = int(Z[i]), int(A[i])
@@ -123,9 +168,7 @@ def build(data_dir: Path | None = None) -> None:
         z_i, a_i = int(Z[i]), int(A[i])
         pl_i = round(float(parent_level[i]), 1)
         levels = za_levels[(z_i, a_i)]
-        if len(levels) == 1:
-            state = ""
-        elif pl_i == 0.0:
+        if len(levels) == 1 or pl_i == 0.0:
             state = ""
         else:
             state = "m"
@@ -198,14 +241,16 @@ def build(data_dir: Path | None = None) -> None:
     # Write parquet
     import polars as pl
 
-    df = pl.DataFrame({
-        "Z": pl.Series(out_Z, dtype=pl.Int32),
-        "A": pl.Series(out_A, dtype=pl.Int32),
-        "state": pl.Series(out_state, dtype=pl.Utf8),
-        "k_uSv_m2_MBq_h": pl.Series(out_k, dtype=pl.Float64),
-        "dominant_gamma_keV": pl.Series(out_dominant_keV, dtype=pl.Float64),
-        "n_photon_lines": pl.Series(out_n_lines, dtype=pl.Int32),
-    }).sort("Z", "A", "state")
+    df = pl.DataFrame(
+        {
+            "Z": pl.Series(out_Z, dtype=pl.Int32),
+            "A": pl.Series(out_A, dtype=pl.Int32),
+            "state": pl.Series(out_state, dtype=pl.Utf8),
+            "k_uSv_m2_MBq_h": pl.Series(out_k, dtype=pl.Float64),
+            "dominant_gamma_keV": pl.Series(out_dominant_keV, dtype=pl.Float64),
+            "n_photon_lines": pl.Series(out_n_lines, dtype=pl.Int32),
+        }
+    ).sort("Z", "A", "state")
 
     out_path = data_dir / "meta" / "dose_constants.parquet"
     df.write_parquet(out_path, compression="zstd")
@@ -224,22 +269,20 @@ def _validate(df) -> None:
 
     radar = {
         (43, 99, "m"): 0.0141,  # Tc-99m (gamma-only ~0.0142, with xray ~0.018)
-        (9, 18, ""):   0.143,   # F-18
-        (27, 60, ""):  0.306,   # Co-60
-        (55, 137, ""): 0.077,   # Cs-137
-        (53, 131, ""): 0.055,   # I-131
-        (31, 68, ""):  0.130,   # Ga-68
-        (11, 22, ""):  0.271,   # Na-22
+        (9, 18, ""): 0.143,  # F-18
+        (27, 60, ""): 0.306,  # Co-60
+        (55, 137, ""): 0.077,  # Cs-137
+        (53, 131, ""): 0.055,  # I-131
+        (31, 68, ""): 0.130,  # Ga-68
+        (11, 22, ""): 0.271,  # Na-22
     }
 
     print("\nValidation against RADAR:")
     print(f"  {'Isotope':<10} {'Computed':>10} {'RADAR':>10} {'Error':>8}")
-    print(f"  {'-'*42}")
+    print(f"  {'-' * 42}")
 
     for (z, a, state), radar_k in radar.items():
-        row = df.filter(
-            (pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == state)
-        )
+        row = df.filter((pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == state))
         if len(row) == 0:
             print(f"  Z={z} A={a} state='{state}': NOT FOUND")
             continue

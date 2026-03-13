@@ -31,16 +31,13 @@ _DTYPE_MAP = {
 def _check_schema(path: Path, expected: dict[str, str]) -> None:
     """Assert parquet file columns match expected schema."""
     db = duckdb.connect()
-    cols = db.sql(
-        f"SELECT name, duckdb_type FROM parquet_schema('{path}') WHERE name != 'root'"
-    ).fetchall()
+    cols = db.sql(f"SELECT name, duckdb_type FROM parquet_schema('{path}') WHERE name != 'root'").fetchall()
     col_map = {name: dtype for name, dtype in cols}
     for col_name, expected_type in expected.items():
         assert col_name in col_map, f"Missing column '{col_name}' in {path.name}"
         duckdb_type = _DTYPE_MAP.get(expected_type, expected_type)
         assert col_map[col_name] == duckdb_type, (
-            f"{path.name}: column '{col_name}' is {col_map[col_name]}, "
-            f"expected {duckdb_type}"
+            f"{path.name}: column '{col_name}' is {col_map[col_name]}, expected {duckdb_type}"
         )
 
 

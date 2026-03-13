@@ -1,0 +1,17 @@
+[package]
+name = "nucl-parquet"
+version = "0.3.0"
+edition = "2021"
+description = "Nuclear data as Parquet — zero-copy cross-section lookups for Monte Carlo transport"
+license = "MIT"
+repository = "https://github.com/exoma-ch/nucl-parquet"
+keywords = ["nuclear", "physics", "parquet", "cross-section", "monte-carlo"]
+categories = ["science", "data-structures"]
+
+[dependencies]
+parquet = { version = "54", default-features = false, features = ["arrow"] }
+arrow = { version = "54", default-features = false, features = ["ffi"] }
+thiserror = "2"
+
+[dev-dependencies]
+approx = "0.5"

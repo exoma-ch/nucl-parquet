@@ -20,6 +20,7 @@ dev = [
     "polars>=1.0",
     "pytest>=8.0",
     "requests>=2.31",
+    "ruff>=0.8",
 ]
 
 [project.urls]
@@ -32,3 +33,11 @@ include = ["nucl_parquet*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["data: requires parquet data files"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]

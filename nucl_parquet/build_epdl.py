@@ -32,37 +32,159 @@ from .download import data_dir as _resolve_data_dir
 # ENDF MF/MT definitions for EPDL97
 _XS_MTS = {
     501: "total",
-    502: "coherent",       # Rayleigh
-    504: "incoherent",     # Compton
+    502: "coherent",  # Rayleigh
+    504: "incoherent",  # Compton
     515: "pair_electron",  # pair production, electron field
-    516: "pair_total",     # pair production, total
-    517: "pair_nuclear",   # pair production, nuclear field
+    516: "pair_total",  # pair production, total
+    517: "pair_nuclear",  # pair production, nuclear field
     522: "photoelectric",  # total photoionization
 }
 
 # Subshell designations (MT 534-572)
 _SUBSHELL_NAMES = {
-    534: "K",     535: "L1",    536: "L2",    537: "L3",
-    538: "M1",    539: "M2",    540: "M3",    541: "M4",    542: "M5",
-    543: "N1",    544: "N2",    545: "N3",    546: "N4",    547: "N5",
-    548: "N6",    549: "N7",    550: "O1",    551: "O2",    552: "O3",
-    553: "O4",    554: "O5",    555: "O6",    556: "O7",    557: "O8",
-    558: "O9",    559: "P1",    560: "P2",    561: "P3",    562: "P4",
-    563: "P5",    564: "P6",    565: "P7",    566: "P8",    567: "P9",
-    568: "P10",   569: "P11",   570: "Q1",    571: "Q2",    572: "Q3",
+    534: "K",
+    535: "L1",
+    536: "L2",
+    537: "L3",
+    538: "M1",
+    539: "M2",
+    540: "M3",
+    541: "M4",
+    542: "M5",
+    543: "N1",
+    544: "N2",
+    545: "N3",
+    546: "N4",
+    547: "N5",
+    548: "N6",
+    549: "N7",
+    550: "O1",
+    551: "O2",
+    552: "O3",
+    553: "O4",
+    554: "O5",
+    555: "O6",
+    556: "O7",
+    557: "O8",
+    558: "O9",
+    559: "P1",
+    560: "P2",
+    561: "P3",
+    562: "P4",
+    563: "P5",
+    564: "P6",
+    565: "P7",
+    566: "P8",
+    567: "P9",
+    568: "P10",
+    569: "P11",
+    570: "Q1",
+    571: "Q2",
+    572: "Q3",
 }
 
 _ELEMENTS = [
-    "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
-    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
-    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
-    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
-    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-    "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm",
+    "",
+    "H",
+    "He",
+    "Li",
+    "Be",
+    "B",
+    "C",
+    "N",
+    "O",
+    "F",
+    "Ne",
+    "Na",
+    "Mg",
+    "Al",
+    "Si",
+    "P",
+    "S",
+    "Cl",
+    "Ar",
+    "K",
+    "Ca",
+    "Sc",
+    "Ti",
+    "V",
+    "Cr",
+    "Mn",
+    "Fe",
+    "Co",
+    "Ni",
+    "Cu",
+    "Zn",
+    "Ga",
+    "Ge",
+    "As",
+    "Se",
+    "Br",
+    "Kr",
+    "Rb",
+    "Sr",
+    "Y",
+    "Zr",
+    "Nb",
+    "Mo",
+    "Tc",
+    "Ru",
+    "Rh",
+    "Pd",
+    "Ag",
+    "Cd",
+    "In",
+    "Sn",
+    "Sb",
+    "Te",
+    "I",
+    "Xe",
+    "Cs",
+    "Ba",
+    "La",
+    "Ce",
+    "Pr",
+    "Nd",
+    "Pm",
+    "Sm",
+    "Eu",
+    "Gd",
+    "Tb",
+    "Dy",
+    "Ho",
+    "Er",
+    "Tm",
+    "Yb",
+    "Lu",
+    "Hf",
+    "Ta",
+    "W",
+    "Re",
+    "Os",
+    "Ir",
+    "Pt",
+    "Au",
+    "Hg",
+    "Tl",
+    "Pb",
+    "Bi",
+    "Po",
+    "At",
+    "Rn",
+    "Fr",
+    "Ra",
+    "Ac",
+    "Th",
+    "Pa",
+    "U",
+    "Np",
+    "Pu",
+    "Am",
+    "Cm",
+    "Bk",
+    "Cf",
+    "Es",
+    "Fm",
 ]
 
 
@@ -204,12 +326,14 @@ def _build_photon_xs(mats, data_dir: Path, pl) -> None:
         if not rows_Z:
             continue
 
-        df = pl.DataFrame({
-            "Z": pl.Series(rows_Z, dtype=pl.Int32),
-            "energy_MeV": pl.Series(rows_E, dtype=pl.Float64),
-            "process": pl.Series(rows_process, dtype=pl.Utf8),
-            "xs_barns": pl.Series(rows_xs, dtype=pl.Float64),
-        }).sort("process", "energy_MeV")
+        df = pl.DataFrame(
+            {
+                "Z": pl.Series(rows_Z, dtype=pl.Int32),
+                "energy_MeV": pl.Series(rows_E, dtype=pl.Float64),
+                "process": pl.Series(rows_process, dtype=pl.Utf8),
+                "xs_barns": pl.Series(rows_xs, dtype=pl.Float64),
+            }
+        ).sort("process", "energy_MeV")
 
         out_path = out_dir / f"{sym}.parquet"
         df.write_parquet(out_path, compression="zstd")
@@ -236,11 +360,13 @@ def _build_form_factors(mats, data_dir: Path, pl) -> None:
 
         H = sec["H"]
         # x = momentum transfer (1/cm), y = form factor (dimensionless)
-        df = pl.DataFrame({
-            "Z": pl.Series([Z] * len(H.x), dtype=pl.Int32),
-            "momentum_transfer": pl.Series(np.array(H.x), dtype=pl.Float64),
-            "form_factor": pl.Series(np.array(H.y), dtype=pl.Float64),
-        })
+        df = pl.DataFrame(
+            {
+                "Z": pl.Series([Z] * len(H.x), dtype=pl.Int32),
+                "momentum_transfer": pl.Series(np.array(H.x), dtype=pl.Float64),
+                "form_factor": pl.Series(np.array(H.y), dtype=pl.Float64),
+            }
+        )
 
         out_path = out_dir / f"{sym}.parquet"
         df.write_parquet(out_path, compression="zstd")
@@ -266,11 +392,13 @@ def _build_scattering_functions(mats, data_dir: Path, pl) -> None:
             continue
 
         H = sec["H"]
-        df = pl.DataFrame({
-            "Z": pl.Series([Z] * len(H.x), dtype=pl.Int32),
-            "momentum_transfer": pl.Series(np.array(H.x), dtype=pl.Float64),
-            "scattering_fn": pl.Series(np.array(H.y), dtype=pl.Float64),
-        })
+        df = pl.DataFrame(
+            {
+                "Z": pl.Series([Z] * len(H.x), dtype=pl.Int32),
+                "momentum_transfer": pl.Series(np.array(H.x), dtype=pl.Float64),
+                "scattering_fn": pl.Series(np.array(H.y), dtype=pl.Float64),
+            }
+        )
 
         out_path = out_dir / f"{sym}.parquet"
         df.write_parquet(out_path, compression="zstd")
@@ -311,12 +439,14 @@ def _build_anomalous(mats, data_dir: Path, pl) -> None:
         if not rows:
             continue
 
-        df = pl.DataFrame({
-            "Z": pl.Series([r[0] for r in rows], dtype=pl.Int32),
-            "energy_MeV": pl.Series([r[1] for r in rows], dtype=pl.Float64),
-            "component": pl.Series([r[2] for r in rows], dtype=pl.Utf8),
-            "factor": pl.Series([r[3] for r in rows], dtype=pl.Float64),
-        }).sort("component", "energy_MeV")
+        df = pl.DataFrame(
+            {
+                "Z": pl.Series([r[0] for r in rows], dtype=pl.Int32),
+                "energy_MeV": pl.Series([r[1] for r in rows], dtype=pl.Float64),
+                "component": pl.Series([r[2] for r in rows], dtype=pl.Utf8),
+                "factor": pl.Series([r[3] for r in rows], dtype=pl.Float64),
+            }
+        ).sort("component", "energy_MeV")
 
         out_path = out_dir / f"{sym}.parquet"
         df.write_parquet(out_path, compression="zstd")
@@ -348,7 +478,7 @@ def _build_subshell_pe(mats, data_dir: Path, pl) -> None:
             sec = mat.section_data.get((23, mt))
             if sec is None:
                 continue
-            shell_name = _SUBSHELL_NAMES.get(mt, f"S{mt-533}")
+            shell_name = _SUBSHELL_NAMES.get(mt, f"S{mt - 533}")
             sigma = sec["sigma"]
             E_eV = np.array(sigma.x)
             xs_barns = np.array(sigma.y)
@@ -368,14 +498,16 @@ def _build_subshell_pe(mats, data_dir: Path, pl) -> None:
         if not rows_Z:
             continue
 
-        df = pl.DataFrame({
-            "Z": pl.Series(rows_Z, dtype=pl.Int32),
-            "energy_MeV": pl.Series(rows_E, dtype=pl.Float64),
-            "subshell": pl.Series(rows_shell, dtype=pl.Utf8),
-            "xs_barns": pl.Series(rows_xs, dtype=pl.Float64),
-            "edge_MeV": pl.Series(rows_edge, dtype=pl.Float64),
-            "fluorescence_yield_eV": pl.Series(rows_fluor, dtype=pl.Float64),
-        }).sort("subshell", "energy_MeV")
+        df = pl.DataFrame(
+            {
+                "Z": pl.Series(rows_Z, dtype=pl.Int32),
+                "energy_MeV": pl.Series(rows_E, dtype=pl.Float64),
+                "subshell": pl.Series(rows_shell, dtype=pl.Utf8),
+                "xs_barns": pl.Series(rows_xs, dtype=pl.Float64),
+                "edge_MeV": pl.Series(rows_edge, dtype=pl.Float64),
+                "fluorescence_yield_eV": pl.Series(rows_fluor, dtype=pl.Float64),
+            }
+        ).sort("subshell", "energy_MeV")
 
         out_path = out_dir / f"{sym}.parquet"
         df.write_parquet(out_path, compression="zstd")
@@ -400,12 +532,32 @@ def _build_eadl(eadl_mats, data_dir: Path, pl) -> None:
 
     # Subshell index -> name mapping (ENDF convention)
     _shell_idx = {
-        1: "K", 2: "L1", 3: "L2", 4: "L3",
-        5: "M1", 6: "M2", 7: "M3", 8: "M4", 9: "M5",
-        10: "N1", 11: "N2", 12: "N3", 13: "N4", 14: "N5",
-        15: "N6", 16: "N7", 17: "O1", 18: "O2", 19: "O3",
-        20: "O4", 21: "O5", 22: "O6", 23: "O7",
-        24: "P1", 25: "P2", 26: "P3",
+        1: "K",
+        2: "L1",
+        3: "L2",
+        4: "L3",
+        5: "M1",
+        6: "M2",
+        7: "M3",
+        8: "M4",
+        9: "M5",
+        10: "N1",
+        11: "N2",
+        12: "N3",
+        13: "N4",
+        14: "N5",
+        15: "N6",
+        16: "N7",
+        17: "O1",
+        18: "O2",
+        19: "O3",
+        20: "O4",
+        21: "O5",
+        22: "O6",
+        23: "O7",
+        24: "P1",
+        25: "P2",
+        26: "P3",
     }
 
     total_rows = 0
@@ -455,15 +607,17 @@ def _build_eadl(eadl_mats, data_dir: Path, pl) -> None:
         if not rows_Z:
             continue
 
-        df = pl.DataFrame({
-            "Z": pl.Series(rows_Z, dtype=pl.Int32),
-            "vacancy_shell": pl.Series(rows_shell, dtype=pl.Utf8),
-            "filling_shell": pl.Series(rows_dest, dtype=pl.Utf8),
-            "transition_type": pl.Series(rows_type, dtype=pl.Utf8),
-            "energy_keV": pl.Series(rows_energy, dtype=pl.Float64),
-            "probability": pl.Series(rows_prob, dtype=pl.Float64),
-            "edge_keV": pl.Series(rows_edge, dtype=pl.Float64),
-        }).sort("vacancy_shell", "energy_keV")
+        df = pl.DataFrame(
+            {
+                "Z": pl.Series(rows_Z, dtype=pl.Int32),
+                "vacancy_shell": pl.Series(rows_shell, dtype=pl.Utf8),
+                "filling_shell": pl.Series(rows_dest, dtype=pl.Utf8),
+                "transition_type": pl.Series(rows_type, dtype=pl.Utf8),
+                "energy_keV": pl.Series(rows_energy, dtype=pl.Float64),
+                "probability": pl.Series(rows_prob, dtype=pl.Float64),
+                "edge_keV": pl.Series(rows_edge, dtype=pl.Float64),
+            }
+        ).sort("vacancy_shell", "energy_keV")
 
         out_path = out_dir / f"{sym}.parquet"
         df.write_parquet(out_path, compression="zstd")
@@ -509,7 +663,7 @@ def _build_eedl(eedl_mats, data_dir: Path, pl) -> None:
             if mt in _EEDL_MTS:
                 process_name = _EEDL_MTS[mt]
             elif 534 <= mt <= 572:
-                shell_name = _SUBSHELL_NAMES.get(mt, f"S{mt-533}")
+                shell_name = _SUBSHELL_NAMES.get(mt, f"S{mt - 533}")
                 process_name = f"ionization_{shell_name}"
             else:
                 continue
@@ -527,12 +681,14 @@ def _build_eedl(eedl_mats, data_dir: Path, pl) -> None:
         if not rows_Z:
             continue
 
-        df = pl.DataFrame({
-            "Z": pl.Series(rows_Z, dtype=pl.Int32),
-            "energy_MeV": pl.Series(rows_E, dtype=pl.Float64),
-            "process": pl.Series(rows_process, dtype=pl.Utf8),
-            "xs_barns": pl.Series(rows_xs, dtype=pl.Float64),
-        }).sort("process", "energy_MeV")
+        df = pl.DataFrame(
+            {
+                "Z": pl.Series(rows_Z, dtype=pl.Int32),
+                "energy_MeV": pl.Series(rows_E, dtype=pl.Float64),
+                "process": pl.Series(rows_process, dtype=pl.Utf8),
+                "xs_barns": pl.Series(rows_xs, dtype=pl.Float64),
+            }
+        ).sort("process", "energy_MeV")
 
         out_path = out_dir / f"{sym}.parquet"
         df.write_parquet(out_path, compression="zstd")

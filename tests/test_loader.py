@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import polars as pl
 import pytest
@@ -58,20 +57,33 @@ def mini_data(tmp_path: Path) -> Path:
     meta = tmp_path / "meta"
     meta.mkdir()
     pl.DataFrame(
-        {"Z": [29], "A": [63], "symbol": ["Cu"],
-         "abundance": [0.6915], "atomic_mass": [62.93]},
-        schema={"Z": pl.Int32, "A": pl.Int32, "symbol": pl.Utf8,
-                "abundance": pl.Float64, "atomic_mass": pl.Float64},
+        {"Z": [29], "A": [63], "symbol": ["Cu"], "abundance": [0.6915], "atomic_mass": [62.93]},
+        schema={"Z": pl.Int32, "A": pl.Int32, "symbol": pl.Utf8, "abundance": pl.Float64, "atomic_mass": pl.Float64},
     ).write_parquet(meta / "abundances.parquet")
 
     pl.DataFrame(
-        {"Z": [30], "A": [65], "state": [""], "half_life_s": [244.0],
-         "decay_mode": ["EC"], "daughter_Z": [29], "daughter_A": [65],
-         "daughter_state": [""], "branching": [1.0]},
-        schema={"Z": pl.Int32, "A": pl.Int32, "state": pl.Utf8,
-                "half_life_s": pl.Float64, "decay_mode": pl.Utf8,
-                "daughter_Z": pl.Int32, "daughter_A": pl.Int32,
-                "daughter_state": pl.Utf8, "branching": pl.Float64},
+        {
+            "Z": [30],
+            "A": [65],
+            "state": [""],
+            "half_life_s": [244.0],
+            "decay_mode": ["EC"],
+            "daughter_Z": [29],
+            "daughter_A": [65],
+            "daughter_state": [""],
+            "branching": [1.0],
+        },
+        schema={
+            "Z": pl.Int32,
+            "A": pl.Int32,
+            "state": pl.Utf8,
+            "half_life_s": pl.Float64,
+            "decay_mode": pl.Utf8,
+            "daughter_Z": pl.Int32,
+            "daughter_A": pl.Int32,
+            "daughter_state": pl.Utf8,
+            "branching": pl.Float64,
+        },
     ).write_parquet(meta / "decay.parquet")
 
     pl.DataFrame(
@@ -83,23 +95,35 @@ def mini_data(tmp_path: Path) -> Path:
     stopping = tmp_path / "stopping"
     stopping.mkdir()
     pl.DataFrame(
-        {"source": ["PSTAR"] * 4, "target_Z": [29] * 4,
-         "energy_MeV": [0.1, 1.0, 10.0, 100.0],
-         "dedx": [200.0, 50.0, 20.0, 10.0]},
-        schema={"source": pl.Utf8, "target_Z": pl.Int32,
-                "energy_MeV": pl.Float64, "dedx": pl.Float64},
+        {
+            "source": ["PSTAR"] * 4,
+            "target_Z": [29] * 4,
+            "energy_MeV": [0.1, 1.0, 10.0, 100.0],
+            "dedx": [200.0, 50.0, 20.0, 10.0],
+        },
+        schema={"source": pl.Utf8, "target_Z": pl.Int32, "energy_MeV": pl.Float64, "dedx": pl.Float64},
     ).write_parquet(stopping / "stopping.parquet")
 
     # xs library
     xs_dir = tmp_path / "test-lib" / "xs"
     xs_dir.mkdir(parents=True)
     pl.DataFrame(
-        {"target_A": [63, 63], "residual_Z": [30, 30],
-         "residual_A": [63, 63], "state": ["", ""],
-         "energy_MeV": [10.0, 20.0], "xs_mb": [100.0, 200.0]},
-        schema={"target_A": pl.Int32, "residual_Z": pl.Int32,
-                "residual_A": pl.Int32, "state": pl.Utf8,
-                "energy_MeV": pl.Float64, "xs_mb": pl.Float64},
+        {
+            "target_A": [63, 63],
+            "residual_Z": [30, 30],
+            "residual_A": [63, 63],
+            "state": ["", ""],
+            "energy_MeV": [10.0, 20.0],
+            "xs_mb": [100.0, 200.0],
+        },
+        schema={
+            "target_A": pl.Int32,
+            "residual_Z": pl.Int32,
+            "residual_A": pl.Int32,
+            "state": pl.Utf8,
+            "energy_MeV": pl.Float64,
+            "xs_mb": pl.Float64,
+        },
     ).write_parquet(xs_dir / "p_Cu.parquet")
 
     return tmp_path
@@ -107,9 +131,9 @@ def mini_data(tmp_path: Path) -> Path:
 
 def test_connect_creates_views(mini_data: Path) -> None:
     db = connect(mini_data)
-    views = {r[0] for r in db.sql(
-        "SELECT table_name FROM information_schema.tables WHERE table_type='VIEW'"
-    ).fetchall()}
+    views = {
+        r[0] for r in db.sql("SELECT table_name FROM information_schema.tables WHERE table_type='VIEW'").fetchall()
+    }
     assert "test_lib" in views
     assert "xs" in views
     assert "abundances" in views
@@ -120,9 +144,7 @@ def test_connect_creates_views(mini_data: Path) -> None:
 
 def test_xs_query(mini_data: Path) -> None:
     db = connect(mini_data)
-    result = db.sql(
-        "SELECT * FROM xs WHERE target_A=63 AND residual_Z=30"
-    ).fetchall()
+    result = db.sql("SELECT * FROM xs WHERE target_A=63 AND residual_Z=30").fetchall()
     assert len(result) == 2
 
 
@@ -141,6 +163,7 @@ def test_abundances_query(mini_data: Path) -> None:
 
 def test_elemental_dedx(mini_data: Path) -> None:
     from nucl_parquet.loader import _stopping_cache
+
     _stopping_cache.clear()
 
     db = connect(mini_data)
@@ -151,6 +174,7 @@ def test_elemental_dedx(mini_data: Path) -> None:
 
 def test_elemental_dedx_array(mini_data: Path) -> None:
     from nucl_parquet.loader import _stopping_cache
+
     _stopping_cache.clear()
 
     db = connect(mini_data)
@@ -172,9 +196,7 @@ def test_interp_loglog() -> None:
 def test_connect_empty_dir(tmp_path: Path) -> None:
     """connect() works even with no catalog or data."""
     db = connect(tmp_path)
-    views = db.sql(
-        "SELECT table_name FROM information_schema.tables WHERE table_type='VIEW'"
-    ).fetchall()
+    views = db.sql("SELECT table_name FROM information_schema.tables WHERE table_type='VIEW'").fetchall()
     assert len(views) == 0
 
 

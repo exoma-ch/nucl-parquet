@@ -54,9 +54,7 @@ def test_stopping_covers_pstar_astar(data_dir_path: Path) -> None:
     """Stopping data should include both PSTAR and ASTAR sources."""
     db = duckdb.connect()
     path = data_dir_path / "stopping" / "stopping.parquet"
-    sources = {r[0] for r in db.sql(
-        f"SELECT DISTINCT source FROM read_parquet('{path}')"
-    ).fetchall()}
+    sources = {r[0] for r in db.sql(f"SELECT DISTINCT source FROM read_parquet('{path}')").fetchall()}
     assert "PSTAR" in sources
     assert "ASTAR" in sources
 
@@ -86,7 +84,6 @@ def test_manifest_counts(data_dir_path: Path) -> None:
         manifest_path = lib_dir.parent / "manifest.json"
         if not manifest_path.exists():
             continue
-        manifest = json.loads(manifest_path.read_text())
         actual_files = len(list(lib_dir.glob("*.parquet")))
         # Manifests may be stale — just check files exist
         assert actual_files > 0, f"{lib_key}: no parquet files found"

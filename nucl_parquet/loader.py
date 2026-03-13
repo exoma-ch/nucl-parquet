@@ -127,7 +127,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
 
 def _register_parquet(
-    db: duckdb.DuckDBPyConnection, path: Path, view_name: str,
+    db: duckdb.DuckDBPyConnection,
+    path: Path,
+    view_name: str,
 ) -> None:
     """Register a single Parquet file as a view if it exists."""
     if path.exists():
@@ -135,7 +137,9 @@ def _register_parquet(
 
 
 def _register_glob(
-    db: duckdb.DuckDBPyConnection, directory: Path, view_name: str,
+    db: duckdb.DuckDBPyConnection,
+    directory: Path,
+    view_name: str,
 ) -> None:
     """Register a directory of per-element Parquet files as a single view."""
     if directory.exists() and list(directory.glob("*.parquet")):
@@ -261,12 +265,12 @@ ORDER BY coinc_prob_pct DESC NULLS LAST
 
 # Projectile properties: (A, Z, reference_source)
 _PROJECTILES = {
-    "p":   (1, 1, "PSTAR"),
-    "d":   (2, 1, "PSTAR"),
-    "t":   (3, 1, "PSTAR"),
-    "h":   (3, 2, "ASTAR"),   # 3He
+    "p": (1, 1, "PSTAR"),
+    "d": (2, 1, "PSTAR"),
+    "t": (3, 1, "PSTAR"),
+    "h": (3, 2, "ASTAR"),  # 3He
     "he3": (3, 2, "ASTAR"),
-    "a":   (4, 2, "ASTAR"),
+    "a": (4, 2, "ASTAR"),
     "he4": (4, 2, "ASTAR"),
 }
 
@@ -275,14 +279,15 @@ _stopping_cache: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
 
 
 def _get_stopping_table(
-    db: duckdb.DuckDBPyConnection, source: str, target_Z: int,
+    db: duckdb.DuckDBPyConnection,
+    source: str,
+    target_Z: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Get log-log stopping power arrays for an element, cached."""
     key = (source, target_Z)
     if key not in _stopping_cache:
         result = db.sql(
-            "SELECT energy_MeV, dedx FROM stopping "
-            "WHERE source = $src AND target_Z = $z ORDER BY energy_MeV",
+            "SELECT energy_MeV, dedx FROM stopping WHERE source = $src AND target_Z = $z ORDER BY energy_MeV",
             params={"src": source, "z": target_Z},
         ).fetchnumpy()
         E = result["energy_MeV"]
@@ -295,7 +300,9 @@ def _get_stopping_table(
 
 
 def _interp_loglog(
-    log_E: np.ndarray, log_S: np.ndarray, energy_MeV: np.ndarray,
+    log_E: np.ndarray,
+    log_S: np.ndarray,
+    energy_MeV: np.ndarray,
 ) -> np.ndarray:
     """Log-log interpolation of stopping power."""
     return np.exp(np.interp(np.log(energy_MeV), log_E, log_S))
