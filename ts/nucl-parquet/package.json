@@ -1,6 +1,6 @@
 {
   "name": "@nucl-parquet/core",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Fast, typed access to EPDL97/EADL nuclear interaction data stored as Parquet files",
   "type": "module",
   "main": "./dist/index.cjs",
