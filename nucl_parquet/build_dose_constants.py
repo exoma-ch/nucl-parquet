@@ -315,35 +315,93 @@ def build(data_dir: Path | None = None) -> None:
     _validate(df)
 
 
+_SYMBOLS = [
+    "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+    "Pa", "U", "Np", "Pu", "Am",
+]  # fmt: skip
+
+
 def _validate(df) -> None:
-    """Cross-check against known RADAR dose rate constants."""
+    """Cross-check against published air kerma rate constants.
+
+    References:
+    - Ninkovic & Adrovic 2012, Table 1 (air kerma rate constants, δ=20 keV)
+    - Smith & Stabin 2012 (exposure rate constants)
+    Units: µSv·m²/(MBq·h)
+    """
     import polars as pl
 
-    radar = {
-        (43, 99, "m"): 0.0141,  # Tc-99m (gamma-only ~0.0142, with xray ~0.018)
-        (9, 18, ""): 0.143,  # F-18
-        (27, 60, ""): 0.306,  # Co-60
-        (55, 137, ""): 0.077,  # Cs-137
-        (53, 131, ""): 0.055,  # I-131
-        (31, 68, ""): 0.130,  # Ga-68
-        (11, 22, ""): 0.271,  # Na-22
+    # Reference: Ninkovic & Adrovic 2012, Table 1
+    # Units: µSv·m²/(MBq·h)
+    reference = {
+        # --- PET β+ emitters ---
+        (6, 11, ""): 0.1393,  # C-11
+        (7, 13, ""): 0.1394,  # N-13
+        (8, 15, ""): 0.1395,  # O-15
+        (9, 18, ""): 0.1351,  # F-18
+        (31, 68, ""): 0.1290,  # Ga-68
+        (11, 22, ""): 0.271,  # Na-22 (RADAR)
+        # --- SPECT ---
+        (43, 99, "m"): 0.01410,  # Tc-99m
+        (49, 111, ""): 0.08313,  # In-111
+        (49, 113, "m"): 0.04400,  # In-113m (IT validation target)
+        (53, 123, ""): 0.0361,  # I-123
+        (81, 201, ""): 0.01022,  # Tl-201
+        (31, 67, ""): 0.01945,  # Ga-67
+        # --- Therapy ---
+        (53, 131, ""): 0.05220,  # I-131
+        (53, 125, ""): 0.03773,  # I-125
+        # --- Calibration / shielding ---
+        (27, 60, ""): 0.3090,  # Co-60
+        (27, 57, ""): 0.01411,  # Co-57
+        (27, 58, ""): 0.1290,  # Co-58
+        (55, 137, ""): 0.08210,  # Cs-137 (secular eq. with Ba-137m)
+        (24, 51, ""): 0.00422,  # Cr-51
+        (77, 192, ""): 0.1091,  # Ir-192
+        (34, 75, ""): 0.04825,  # Se-75
+        (63, 152, ""): 0.1489,  # Eu-152
+        (63, 154, ""): 0.1592,  # Eu-154
+        (95, 241, ""): 0.00397,  # Am-241
+        # --- Other common ---
+        (42, 99, ""): 0.01977,  # Mo-99
+        (26, 59, ""): 0.1459,  # Fe-59
+        (11, 24, ""): 0.4367,  # Na-24
+        (79, 198, ""): 0.05454,  # Au-198
+        (19, 42, ""): 0.0328,  # K-42
     }
 
-    print("\nValidation against RADAR:")
-    print(f"  {'Isotope':<10} {'Computed':>10} {'RADAR':>10} {'Error':>8} {'Source'}")
+    print("\nValidation against Ninkovic & Adrovic 2012:")
+    print(f"  {'Isotope':<12} {'Computed':>10} {'Ref':>10} {'Error':>8} {'Source'}")
     print(f"  {'-' * 55}")
 
-    for (z, a, state), radar_k in radar.items():
+    n_ok, n_check, n_missing = 0, 0, 0
+    for (z, a, state), ref_k in reference.items():
         row = df.filter((pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == state))
+        sym = _SYMBOLS[z] if z < len(_SYMBOLS) else f"Z{z}"
+        name = f"{'m' if state else ''}{sym}-{a}"
         if len(row) == 0:
-            print(f"  Z={z} A={a} state='{state}': NOT FOUND")
+            print(f"  {name:<12} {'—':>10} {ref_k:10.4f} {'N/A':>8}   MISSING")
+            n_missing += 1
             continue
         k = row["k_uSv_m2_MBq_h"][0]
         src = row["source"][0]
-        err = (k / radar_k - 1) * 100
-        name = f"{'m' if state else ''}{['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', '', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs'][z]}-{a}"
+        err = (k / ref_k - 1) * 100
         status = "OK" if abs(err) < 20 else "CHECK"
-        print(f"  {name:<10} {k:10.4f} {radar_k:10.4f} {err:+7.1f}% {status}  {src}")
+        if status == "OK":
+            n_ok += 1
+        else:
+            n_check += 1
+        print(f"  {name:<12} {k:10.4f} {ref_k:10.4f} {err:+7.1f}% {status:<6} {src}")
+
+    print(f"\n  Summary: {n_ok} OK, {n_check} CHECK, {n_missing} MISSING (of {len(reference)})")
 
 
 if __name__ == "__main__":
