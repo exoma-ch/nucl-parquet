@@ -1,0 +1,13 @@
+{
+  "library": "jendl-ad-2017",
+  "sublibrary": "p",
+  "files": 1,
+  "total_rows": 421,
+  "source_files": 1,
+  "projectiles": [
+    "p"
+  ],
+  "elements": [
+    "Fe"
+  ]
+}

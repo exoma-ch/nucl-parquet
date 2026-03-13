@@ -1,0 +1,15 @@
+{
+  "library": "jendl-deu-2020",
+  "sublibrary": "d",
+  "files": 3,
+  "total_rows": 240,
+  "source_files": 5,
+  "projectiles": [
+    "d"
+  ],
+  "elements": [
+    "Be",
+    "C",
+    "Li"
+  ]
+}

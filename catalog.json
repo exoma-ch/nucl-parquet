@@ -102,6 +102,33 @@
       "version": "latest",
       "path": "iaea-medical/xs/"
     },
+    "jendl-ad-2017": {
+      "name": "JENDL/AD-2017",
+      "description": "Activation/Dosimetry Library (JAEA)",
+      "source_url": "https://wwwndc.jaea.go.jp/jendl/jad/jad.html",
+      "projectiles": ["n", "p"],
+      "data_type": "cross_sections",
+      "version": "2017",
+      "path": "jendl-ad-2017/xs/"
+    },
+    "jendl-deu-2020": {
+      "name": "JENDL-DEU-2020",
+      "description": "Dedicated deuteron-induced reaction library (JAEA)",
+      "source_url": "https://wwwndc.jaea.go.jp/jendl/deu/deu.html",
+      "projectiles": ["d"],
+      "data_type": "cross_sections",
+      "version": "2020",
+      "path": "jendl-deu-2020/xs/"
+    },
+    "iaea-pd-2019": {
+      "name": "IAEA-PD-2019",
+      "description": "Photonuclear Data Library (IAEA)",
+      "source_url": "https://www-nds.iaea.org/photonuclear/",
+      "projectiles": ["g"],
+      "data_type": "cross_sections",
+      "version": "2019",
+      "path": "iaea-pd-2019/xs/"
+    },
     "exfor": {
       "name": "EXFOR",
       "description": "Experimental nuclear reaction data (IAEA NDS)",
