@@ -19,6 +19,39 @@ jobs:
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
 
+  npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: ts/nucl-parquet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --provenance --access public
+
+  cargo:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rs/nucl-parquet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
   go-tag:
     name: Mirror Go module tag
     runs-on: ubuntu-latest
