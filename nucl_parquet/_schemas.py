@@ -66,6 +66,58 @@ XCOM_COMPOUNDS_SCHEMA = {
     "mu_en_rho_cm2_g": "Float64",
 }
 
+EPDL_PHOTON_XS_SCHEMA = {
+    "Z": "Int32",
+    "energy_MeV": "Float64",
+    "process": "Utf8",
+    "xs_barns": "Float64",
+}
+
+EPDL_FORM_FACTORS_SCHEMA = {
+    "Z": "Int32",
+    "momentum_transfer": "Float64",
+    "form_factor": "Float64",
+}
+
+EPDL_SCATTERING_FN_SCHEMA = {
+    "Z": "Int32",
+    "momentum_transfer": "Float64",
+    "scattering_fn": "Float64",
+}
+
+EPDL_ANOMALOUS_SCHEMA = {
+    "Z": "Int32",
+    "energy_MeV": "Float64",
+    "component": "Utf8",
+    "factor": "Float64",
+}
+
+EPDL_SUBSHELL_PE_SCHEMA = {
+    "Z": "Int32",
+    "energy_MeV": "Float64",
+    "subshell": "Utf8",
+    "xs_barns": "Float64",
+    "edge_MeV": "Float64",
+    "fluorescence_yield_eV": "Float64",
+}
+
+EADL_TRANSITIONS_SCHEMA = {
+    "Z": "Int32",
+    "vacancy_shell": "Utf8",
+    "filling_shell": "Utf8",
+    "transition_type": "Utf8",
+    "energy_keV": "Float64",
+    "probability": "Float64",
+    "edge_keV": "Float64",
+}
+
+EEDL_ELECTRON_XS_SCHEMA = {
+    "Z": "Int32",
+    "energy_MeV": "Float64",
+    "process": "Utf8",
+    "xs_barns": "Float64",
+}
+
 EXFOR_SCHEMA = {
     "exfor_entry": "Utf8",
     "target_Z": "Int32",

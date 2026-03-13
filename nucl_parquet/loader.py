@@ -110,6 +110,19 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_parquet(db, data_dir / "meta" / "xcom_elements.parquet", "xcom_elements")
     _register_parquet(db, data_dir / "meta" / "xcom_compounds.parquet", "xcom_compounds")
 
+    # --- EPDL97 photon interaction data ---
+    _register_glob(db, data_dir / "meta" / "epdl97" / "photon_xs", "epdl_photon_xs")
+    _register_glob(db, data_dir / "meta" / "epdl97" / "form_factors", "epdl_form_factors")
+    _register_glob(db, data_dir / "meta" / "epdl97" / "scattering_fn", "epdl_scattering_fn")
+    _register_glob(db, data_dir / "meta" / "epdl97" / "anomalous", "epdl_anomalous")
+    _register_glob(db, data_dir / "meta" / "epdl97" / "subshell_pe", "epdl_subshell_pe")
+
+    # --- EADL atomic relaxation / fluorescence ---
+    _register_glob(db, data_dir / "meta" / "eadl", "eadl_transitions")
+
+    # --- EEDL electron interaction data ---
+    _register_glob(db, data_dir / "meta" / "eedl", "eedl_electron_xs")
+
     return db
 
 
