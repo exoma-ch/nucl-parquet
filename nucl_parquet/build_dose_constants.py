@@ -184,6 +184,7 @@ def build(data_dir: Path | None = None) -> None:
     out_k = []
     out_dominant_keV = []
     out_n_lines = []
+    out_source = []
 
     for (z, a, state), indices in sorted(state_groups.items()):
         idx = np.array(indices)
@@ -200,6 +201,7 @@ def build(data_dir: Path | None = None) -> None:
             out_k.append(0.0)
             out_dominant_keV.append(0.0)
             out_n_lines.append(0)
+            out_source.append("ensdf")
             continue
 
         e_filt = e[mask]
@@ -219,6 +221,7 @@ def build(data_dir: Path | None = None) -> None:
         out_k.append(round(k, 6))
         out_dominant_keV.append(round(dominant, 3))
         out_n_lines.append(int(mask.sum()))
+        out_source.append("ensdf")
 
     # Also add pure-beta emitters with k=0 from ground_states
     gs_path = data_dir / "meta" / "ensdf" / "ground_states.parquet"
@@ -237,6 +240,51 @@ def build(data_dir: Path | None = None) -> None:
                 out_k.append(0.0)
                 out_dominant_keV.append(0.0)
                 out_n_lines.append(0)
+                out_source.append("zero")
+
+    # Backfill IT metastable states missing from radiation data.
+    # These decay by isomeric transition (IT) emitting a single gamma at
+    # ~level energy. We approximate the photon fraction using a simple
+    # ICC model: fraction ≈ 0.5 for E < 200 keV, 0.9 for higher.
+    existing = {(z, a, s) for z, a, s in zip(out_Z, out_A, out_state)}
+    levels_dir = data_dir / "meta" / "ensdf" / "levels"
+    if levels_dir.exists():
+        it_levels = db.sql(f"""
+            SELECT DISTINCT Z, A, energy_keV, half_life_s
+            FROM read_parquet('{levels_dir}/*.parquet')
+            WHERE energy_keV > 0
+              AND half_life_s > 0.001
+              AND (decay_1 = 'IT' OR decay_2 = 'IT' OR decay_3 = 'IT')
+            ORDER BY Z, A
+        """).fetchnumpy()
+
+        n_it = 0
+        for i in range(len(it_levels["Z"])):
+            z, a = int(it_levels["Z"][i]), int(it_levels["A"][i])
+            if (z, a, "m") in existing or (z, a, "") in existing:
+                continue
+            e_level = float(it_levels["energy_keV"][i])
+            if e_level < 10:
+                continue  # below µ_en/ρ table range
+
+            # Approximate photon fraction from ICC
+            photon_fraction = 0.5 if e_level < 200 else 0.9
+            # dose = E(MeV) × Y, where Y = photon_fraction (single line, 100% IT)
+            dose_it = (e_level / 1000.0) * photon_fraction
+            mu = float(_mu_en_air(np.array([e_level]))[0])
+            k = round(float(dose_it * mu * _UNIT_FACTOR), 6)
+
+            out_Z.append(z)
+            out_A.append(a)
+            out_state.append("m")
+            out_k.append(k)
+            out_dominant_keV.append(round(e_level, 3))
+            out_n_lines.append(1)
+            out_source.append("it-approx")
+            existing.add((z, a, "m"))
+            n_it += 1
+
+        print(f"  {n_it} IT metastable states backfilled")
 
     # Write parquet
     import polars as pl
@@ -249,6 +297,7 @@ def build(data_dir: Path | None = None) -> None:
             "k_uSv_m2_MBq_h": pl.Series(out_k, dtype=pl.Float64),
             "dominant_gamma_keV": pl.Series(out_dominant_keV, dtype=pl.Float64),
             "n_photon_lines": pl.Series(out_n_lines, dtype=pl.Int32),
+            "source": pl.Series(out_source, dtype=pl.Utf8),
         }
     ).sort("Z", "A", "state")
 
@@ -258,6 +307,9 @@ def build(data_dir: Path | None = None) -> None:
     print(f"Wrote {len(df)} nuclides to {out_path}")
     print(f"  {(df['k_uSv_m2_MBq_h'] > 0).sum()} with k > 0")
     print(f"  {(df['k_uSv_m2_MBq_h'] == 0).sum()} with k = 0 (pure beta/alpha)")
+    for src in ["ensdf", "it-approx", "zero"]:
+        n = (df["source"] == src).sum()
+        print(f"  source={src}: {n}")
 
     # Validation
     _validate(df)
@@ -278,8 +330,8 @@ def _validate(df) -> None:
     }
 
     print("\nValidation against RADAR:")
-    print(f"  {'Isotope':<10} {'Computed':>10} {'RADAR':>10} {'Error':>8}")
-    print(f"  {'-' * 42}")
+    print(f"  {'Isotope':<10} {'Computed':>10} {'RADAR':>10} {'Error':>8} {'Source'}")
+    print(f"  {'-' * 55}")
 
     for (z, a, state), radar_k in radar.items():
         row = df.filter((pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == state))
@@ -287,10 +339,11 @@ def _validate(df) -> None:
             print(f"  Z={z} A={a} state='{state}': NOT FOUND")
             continue
         k = row["k_uSv_m2_MBq_h"][0]
+        src = row["source"][0]
         err = (k / radar_k - 1) * 100
         name = f"{'m' if state else ''}{['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', '', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs'][z]}-{a}"
         status = "OK" if abs(err) < 20 else "CHECK"
-        print(f"  {name:<10} {k:10.4f} {radar_k:10.4f} {err:+7.1f}% {status}")
+        print(f"  {name:<10} {k:10.4f} {radar_k:10.4f} {err:+7.1f}% {status}  {src}")
 
 
 if __name__ == "__main__":

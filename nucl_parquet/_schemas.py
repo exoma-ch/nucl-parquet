@@ -50,6 +50,7 @@ DOSE_CONSTANTS_SCHEMA = {
     "k_uSv_m2_MBq_h": "Float64",
     "dominant_gamma_keV": "Float64",
     "n_photon_lines": "Int32",
+    "source": "Utf8",
 }
 
 XCOM_ELEMENTS_SCHEMA = {
