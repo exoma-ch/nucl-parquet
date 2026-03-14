@@ -5,18 +5,15 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from nucl_parquet_mcp.server import (
     CATALOG,
     fetch_parquet_rows,
-    list_libraries,
-    list_isotopes,
+    get_abundances,
     get_cross_sections,
     get_decay_data,
-    get_abundances,
-    get_stopping_power,
+    list_isotopes,
+    list_libraries,
 )
-
 
 # ---------------------------------------------------------------------------
 # Catalog tests (no network)
