@@ -25,25 +25,137 @@ BASE_URL = os.environ.get(
 
 CATALOG: dict[str, Any] = {
     "libraries": {
-        "tendl-2024": {"name": "TENDL-2024", "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)", "projectiles": ["p", "d", "t", "h", "a"], "data_type": "cross_sections", "version": "2024", "path": "tendl-2024/xs/"},
-        "endfb-8.1": {"name": "ENDF/B-VIII.1", "description": "US Evaluated Nuclear Data File (NNDC/BNL)", "projectiles": ["n", "p", "d", "t", "h", "a"], "data_type": "cross_sections", "version": "VIII.1", "path": "endfb-8.1/xs/"},
-        "jeff-4.0": {"name": "JEFF-4.0", "description": "Joint Evaluated Fission and Fusion File (NEA)", "projectiles": ["n", "p"], "data_type": "cross_sections", "version": "4.0", "path": "jeff-4.0/xs/"},
-        "jendl-5": {"name": "JENDL-5", "description": "Japanese Evaluated Nuclear Data Library (JAEA)", "projectiles": ["n", "p", "d", "a"], "data_type": "cross_sections", "version": "5", "path": "jendl-5/xs/"},
-        "tendl-2025": {"name": "TENDL-2025", "description": "TALYS Evaluated Nuclear Data Library 2025 (PSI)", "projectiles": ["n", "p", "d", "t", "h", "a"], "data_type": "cross_sections", "version": "2025", "path": "tendl-2025/xs/"},
-        "cendl-3.2": {"name": "CENDL-3.2", "description": "Chinese Evaluated Nuclear Data Library (CIAE)", "projectiles": ["n"], "data_type": "cross_sections", "version": "3.2", "path": "cendl-3.2/xs/"},
-        "brond-3.1": {"name": "BROND-3.1", "description": "Russian Evaluated Nuclear Data Library (IPPE)", "projectiles": ["n"], "data_type": "cross_sections", "version": "3.1", "path": "brond-3.1/xs/"},
-        "fendl-3.2": {"name": "FENDL-3.2", "description": "Fusion Evaluated Nuclear Data Library (IAEA)", "projectiles": ["n"], "data_type": "cross_sections", "version": "3.2", "path": "fendl-3.2/xs/"},
-        "eaf-2010": {"name": "EAF-2010", "description": "European Activation File (CCFE)", "projectiles": ["n"], "data_type": "cross_sections", "version": "2010", "path": "eaf-2010/xs/"},
-        "irdff-2": {"name": "IRDFF-II", "description": "International Reactor Dosimetry and Fusion File (IAEA)", "projectiles": ["n"], "data_type": "cross_sections", "version": "II", "path": "irdff-2/xs/"},
-        "iaea-medical": {"name": "IAEA-Medical", "description": "Medical isotope production cross-sections (IAEA)", "projectiles": ["p", "d", "h", "a"], "data_type": "cross_sections", "version": "latest", "path": "iaea-medical/xs/"},
-        "jendl-ad-2017": {"name": "JENDL/AD-2017", "description": "Activation/Dosimetry Library (JAEA)", "projectiles": ["n", "p"], "data_type": "cross_sections", "version": "2017", "path": "jendl-ad-2017/xs/"},
-        "jendl-deu-2020": {"name": "JENDL-DEU-2020", "description": "Dedicated deuteron-induced reaction library (JAEA)", "projectiles": ["d"], "data_type": "cross_sections", "version": "2020", "path": "jendl-deu-2020/xs/"},
-        "iaea-pd-2019": {"name": "IAEA-PD-2019", "description": "Photonuclear Data Library (IAEA)", "projectiles": ["g"], "data_type": "cross_sections", "version": "2019", "path": "iaea-pd-2019/xs/"},
-        "exfor": {"name": "EXFOR", "description": "Experimental nuclear reaction data (IAEA NDS)", "projectiles": ["n", "p", "d", "t", "h", "a"], "data_type": "experimental_cross_sections", "version": "latest", "path": "exfor/"},
+        "tendl-2024": {
+            "name": "TENDL-2024",
+            "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)",
+            "projectiles": ["p", "d", "t", "h", "a"],
+            "data_type": "cross_sections",
+            "version": "2024",
+            "path": "tendl-2024/xs/",
+        },
+        "endfb-8.1": {
+            "name": "ENDF/B-VIII.1",
+            "description": "US Evaluated Nuclear Data File (NNDC/BNL)",
+            "projectiles": ["n", "p", "d", "t", "h", "a"],
+            "data_type": "cross_sections",
+            "version": "VIII.1",
+            "path": "endfb-8.1/xs/",
+        },
+        "jeff-4.0": {
+            "name": "JEFF-4.0",
+            "description": "Joint Evaluated Fission and Fusion File (NEA)",
+            "projectiles": ["n", "p"],
+            "data_type": "cross_sections",
+            "version": "4.0",
+            "path": "jeff-4.0/xs/",
+        },
+        "jendl-5": {
+            "name": "JENDL-5",
+            "description": "Japanese Evaluated Nuclear Data Library (JAEA)",
+            "projectiles": ["n", "p", "d", "a"],
+            "data_type": "cross_sections",
+            "version": "5",
+            "path": "jendl-5/xs/",
+        },
+        "tendl-2025": {
+            "name": "TENDL-2025",
+            "description": "TALYS Evaluated Nuclear Data Library 2025 (PSI)",
+            "projectiles": ["n", "p", "d", "t", "h", "a"],
+            "data_type": "cross_sections",
+            "version": "2025",
+            "path": "tendl-2025/xs/",
+        },
+        "cendl-3.2": {
+            "name": "CENDL-3.2",
+            "description": "Chinese Evaluated Nuclear Data Library (CIAE)",
+            "projectiles": ["n"],
+            "data_type": "cross_sections",
+            "version": "3.2",
+            "path": "cendl-3.2/xs/",
+        },
+        "brond-3.1": {
+            "name": "BROND-3.1",
+            "description": "Russian Evaluated Nuclear Data Library (IPPE)",
+            "projectiles": ["n"],
+            "data_type": "cross_sections",
+            "version": "3.1",
+            "path": "brond-3.1/xs/",
+        },
+        "fendl-3.2": {
+            "name": "FENDL-3.2",
+            "description": "Fusion Evaluated Nuclear Data Library (IAEA)",
+            "projectiles": ["n"],
+            "data_type": "cross_sections",
+            "version": "3.2",
+            "path": "fendl-3.2/xs/",
+        },
+        "eaf-2010": {
+            "name": "EAF-2010",
+            "description": "European Activation File (CCFE)",
+            "projectiles": ["n"],
+            "data_type": "cross_sections",
+            "version": "2010",
+            "path": "eaf-2010/xs/",
+        },
+        "irdff-2": {
+            "name": "IRDFF-II",
+            "description": "International Reactor Dosimetry and Fusion File (IAEA)",
+            "projectiles": ["n"],
+            "data_type": "cross_sections",
+            "version": "II",
+            "path": "irdff-2/xs/",
+        },
+        "iaea-medical": {
+            "name": "IAEA-Medical",
+            "description": "Medical isotope production cross-sections (IAEA)",
+            "projectiles": ["p", "d", "h", "a"],
+            "data_type": "cross_sections",
+            "version": "latest",
+            "path": "iaea-medical/xs/",
+        },
+        "jendl-ad-2017": {
+            "name": "JENDL/AD-2017",
+            "description": "Activation/Dosimetry Library (JAEA)",
+            "projectiles": ["n", "p"],
+            "data_type": "cross_sections",
+            "version": "2017",
+            "path": "jendl-ad-2017/xs/",
+        },
+        "jendl-deu-2020": {
+            "name": "JENDL-DEU-2020",
+            "description": "Dedicated deuteron-induced reaction library (JAEA)",
+            "projectiles": ["d"],
+            "data_type": "cross_sections",
+            "version": "2020",
+            "path": "jendl-deu-2020/xs/",
+        },
+        "iaea-pd-2019": {
+            "name": "IAEA-PD-2019",
+            "description": "Photonuclear Data Library (IAEA)",
+            "projectiles": ["g"],
+            "data_type": "cross_sections",
+            "version": "2019",
+            "path": "iaea-pd-2019/xs/",
+        },
+        "exfor": {
+            "name": "EXFOR",
+            "description": "Experimental nuclear reaction data (IAEA NDS)",
+            "projectiles": ["n", "p", "d", "t", "h", "a"],
+            "data_type": "experimental_cross_sections",
+            "version": "latest",
+            "path": "exfor/",
+        },
     },
     "shared": {
-        "meta": {"path": "meta/", "files": {"abundances": "abundances.parquet", "decay": "decay.parquet", "elements": "elements.parquet"}},
-        "stopping": {"path": "stopping/", "files": {"stopping": "stopping.parquet"}, "sources": ["PSTAR", "ASTAR", "ICRU73", "MSTAR"]},
+        "meta": {
+            "path": "meta/",
+            "files": {"abundances": "abundances.parquet", "decay": "decay.parquet", "elements": "elements.parquet"},
+        },
+        "stopping": {
+            "path": "stopping/",
+            "files": {"stopping": "stopping.parquet"},
+            "sources": ["PSTAR", "ASTAR", "ICRU73", "MSTAR"],
+        },
     },
 }
 
@@ -113,6 +225,7 @@ async def list_libraries() -> str:
         for lib_id, lib in CATALOG["libraries"].items()
     ]
     import json
+
     return json.dumps(libs, indent=2)
 
 
@@ -128,14 +241,14 @@ async def list_isotopes(library: str, projectile: str) -> str:
     if lib is None:
         raise ValueError(f"Unknown library: {library}. Use list_libraries to see options.")
     if projectile not in lib["projectiles"]:
-        raise ValueError(
-            f"Projectile '{projectile}' not in {library}. "
-            f"Available: {', '.join(lib['projectiles'])}"
-        )
+        raise ValueError(f"Projectile '{projectile}' not in {library}. Available: {', '.join(lib['projectiles'])}")
     manifest = await _fetch_manifest(library)
     elements = manifest.get("elements", [])
     import json
-    return json.dumps({"library": library, "projectile": projectile, "elements": elements, "count": len(elements)}, indent=2)
+
+    return json.dumps(
+        {"library": library, "projectile": projectile, "elements": elements, "count": len(elements)}, indent=2
+    )
 
 
 @mcp.tool()
@@ -164,6 +277,7 @@ async def get_cross_sections(
 
     truncated = len(rows) > max_rows
     import json
+
     return json.dumps(
         {
             "library": library,
@@ -192,12 +306,10 @@ async def get_decay_data(z: int | None = None, a: int | None = None) -> str:
     path = meta["path"] + meta["files"]["decay"]
     rows = await fetch_parquet_rows(path)
 
-    filtered = [
-        row for row in rows
-        if (z is None or row.get("Z") == z) and (a is None or row.get("A") == a)
-    ]
+    filtered = [row for row in rows if (z is None or row.get("Z") == z) and (a is None or row.get("A") == a)]
 
     import json
+
     return json.dumps({"z": z, "a": a, "count": len(filtered), "rows": filtered}, indent=2, default=str)
 
 
@@ -214,6 +326,7 @@ async def get_abundances(z: int) -> str:
     filtered = [row for row in rows if row.get("Z") == z]
 
     import json
+
     return json.dumps({"z": z, "count": len(filtered), "isotopes": filtered}, indent=2)
 
 
@@ -229,10 +342,8 @@ async def get_stopping_power(source: str, target_z: int) -> str:
     path = sp["path"] + sp["files"]["stopping"]
     rows = await fetch_parquet_rows(path)
 
-    filtered = [
-        row for row in rows
-        if row.get("source") == source and row.get("target_Z") == target_z
-    ]
+    filtered = [row for row in rows if row.get("source") == source and row.get("target_Z") == target_z]
 
     import json
+
     return json.dumps({"source": source, "target_z": target_z, "count": len(filtered), "rows": filtered}, indent=2)
