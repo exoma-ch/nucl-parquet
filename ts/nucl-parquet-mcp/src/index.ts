@@ -118,7 +118,7 @@ function truncateRows(rows: Record<string, unknown>[], limit: number): { rows: R
 
 const server = new McpServer({
   name: "nucl-parquet",
-  version: "0.3.6",
+  version: "0.3.7",
 });
 
 server.tool(

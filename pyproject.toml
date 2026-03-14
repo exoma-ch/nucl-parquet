@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nucl-parquet"
-version = "0.3.6"
+version = "0.3.7"
 description = "Nuclear data as Parquet — queryable with DuckDB"
 readme = "README.md"
 license = "MIT"
