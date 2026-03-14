@@ -203,9 +203,9 @@ func loadXsTables(dir string) (map[xsKey]*xsTable, error) {
 			return nil, err
 		}
 
-		pf, err := parquet.OpenFile(f, stat.Size())
+		allRows, err := parquet.Read[photonXsRow](f, stat.Size())
+		f.Close()
 		if err != nil {
-			f.Close()
 			return nil, fmt.Errorf("parquet read error in %s: %w", path, err)
 		}
 
@@ -216,33 +216,22 @@ func loadXsTables(dir string) (map[xsKey]*xsTable, error) {
 		}
 		accum := make(map[accumKey]*xsTable)
 
-		for _, rg := range pf.RowGroups() {
-			rows := rg.NumRows()
-			buf := make([]photonXsRow, rows)
-			n, err := rg.Rows().Read(buf)
+		for i := range allRows {
+			row := &allRows[i]
+			proc, err := ParseProcess(row.Process)
 			if err != nil {
-				f.Close()
-				return nil, fmt.Errorf("read error in %s: %w", path, err)
+				continue // skip unknown process
 			}
-			for i := 0; i < n; i++ {
-				row := &buf[i]
-				proc, err := ParseProcess(row.Process)
-				if err != nil {
-					continue // skip unknown process
-				}
-				z := uint8(row.Z)
-				k := accumKey{z, proc}
-				tbl, ok := accum[k]
-				if !ok {
-					tbl = &xsTable{}
-					accum[k] = tbl
-				}
-				tbl.energy = append(tbl.energy, row.EnergyMeV)
-				tbl.xs = append(tbl.xs, row.XsBarns)
+			z := uint8(row.Z)
+			k := accumKey{z, proc}
+			tbl, ok := accum[k]
+			if !ok {
+				tbl = &xsTable{}
+				accum[k] = tbl
 			}
+			tbl.energy = append(tbl.energy, row.EnergyMeV)
+			tbl.xs = append(tbl.xs, row.XsBarns)
 		}
-
-		f.Close()
 
 		// Sort each table by energy and insert into result map.
 		for k, tbl := range accum {
@@ -287,35 +276,24 @@ func loadTabTables[R any](dir string, extract func(*R) (int32, float64, float64)
 			return nil, err
 		}
 
-		pf, err := parquet.OpenFile(f, stat.Size())
+		allRows, err := parquet.Read[R](f, stat.Size())
+		f.Close()
 		if err != nil {
-			f.Close()
 			return nil, fmt.Errorf("parquet read error in %s: %w", path, err)
 		}
 
 		var zVal *uint8
 		tbl := &tabTable{}
 
-		for _, rg := range pf.RowGroups() {
-			rows := rg.NumRows()
-			buf := make([]R, rows)
-			n, err := rg.Rows().Read(buf)
-			if err != nil {
-				f.Close()
-				return nil, fmt.Errorf("read error in %s: %w", path, err)
+		for i := range allRows {
+			z32, x, y := extract(&allRows[i])
+			z := uint8(z32)
+			if zVal == nil {
+				zVal = &z
 			}
-			for i := 0; i < n; i++ {
-				z32, x, y := extract(&buf[i])
-				z := uint8(z32)
-				if zVal == nil {
-					zVal = &z
-				}
-				tbl.x = append(tbl.x, x)
-				tbl.y = append(tbl.y, y)
-			}
+			tbl.x = append(tbl.x, x)
+			tbl.y = append(tbl.y, y)
 		}
-
-		f.Close()
 
 		if zVal != nil {
 			sortTabTable(tbl)

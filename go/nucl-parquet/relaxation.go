@@ -63,47 +63,36 @@ func OpenRelaxationDb(metaDir string) (*RelaxationDb, error) {
 			return nil, err
 		}
 
-		pf, err := parquet.OpenFile(f, stat.Size())
+		allRows, err := parquet.Read[relaxationRow](f, stat.Size())
+		f.Close()
 		if err != nil {
-			f.Close()
 			return nil, fmt.Errorf("parquet read error in %s: %w", path, err)
 		}
 
 		var zVal *uint8
 		var transList []Transition
 
-		for _, rg := range pf.RowGroups() {
-			rows := rg.NumRows()
-			buf := make([]relaxationRow, rows)
-			n, err := rg.Rows().Read(buf)
-			if err != nil {
-				f.Close()
-				return nil, fmt.Errorf("read error in %s: %w", path, err)
+		for i := range allRows {
+			row := &allRows[i]
+			z := uint8(row.Z)
+			if zVal == nil {
+				zVal = &z
 			}
-			for i := 0; i < n; i++ {
-				row := &buf[i]
-				z := uint8(row.Z)
-				if zVal == nil {
-					zVal = &z
-				}
 
-				tt := Auger
-				if row.TransitionType == "radiative" {
-					tt = Radiative
-				}
-
-				transList = append(transList, Transition{
-					VacancyShell: row.VacancyShell,
-					FillingShell: row.FillingShell,
-					Type:         tt,
-					EnergyKeV:    row.EnergyKeV,
-					Probability:  row.Probability,
-					EdgeKeV:      row.EdgeKeV,
-				})
+			tt := Auger
+			if row.TransitionType == "radiative" {
+				tt = Radiative
 			}
+
+			transList = append(transList, Transition{
+				VacancyShell: row.VacancyShell,
+				FillingShell: row.FillingShell,
+				Type:         tt,
+				EnergyKeV:    row.EnergyKeV,
+				Probability:  row.Probability,
+				EdgeKeV:      row.EdgeKeV,
+			})
 		}
-
-		f.Close()
 
 		if zVal != nil {
 			// Sort by vacancy shell, then probability descending.
