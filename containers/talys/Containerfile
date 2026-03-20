@@ -1,0 +1,44 @@
+# TALYS heavy-ion cross-section generator
+#
+# TALYS requires a free registration download. Before building:
+#   1. Register at https://tendl.web.psi.ch/tendl_2025/talys.html
+#   2. Download talys2.0.tar into this directory
+#   3. podman build -t nucl-talys .
+#
+# Run:
+#   podman run --rm -v /path/to/nucl-parquet:/data nucl-talys
+#   Output: /data/hi-xs/ parquet files
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gfortran \
+        make \
+        python3 \
+        python3-pip \
+        python3-venv \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps into a venv to avoid externally-managed-environment errors
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir polars numpy
+
+# Build TALYS from tarball (must be present in build context)
+WORKDIR /opt/talys-build
+COPY talys2.0.tar .
+RUN tar xf talys2.0.tar \
+    && cd talys \
+    && make \
+    && cp source/talys /usr/local/bin/talys \
+    && cp -r structure /opt/talys-structure \
+    && cd / \
+    && rm -rf /opt/talys-build
+
+ENV TALYS_STRUCTURE=/opt/talys-structure
+
+COPY generate.py /opt/generate.py
+
+WORKDIR /work
+ENTRYPOINT ["python3", "/opt/generate.py"]
