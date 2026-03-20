@@ -429,12 +429,17 @@ def section_screening(candidates: list[dict], has_detail: set[tuple[int, int]]) 
     )
     lines.append("")
     n_high_gp = sum(1 for c in candidates if c["gamma_ratio"] > 1.0)
+    n_viable = sum(1 for c in candidates if c["gamma_ratio"] <= 1.0 and c["safe"])
     lines.append(f"The screening yields *{len(candidates)} candidates* "
                  f"({n_safe} safe, {n_unsafe} flagged for daughter toxicity). "
-                 f"Of these, *{n_high_gp}* have γ/p > 1.0 "
-                 f"(#text(fill: rgb(\"#c0392b\"))[red] in table) — these are excluded "
-                 f"from subsequent production, pairing, and profile analysis since most "
-                 f"decay energy escapes as photons rather than depositing locally. "
+                 f"Two filters are applied for subsequent analysis: "
+                 f"(1) *{n_high_gp}* with γ/p > 1.0 "
+                 f"(#text(fill: rgb(\"#c0392b\"))[red] in table) are excluded — most "
+                 f"decay energy escapes as photons rather than depositing locally; "
+                 f"(2) *{n_unsafe}* with long-lived daughters (⚠) are excluded — "
+                 f"radiotoxic daughter accumulation precludes clinical use. "
+                 f"This leaves *{n_viable} viable candidates* for production route "
+                 f"analysis, theranostic pairing, and detailed profiling. "
                  f"Candidates with 0.5 < γ/p ≤ 1.0 (#text(fill: rgb(\"#e67e22\"))[orange]) "
                  f"are retained but flagged as having elevated photon burden.")
     lines.append("")
@@ -1203,11 +1208,13 @@ def main():
     all_candidates = _query_candidates(db)
     print(f"  → {len(all_candidates)} candidates (all)")
 
-    # Filter: γ/particulate ≤ 1.0 for subsequent analysis
-    # (high γ/p means most energy escapes — poor therapeutic candidate)
-    viable = [c for c in all_candidates if c["gamma_ratio"] <= 1.0]
-    excluded_gp = len(all_candidates) - len(viable)
-    print(f"  → {len(viable)} viable (γ/p ≤ 1.0), {excluded_gp} excluded")
+    # Filter for subsequent analysis:
+    # - γ/particulate ≤ 1.0 (high γ/p → most energy escapes)
+    # - decay chain safe (no long-lived daughter)
+    viable = [c for c in all_candidates if c["gamma_ratio"] <= 1.0 and c["safe"]]
+    excluded_gp = sum(1 for c in all_candidates if c["gamma_ratio"] > 1.0)
+    excluded_unsafe = sum(1 for c in all_candidates if not c["safe"] and c["gamma_ratio"] <= 1.0)
+    print(f"  → {len(viable)} viable, {excluded_gp} excluded (γ/p>1), {excluded_unsafe} excluded (unsafe chain)")
 
     print("Querying production routes...")
     routes_by_iso = _query_production_routes(db, viable)
