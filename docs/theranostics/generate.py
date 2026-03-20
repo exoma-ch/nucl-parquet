@@ -5,7 +5,7 @@ Connects to the nucl-parquet DuckDB database, runs analytical queries,
 and emits a complete Typst source file + figures.
 
 Usage:
-    uv run python docs/theranostics/generate.py
+    uv run --with matplotlib python docs/theranostics/generate.py
     typst compile docs/theranostics/theranostics.typ
 """
 
@@ -41,6 +41,9 @@ GROUP3_SC_Y_LA_AC = {21, 39, 57, 89}
 HALOGENS = {9, 17, 35, 53, 85}
 TC_RE = {43, 75}
 
+# Radiation type display order
+RAD_TYPE_ORDER = ["alpha", "beta-", "beta+/EC", "ce", "auger", "gamma", "xray"]
+
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -69,14 +72,71 @@ def _nuc_typst(symbol: str, A: int) -> str:
     return f"#super[{A}]{symbol}"
 
 
-# ── Section 1: Therapeutic Isotope Screening ──────────────────────────
+def _iso_label(symbol: str, A: int) -> str:
+    """Typst label string for an isotope, e.g. 'iso-Lu-177'."""
+    return f"iso-{symbol}-{A}"
 
-def section_screening(db) -> tuple[str, list[dict]]:
+
+def _nuc_ref(symbol: str, A: int) -> str:
+    """Typst nuclide with ref link to its detail section."""
+    label = _iso_label(symbol, A)
+    nuc = _nuc_typst(symbol, A)
+    # Use Typst's native ref, rendered as the nuclide name
+    return f"#link(<{label}>)[{nuc}]"
+
+
+def _classify_facility(projectile: str, peak_E: float) -> str:
+    """Classify the production facility required."""
+    if projectile == "n":
+        return "Reactor"
+    if projectile in ("p", "d"):
+        return "Med. cyclotron" if peak_E <= 25 else "High-E cyclotron"
+    if projectile in ("t", "h"):
+        return "High-E cyclotron"
+    if projectile == "a":
+        return "Med. cyclotron" if peak_E <= 40 else "High-E cyclotron"
+    return "Exotic"
+
+
+def _chelators_for(symbol: str) -> list[str]:
+    """Return list of compatible chelators for an element symbol."""
+    return [name for name, elems in CHELATOR_MAP.items() if symbol in elems]
+
+
+# ── Data queries ──────────────────────────────────────────────────────
+
+# Daughters with t½ above this are flagged as unsafe (1 year)
+DAUGHTER_SAFETY_THRESHOLD_S = 3.15e7
+
+
+def _check_decay_chain_safety(db, Z: int, A: int) -> tuple[bool, str]:
+    """Check if any daughter in the decay chain is long-lived (> 1 year).
+
+    Returns (is_safe, warning_string).
+    """
+    from nucl_parquet.loader import DECAY_CHAIN_SQL
+    try:
+        chain = db.sql(DECAY_CHAIN_SQL, params={"parent_z": Z, "parent_a": A}).fetchall()
+    except Exception:
+        return True, ""  # can't check → assume OK
+
+    for r in chain:
+        gen, d_Z, d_A, d_sym = r[8], r[0], r[1], r[2]
+        d_hl = r[3]
+        if gen <= 1:
+            continue  # skip self
+        if d_hl is not None and d_hl > DAUGHTER_SAFETY_THRESHOLD_S:
+            return False, f"{d_sym}-{d_A} (t½={_hl_label(d_hl)})"
+    return True, ""
+
+
+def _query_candidates(db) -> list[dict]:
     """Screen the database for therapeutic isotope candidates.
 
-    Returns (typst_section_string, candidates_list).
+    Uses a permissive dose floor: any isotope with particulate emission
+    is included, since Auger emitters deliver low total dose but
+    extremely high dose per unit volume at the subcellular scale.
     """
-    # Query: ground states with t½ 2h-30d, joined with aggregated radiation
     rows = db.sql("""
         WITH dose AS (
             SELECT Z, A, rad_type,
@@ -127,9 +187,10 @@ def section_screening(db) -> tuple[str, list[dict]]:
         ce, auger, beta, betaplus, alpha, gamma = r[7], r[8], r[9], r[10], r[11], r[12]
         spect_g, pair_g = r[13], r[14]
 
-        # Total particulate dose (therapeutic)
         particulate = ce + auger + beta + alpha
-        if particulate < 0.005:
+        # Include any isotope with measurable particulate emission
+        # (Auger emitters have low total dose but extreme dose density)
+        if particulate < 1e-4:
             continue
 
         # Imaging classification
@@ -148,21 +209,20 @@ def section_screening(db) -> tuple[str, list[dict]]:
         if ce > 0.001:
             ranges.append("Cellular")
         if beta > 0.001:
-            if beta > 0.1:
-                ranges.append("Cluster")
-            else:
-                ranges.append("Cellular")
+            ranges.append("Cluster" if beta > 0.1 else "Cellular")
         if alpha > 0.001:
             ranges.append("Macroscopic")
 
-        if len(ranges) == 0:
-            range_cls = "—"
-        elif len(ranges) == 1:
-            range_cls = ranges[0]
+        unique = list(dict.fromkeys(ranges))
+        if len(unique) == 0:
+            range_cls = "Subcellular"  # low-energy Auger-dominated
+        elif len(unique) == 1:
+            range_cls = unique[0]
         else:
-            # deduplicate
-            unique = list(dict.fromkeys(ranges))
-            range_cls = "Multi-range" if len(unique) > 1 else unique[0]
+            range_cls = "Multi-range"
+
+        # Decay chain safety check
+        is_safe, unsafe_daughter = _check_decay_chain_safety(db, Z, A)
 
         candidates.append({
             "Z": Z, "A": A, "symbol": sym, "half_life_s": hl,
@@ -170,101 +230,22 @@ def section_screening(db) -> tuple[str, list[dict]]:
             "ce": ce, "auger": auger, "beta": beta, "alpha": alpha,
             "gamma": gamma, "particulate": particulate,
             "imaging": imaging, "range_class": range_cls,
+            "safe": is_safe, "unsafe_daughter": unsafe_daughter,
         })
-
-    # Build Typst table
-    lines = []
-    lines.append("= Therapeutic Isotope Screening")
-    lines.append("")
-    lines.append(
-        "We systematically screen the ENSDF database for radionuclides with "
-        "half-lives between 2 hours and 30 days whose particulate radiation dose "
-        "exceeds 0.005 MeV/(Bq$dot$s). "
-        "This identifies candidates suitable for targeted radionuclide therapy, "
-        "classified by their dominant emission range and intrinsic imaging capability "
-        "@kassis2005 @sgouros2020."
-    )
-    lines.append("")
-    lines.append(f"The screening yields *{len(candidates)} candidates* from {len(rows)} "
-                 f"isotopes in the 2 h – 30 d half-life window.")
-    lines.append("")
-
-    # Table
-    lines.append("#figure(")
-    lines.append("  table(")
-    lines.append("    columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto, auto),")
-    lines.append("    align: (center,) * 10,")
-    lines.append("    stroke: 0.5pt,")
-    lines.append("    table.header(")
-    lines.append('      [*Isotope*], [*t#sub[½]*], [*Decay*], [*CE*], [*Auger*],')
-    lines.append('      [*β⁻*], [*α*], [*γ dose*], [*Imaging*], [*Range*],')
-    lines.append("    ),")
-
-    for c in candidates:
-        nuc = _nuc_typst(c["symbol"], c["A"])
-        hl = _hl_label(c["half_life_s"])
-        decay = _typst_escape(c["decay"]) if c["decay"] else "—"
-        lines.append(
-            f"    [{nuc}], [{hl}], [{decay}], "
-            f"[{c['ce']:.3f}], [{c['auger']:.3f}], "
-            f"[{c['beta']:.3f}], [{c['alpha']:.3f}], "
-            f"[{c['gamma']:.3f}], [{c['imaging']}], [{c['range_class']}],"
-        )
-
-    lines.append("  ),")
-    lines.append(f'  caption: [Therapeutic isotope candidates (n={len(candidates)}). '
-                 'Dose values in MeV/(Bq$dot$s). '
-                 'Imaging: intrinsic capability (PET, SPECT, pair-production, or none).],')
-    lines.append(") <tab:screening>")
-    lines.append("")
-
-    return "\n".join(lines), candidates
+    return candidates
 
 
-# ── Section 2: Production Route Analysis ──────────────────────────────
-
-def section_production(db, candidates: list[dict]) -> str:
-    """Analyse production routes for each candidate isotope."""
-    lines = []
-    lines.append("= Production Route Analysis")
-    lines.append("")
-    lines.append(
-        "For each therapeutic candidate we query all evaluated cross-section "
-        "libraries for production routes, cross-referencing natural isotopic "
-        "abundances to assess practical feasibility @qaim2019 @qaim2017. "
-        "A route score is computed as peak cross-section (mb) multiplied by "
-        "target natural abundance, penalised for exotic beams or high threshold energy."
-    )
-    lines.append("")
-
-    # Facility classification by beam + energy
-    def classify_facility(projectile: str, peak_E: float) -> str:
-        if projectile in ("n",):
-            return "Reactor"
-        if projectile in ("p", "d"):
-            if peak_E <= 25:
-                return "Med. cyclotron"
-            return "High-E cyclotron"
-        if projectile in ("t", "h"):
-            return "High-E cyclotron"
-        if projectile == "a":
-            if peak_E <= 40:
-                return "Med. cyclotron"
-            return "High-E cyclotron"
-        return "Exotic"
-
-    # Pre-fetch all abundances: (A, symbol) → fractional abundance
+def _query_production_routes(db, candidates: list[dict]) -> dict[tuple[int, int], list[dict]]:
+    """Query all production routes for each candidate. Returns {(Z,A): [routes]}."""
+    # Pre-fetch abundances
     abund_map: dict[tuple[int, str], float] = {}
     for r in db.sql("SELECT A, symbol, abundance FROM abundances").fetchall():
         abund_map[(r[0], r[1])] = r[2]
 
-    route_table = []
-    no_route = []
+    routes_by_iso: dict[tuple[int, int], list[dict]] = {}
 
     for c in candidates:
-        Z, A, sym = c["Z"], c["A"], c["symbol"]
-
-        # Extract projectile from filename pattern: .../projectile_Element.parquet
+        Z, A = c["Z"], c["A"]
         routes = db.sql("""
             SELECT
                 split_part(split_part(filename, '/', -1), '.', 1) AS proj_elem,
@@ -280,116 +261,42 @@ def section_production(db, candidates: list[dict]) -> str:
             LIMIT 50
         """, params={"rz": Z, "ra": A}).fetchall()
 
-        if not routes:
-            no_route.append(c)
-            continue
-
-        best_score = 0
-        best_route = None
+        parsed = []
         for rt in routes:
-            proj_elem = rt[0]  # e.g. "p_Cu"
+            proj_elem = rt[0]
             parts = proj_elem.split("_")
             projectile = parts[0] if parts else "?"
             target_sym = parts[1] if len(parts) > 1 else ""
             target_A = rt[1]
-            library = rt[2]
-            peak_xs = rt[3]
-            peak_E = rt[4]
+            peak_xs, peak_E = rt[3], rt[4]
 
-            # Look up target natural abundance
             frac = abund_map.get((target_A, target_sym), 0.0)
             nat_abund = frac * 100
 
-            score = peak_xs * (nat_abund / 100.0)
-            # Penalise exotic beams
+            score = peak_xs * frac
             if projectile in ("t", "h", "g"):
                 score *= 0.1
-            # Penalise very high energy
             if peak_E > 50:
                 score *= 0.5
 
-            if score > best_score:
-                best_score = score
-                best_route = {
-                    "projectile": projectile, "target_A": target_A,
-                    "peak_xs": peak_xs, "peak_E": peak_E,
-                    "library": library, "abundance": nat_abund,
-                    "score": score,
-                    "facility": classify_facility(projectile, peak_E),
-                }
+            parsed.append({
+                "projectile": projectile, "target_A": target_A,
+                "target_sym": target_sym,
+                "peak_xs": peak_xs, "peak_E": peak_E,
+                "library": rt[2], "abundance": nat_abund,
+                "score": score,
+                "facility": _classify_facility(projectile, peak_E),
+            })
 
-        if best_route:
-            route_table.append({"isotope": c, **best_route})
+        parsed.sort(key=lambda x: x["score"], reverse=True)
+        routes_by_iso[(Z, A)] = parsed
 
-    # Sort by score descending
-    route_table.sort(key=lambda x: x["score"], reverse=True)
-
-    # Output table
-    lines.append("#figure(")
-    lines.append("  table(")
-    lines.append("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),")
-    lines.append("    align: (center,) * 8,")
-    lines.append("    stroke: 0.5pt,")
-    lines.append("    table.header(")
-    lines.append('      [*Isotope*], [*Beam*], [*Target A*], [*Abund. (%)*], '
-                 '[*σ#sub[peak] (mb)*], [*E#sub[peak] (MeV)*], [*Library*], [*Facility*],')
-    lines.append("    ),")
-
-    for rt in route_table[:60]:
-        iso = rt["isotope"]
-        nuc = _nuc_typst(iso["symbol"], iso["A"])
-        lines.append(
-            f"    [{nuc}], [{rt['projectile']}], [{rt['target_A']}], "
-            f"[{rt['abundance']:.1f}], [{rt['peak_xs']:.1f}], "
-            f"[{rt['peak_E']:.1f}], [{_typst_escape(rt['library'])}], [{rt['facility']}],"
-        )
-
-    lines.append("  ),")
-    lines.append(f'  caption: [Best production route per candidate (top {min(60, len(route_table))} by feasibility score). '
-                 "Peak cross-section σ from evaluated nuclear data libraries.],")
-    lines.append(") <tab:production>")
-    lines.append("")
-
-    # Facility summary
-    fac_counts = Counter(rt["facility"] for rt in route_table)
-    lines.append(f"Of the {len(route_table)} candidates with identified routes, "
-                 + ", ".join(f"{n} are accessible via *{f}*" for f, n in fac_counts.most_common())
-                 + ".")
-    lines.append("")
-
-    if no_route:
-        syms = ", ".join(_nuc_typst(c["symbol"], c["A"]) for c in no_route[:15])
-        lines.append(f"*{len(no_route)} candidates lack any evaluated cross-section data* "
-                     f"in the surveyed libraries, including: {syms}. "
-                     "These represent gaps where experimental measurements or dedicated "
-                     "TALYS calculations are needed.")
-        lines.append("")
-
-    return "\n".join(lines)
+    return routes_by_iso
 
 
-# ── Section 3: Theranostic Pairing + Coordination Chemistry ──────────
-
-def section_pairing(db, candidates: list[dict]) -> str:
-    """Analyse theranostic diagnostic pairing and chelator compatibility."""
-    lines = []
-    lines.append("= Theranostic Pairing and Coordination Chemistry")
-    lines.append("")
-    lines.append(
-        "A theranostic pair consists of a diagnostic isotope (for PET or SPECT imaging) "
-        "and a therapeutic isotope sharing the same chemical behaviour — ideally the same "
-        "element or a chemical analogue that coordinates identically with a given chelator "
-        "@price2014 @cutler2013. We analyse same-element and chemical-family pairings "
-        "for all screened candidates."
-    )
-    lines.append("")
-
-    cand_by_Z: dict[int, list[dict]] = {}
-    for c in candidates:
-        cand_by_Z.setdefault(c["Z"], []).append(c)
-
-    # Find diagnostic isotopes: EC or β⁺ decay, suitable half-life (>10 min)
-    diag_rows = db.sql("""
+def _query_diagnostics(db) -> dict[int, list[dict]]:
+    """Query diagnostic isotopes grouped by Z."""
+    rows = db.sql("""
         SELECT Z, A, symbol, half_life_s, decay_1
         FROM ground_states
         WHERE decay_1 IN ('EC', 'B+', 'EC+B+')
@@ -399,30 +306,206 @@ def section_pairing(db, candidates: list[dict]) -> str:
     """).fetchall()
 
     diag_by_Z: dict[int, list[dict]] = {}
-    for r in diag_rows:
+    for r in rows:
         d = {"Z": r[0], "A": r[1], "symbol": r[2],
              "half_life_s": r[3], "decay": r[4] or ""}
         diag_by_Z.setdefault(r[0], []).append(d)
+    return diag_by_Z
 
-    # == Same-element pairs ==
-    lines.append("== Same-Element Pairs")
+
+def _query_emissions(db, Z: int, A: int) -> list[dict]:
+    """Query all radiation emissions for an isotope."""
+    rows = db.sql("""
+        SELECT rad_type, rad_subtype, energy_keV, end_point_keV,
+               intensity_pct, dose_MeV_per_Bq_s
+        FROM radiation
+        WHERE Z = $z AND A = $a AND dataset = 1
+          AND intensity_pct > 0.1
+        ORDER BY
+            CASE rad_type
+                WHEN 'alpha' THEN 1
+                WHEN 'beta-' THEN 2
+                WHEN 'beta+/EC' THEN 3
+                WHEN 'ce' THEN 4
+                WHEN 'auger' THEN 5
+                WHEN 'gamma' THEN 6
+                WHEN 'xray' THEN 7
+            END,
+            energy_keV DESC
+    """, params={"z": Z, "a": A}).fetchall()
+    return [{"rad_type": r[0], "rad_subtype": r[1] or "", "energy_keV": r[2],
+             "end_point_keV": r[3], "intensity_pct": r[4],
+             "dose": r[5] or 0.0} for r in rows]
+
+
+# ── Section 1: Therapeutic Isotope Screening ──────────────────────────
+
+def section_screening(candidates: list[dict], has_detail: set[tuple[int, int]]) -> str:
+    """Build Typst screening section with cross-linked isotope names."""
+    lines = []
+    lines.append("= Therapeutic Isotope Screening")
+    lines.append("")
+    n_safe = sum(1 for c in candidates if c["safe"])
+    n_unsafe = len(candidates) - n_safe
+    lines.append(
+        "We systematically screen the ENSDF database for radionuclides with "
+        "half-lives between 2 hours and 30 days that emit particulate radiation. "
+        "Unlike previous surveys that apply a hard dose floor, we retain "
+        "Auger-dominant emitters whose total dose is low but whose dose "
+        "_density_ (dose per unit volume) at the subcellular scale can be "
+        "therapeutically significant @kassis2005 @sgouros2020. "
+        "Each candidate is checked for decay-chain safety: isotopes whose "
+        "daughters include long-lived radiotoxic nuclides (t#sub[½] > 1 y) "
+        'are flagged with "⚠" and excluded from the recommended set. '
+        "Isotope names link to detailed profiles in @sec:profiles."
+    )
+    lines.append("")
+    lines.append(f"The screening yields *{len(candidates)} candidates* "
+                 f"({n_safe} safe, {n_unsafe} flagged for daughter toxicity).")
     lines.append("")
 
+    lines.append("#set text(size: 8pt)")
+    lines.append("#figure(")
+    lines.append("  kind: table,")
+    lines.append("  table(")
+    lines.append("    columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto, auto, auto),")
+    lines.append("    align: (center,) * 11,")
+    lines.append("    stroke: 0.5pt,")
+    lines.append("    table.header(")
+    lines.append('      [*Isotope*], [*t#sub[½]*], [*Decay*], [*CE*], [*Auger*],')
+    lines.append('      [*β⁻*], [*α*], [*γ dose*], [*Imaging*], [*Range*], [*Safe*],')
+    lines.append("    ),")
+
+    for c in candidates:
+        key = (c["Z"], c["A"])
+        if key in has_detail:
+            nuc = _nuc_ref(c["symbol"], c["A"])
+        else:
+            nuc = _nuc_typst(c["symbol"], c["A"])
+        hl = _hl_label(c["half_life_s"])
+        decay = _typst_escape(c["decay"]) if c["decay"] else "—"
+        safe_mark = "✓" if c["safe"] else "⚠"
+        lines.append(
+            f"    [{nuc}], [{hl}], [{decay}], "
+            f"[{c['ce']:.3f}], [{c['auger']:.3f}], "
+            f"[{c['beta']:.3f}], [{c['alpha']:.3f}], "
+            f"[{c['gamma']:.3f}], [{c['imaging']}], [{c['range_class']}], [{safe_mark}],"
+        )
+
+    lines.append("  ),")
+    lines.append(f'  caption: [Therapeutic isotope candidates (n={len(candidates)}). '
+                 'Dose in MeV/(Bq$dot$s). ⚠ = long-lived daughter in decay chain.],')
+    lines.append(") <tab:screening>")
+    lines.append("#set text(size: 10pt)")
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ── Section 2: Production Route Analysis (summary) ────────────────────
+
+def section_production(candidates: list[dict], routes_by_iso, has_detail) -> str:
+    """Build summary production section."""
+    lines = []
+    lines.append("= Production Route Analysis")
+    lines.append("")
+    lines.append(
+        "For each therapeutic candidate we query all evaluated cross-section "
+        "libraries for production routes, cross-referencing natural isotopic "
+        "abundances to assess practical feasibility @qaim2019 @qaim2017. "
+        "Detailed per-isotope routes are in @sec:profiles."
+    )
+    lines.append("")
+
+    # Best route per isotope
+    best_routes = []
+    no_route = []
+    for c in candidates:
+        key = (c["Z"], c["A"])
+        rts = routes_by_iso.get(key, [])
+        if rts:
+            best_routes.append({"isotope": c, **rts[0]})
+        else:
+            no_route.append(c)
+
+    best_routes.sort(key=lambda x: x["score"], reverse=True)
+
+    lines.append("#set text(size: 8pt)")
+    lines.append("#figure(")
+    lines.append("  kind: table,")
+    lines.append("  table(")
+    lines.append("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),")
+    lines.append("    align: (center,) * 8,")
+    lines.append("    stroke: 0.5pt,")
+    lines.append("    table.header(")
+    lines.append('      [*Isotope*], [*Beam*], [*Target A*], [*Abund. (%)*], '
+                 '[*σ#sub[peak] (mb)*], [*E#sub[peak] (MeV)*], [*Library*], [*Facility*],')
+    lines.append("    ),")
+
+    for rt in best_routes[:60]:
+        iso = rt["isotope"]
+        key = (iso["Z"], iso["A"])
+        nuc = _nuc_ref(iso["symbol"], iso["A"]) if key in has_detail else _nuc_typst(iso["symbol"], iso["A"])
+        lines.append(
+            f"    [{nuc}], [{rt['projectile']}], [{rt['target_A']}], "
+            f"[{rt['abundance']:.1f}], [{rt['peak_xs']:.1f}], "
+            f"[{rt['peak_E']:.1f}], [{_typst_escape(rt['library'])}], [{rt['facility']}],"
+        )
+
+    lines.append("  ),")
+    lines.append(f'  caption: [Best production route per candidate (top {min(60, len(best_routes))} by feasibility score).],')
+    lines.append(") <tab:production>")
+    lines.append("#set text(size: 10pt)")
+    lines.append("")
+
+    fac_counts = Counter(rt["facility"] for rt in best_routes)
+    lines.append(f"Of the {len(best_routes)} candidates with identified routes, "
+                 + ", ".join(f"{n} via *{f}*" for f, n in fac_counts.most_common())
+                 + ".")
+    lines.append("")
+
+    if no_route:
+        syms = ", ".join(_nuc_typst(c["symbol"], c["A"]) for c in no_route[:15])
+        lines.append(f"*{len(no_route)} candidates lack evaluated cross-section data*, "
+                     f"including: {syms}.")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ── Section 3: Theranostic Pairing + Coordination Chemistry ──────────
+
+def section_pairing(candidates: list[dict], diag_by_Z, has_detail) -> str:
+    """Build pairing and chelator section."""
+    lines = []
+    lines.append("= Theranostic Pairing and Coordination Chemistry")
+    lines.append("")
+    lines.append(
+        "A theranostic pair consists of a diagnostic isotope (for PET or SPECT imaging) "
+        "and a therapeutic isotope sharing the same chemical behaviour — ideally the same "
+        "element or a chemical analogue that coordinates identically with a given chelator "
+        "@price2014 @cutler2013."
+    )
+    lines.append("")
+
+    cand_by_Z: dict[int, list[dict]] = {}
+    for c in candidates:
+        cand_by_Z.setdefault(c["Z"], []).append(c)
+
+    # Same-element pairs
+    lines.append("== Same-Element Pairs")
+    lines.append("")
     pairs = []
     for Z, theraps in cand_by_Z.items():
         diags = diag_by_Z.get(Z, [])
         for th in theraps:
             for dg in diags:
-                if dg["A"] == th["A"]:
-                    continue
-                pairs.append({"therapeutic": th, "diagnostic": dg})
+                if dg["A"] != th["A"]:
+                    pairs.append({"therapeutic": th, "diagnostic": dg})
 
-    lines.append(f"We identify *{len(pairs)} same-element theranostic pairs* "
-                 "across the candidate set.")
+    lines.append(f"We identify *{len(pairs)} same-element theranostic pairs*.")
     lines.append("")
 
-    # Top 15 pairs by therapeutic particulate dose
-    top_pairs = sorted(pairs, key=lambda p: p["therapeutic"]["particulate"], reverse=True)[:15]
+    top_pairs = sorted(pairs, key=lambda p: p["therapeutic"]["particulate"], reverse=True)[:20]
 
     lines.append("#figure(")
     lines.append("  table(")
@@ -435,12 +518,12 @@ def section_pairing(db, candidates: list[dict]) -> str:
     lines.append("    ),")
 
     for p in top_pairs:
-        th = p["therapeutic"]
-        dg = p["diagnostic"]
+        th, dg = p["therapeutic"], p["diagnostic"]
+        key = (th["Z"], th["A"])
+        th_nuc = _nuc_ref(th["symbol"], th["A"]) if key in has_detail else _nuc_typst(th["symbol"], th["A"])
         modality = "PET" if dg["decay"] in ("B+", "EC+B+") else "SPECT/EC"
         lines.append(
-            f"    [{_nuc_typst(th['symbol'], th['A'])}], "
-            f"[{_hl_label(th['half_life_s'])}], [{th['range_class']}], "
+            f"    [{th_nuc}], [{_hl_label(th['half_life_s'])}], [{th['range_class']}], "
             f"[{_nuc_typst(dg['symbol'], dg['A'])}], "
             f"[{_hl_label(dg['half_life_s'])}], [{modality}],"
         )
@@ -450,42 +533,33 @@ def section_pairing(db, candidates: list[dict]) -> str:
     lines.append(") <tab:same-element>")
     lines.append("")
 
-    # == Chemical-family pairs ==
+    # Chemical-family pairing
     lines.append("== Chemical-Family Pairing")
     lines.append("")
     lines.append(
-        "Beyond same-element pairs, chemical analogues within established "
-        "chelator families enable cross-element theranostics. "
         "Lanthanides coordinate equivalently via DOTA, group-3 metals "
         "(Sc/Y/La/Ac) share trivalent chemistry, halogens form direct "
         "covalent bonds, and the Tc/Re pair exploits identical oxidation states @muller2017."
     )
     lines.append("")
 
-    family_groups = [
-        ("Lanthanides (DOTA)", LANTHANIDES),
-        ("Group 3 (Sc/Y/La/Ac)", GROUP3_SC_Y_LA_AC),
-        ("Halogens (covalent)", HALOGENS),
-        ("Tc/Re", TC_RE),
-    ]
-
-    for fname, Zset in family_groups:
+    for fname, Zset in [("Lanthanides (DOTA)", LANTHANIDES), ("Group 3 (Sc/Y/La/Ac)", GROUP3_SC_Y_LA_AC),
+                         ("Halogens (covalent)", HALOGENS), ("Tc/Re", TC_RE)]:
         members_th = [c for c in candidates if c["Z"] in Zset]
-        members_dg = [d for zlist in diag_by_Z.values()
-                      for d in zlist if d["Z"] in Zset]
+        members_dg = [d for zlist in diag_by_Z.values() for d in zlist if d["Z"] in Zset]
         if members_th:
-            th_str = ", ".join(_nuc_typst(c["symbol"], c["A"]) for c in members_th[:8])
+            th_str = ", ".join(_nuc_ref(c["symbol"], c["A"]) if (c["Z"], c["A"]) in has_detail
+                               else _nuc_typst(c["symbol"], c["A"]) for c in members_th[:8])
             dg_str = ", ".join(_nuc_typst(d["symbol"], d["A"]) for d in members_dg[:8]) if members_dg else "—"
             lines.append(f"*{fname}*: therapeutic: {th_str}; diagnostic: {dg_str}")
             lines.append("")
 
-    # == Chelator compatibility ==
+    # Chelator table
     lines.append("== Chelator Compatibility")
     lines.append("")
     lines.append(
         "The choice of bifunctional chelator determines which radiometals "
-        "can label a given targeting vector. We map each candidate's element "
-        "to established chelator families @price2014 @vermeulen2019."
+        "can label a given targeting vector @price2014 @vermeulen2019."
     )
     lines.append("")
 
@@ -499,24 +573,183 @@ def section_pairing(db, candidates: list[dict]) -> str:
     for chel, elems in CHELATOR_MAP.items():
         highlighted = []
         for el in sorted(elems):
-            if el in cand_syms:
-                highlighted.append(f"*{el}*")
-            else:
-                highlighted.append(el)
+            highlighted.append(f"*{el}*" if el in cand_syms else el)
         lines.append(f"    [{chel}], [{', '.join(highlighted)}],")
     lines.append("  ),")
-    lines.append('  caption: [Chelator–element compatibility. '
-                 'Bold elements have therapeutic candidates in the screened set.],')
+    lines.append('  caption: [Chelator–element compatibility. Bold = has therapeutic candidates.],')
     lines.append(") <tab:chelators>")
     lines.append("")
 
     return "\n".join(lines)
 
 
-# ── Figures ───────────────────────────────────────────────────────────
+# ── Section 5: Detailed Isotope Profiles ──────────────────────────────
+
+def section_detailed_profiles(db, candidates: list[dict], routes_by_iso,
+                               diag_by_Z, has_detail: set[tuple[int, int]]) -> str:
+    """Generate a subsection per highlighted isotope with full data."""
+    lines = []
+    lines.append("= Detailed Isotope Profiles <sec:profiles>")
+    lines.append("")
+    lines.append(
+        "This section provides a detailed data sheet for each candidate isotope "
+        "that has at least one identified production route. "
+        "Each profile includes: nuclear properties, complete emission table, "
+        "all evaluated production routes with target abundances, compatible "
+        "chelators, and paired diagnostic isotopes."
+    )
+    lines.append("")
+
+    detailed = [c for c in candidates if (c["Z"], c["A"]) in has_detail]
+
+    for c in detailed:
+        Z, A, sym = c["Z"], c["A"], c["symbol"]
+        label = _iso_label(sym, A)
+        nuc = _nuc_typst(sym, A)
+
+        lines.append(f"== {nuc} <{label}>")
+        lines.append("")
+
+        # Properties summary
+        hl = _hl_label(c["half_life_s"])
+        decay = c["decay"] or "—"
+        lines.append(f"*Half-life:* {hl} #h(1em) *J#super[π]:* {c['jp'] or '—'} "
+                     f"#h(1em) *Primary decay:* {_typst_escape(decay)} #h(1em) "
+                     f"*Imaging:* {c['imaging']} #h(1em) *Range:* {c['range_class']}")
+        lines.append("")
+
+        if not c["safe"]:
+            lines.append(f'#block(fill: rgb("#fff3cd"), inset: 8pt, radius: 3pt)[')
+            lines.append(f'  *⚠ Decay chain warning:* daughter {c["unsafe_daughter"]} '
+                         f'is long-lived (t#sub[½] > 1 y). Not suitable for clinical use '
+                         f'without careful dosimetric evaluation of daughter accumulation.')
+            lines.append("]")
+        lines.append("")
+
+        # Dose summary
+        lines.append(
+            f"*Particulate dose:* {c['particulate']:.3f} MeV/(Bq$dot$s) — "
+            f"β⁻: {c['beta']:.3f}, α: {c['alpha']:.3f}, "
+            f"CE: {c['ce']:.3f}, Auger: {c['auger']:.3f}, "
+            f"γ: {c['gamma']:.3f}"
+        )
+        lines.append("")
+
+        # ── Emission table ──
+        emissions = _query_emissions(db, Z, A)
+        if emissions:
+            lines.append("=== Emissions")
+            lines.append("")
+            lines.append("#set text(size: 7.5pt)")
+            lines.append("#figure(")
+            lines.append("  kind: table,")
+            lines.append("  table(")
+            lines.append("    columns: (auto, auto, auto, auto, auto, auto),")
+            lines.append("    align: (center,) * 6,")
+            lines.append("    stroke: 0.5pt,")
+            lines.append("    table.header(")
+            lines.append('      [*Type*], [*Subtype*], [*Energy (keV)*], '
+                         '[*Endpoint (keV)*], [*Intensity (%)*], [*Dose (MeV/Bq·s)*],')
+            lines.append("    ),")
+
+            for em in emissions[:25]:  # limit to top 25 lines
+                ep = f"{em['end_point_keV']:.1f}" if em['end_point_keV'] else "—"
+                lines.append(
+                    f"    [{em['rad_type']}], [{_typst_escape(em['rad_subtype'])}], "
+                    f"[{em['energy_keV']:.1f}], [{ep}], "
+                    f"[{em['intensity_pct']:.2f}], [{em['dose']:.4f}],"
+                )
+
+            lines.append("  ),")
+            lines.append(f'  caption: [Radiation emissions of {nuc} (intensity > 0.1%).],')
+            lines.append(f")")
+            lines.append("#set text(size: 10pt)")
+            lines.append("")
+
+        # ── Production routes ──
+        rts = routes_by_iso.get((Z, A), [])
+        if rts:
+            lines.append("=== Production Routes")
+            lines.append("")
+            lines.append("#set text(size: 8pt)")
+            lines.append("#figure(")
+            lines.append("  kind: table,")
+            lines.append("  table(")
+            lines.append("    columns: (auto, auto, auto, auto, auto, auto, auto),")
+            lines.append("    align: (center,) * 7,")
+            lines.append("    stroke: 0.5pt,")
+            lines.append("    table.header(")
+            lines.append('      [*Beam*], [*Target*], [*A*], [*Abund. (%)*], '
+                         '[*σ#sub[peak] (mb)*], [*E#sub[peak] (MeV)*], [*Facility*],')
+            lines.append("    ),")
+
+            for rt in rts[:20]:
+                lines.append(
+                    f"    [{rt['projectile']}], [{rt['target_sym']}], [{rt['target_A']}], "
+                    f"[{rt['abundance']:.1f}], [{rt['peak_xs']:.1f}], "
+                    f"[{rt['peak_E']:.1f}], [{rt['facility']}],"
+                )
+
+            lines.append("  ),")
+            lines.append(f'  caption: [Evaluated production routes for {nuc} '
+                         f'({len(rts)} total, top {min(20, len(rts))} shown).],')
+            lines.append(f")")
+            lines.append("#set text(size: 10pt)")
+            lines.append("")
+        else:
+            lines.append("No evaluated production routes found in the surveyed libraries.")
+            lines.append("")
+
+        # ── Chelator compatibility ──
+        chels = _chelators_for(sym)
+        if chels:
+            lines.append(f"*Chelators:* {', '.join(chels)}")
+            lines.append("")
+
+        # ── Diagnostic partners ──
+        diags = diag_by_Z.get(Z, [])
+        partner_diags = [d for d in diags if d["A"] != A]
+        if partner_diags:
+            lines.append("=== Diagnostic Partners")
+            lines.append("")
+            partner_strs = []
+            for d in partner_diags[:10]:
+                mod = "PET" if d["decay"] in ("B+", "EC+B+") else "EC"
+                partner_strs.append(
+                    f"{_nuc_typst(d['symbol'], d['A'])} "
+                    f"(t#sub[½] = {_hl_label(d['half_life_s'])}, {mod})"
+                )
+            lines.append("Same-element imaging partners: " + "; ".join(partner_strs) + ".")
+            lines.append("")
+
+        # ── Chemical-family partners ──
+        family_partners = []
+        for fname, Zset in [("Lanthanides", LANTHANIDES), ("Group 3", GROUP3_SC_Y_LA_AC),
+                             ("Halogens", HALOGENS), ("Tc/Re", TC_RE)]:
+            if Z in Zset:
+                family_diags = [d for z2 in Zset if z2 != Z
+                                for d in diag_by_Z.get(z2, [])]
+                if family_diags:
+                    fam_str = ", ".join(
+                        f"{_nuc_typst(d['symbol'], d['A'])}"
+                        for d in family_diags[:6]
+                    )
+                    family_partners.append(f"*{fname}:* {fam_str}")
+
+        if family_partners:
+            lines.append("Chemical-family diagnostic partners: " + "; ".join(family_partners) + ".")
+            lines.append("")
+
+        lines.append("#line(length: 100%, stroke: 0.5pt + gray)")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ── Overview Figures ──────────────────────────────────────────────────
 
 def generate_figures(db, candidates: list[dict]) -> str:
-    """Generate matplotlib figures and return Typst markup to include them."""
+    """Generate matplotlib figures and return Typst markup."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -526,52 +759,82 @@ def generate_figures(db, candidates: list[dict]) -> str:
 
     typst = []
 
-    # ── Fig 1: Dose vs range scatter ──
-    range_order = {"Subcellular": 0.5, "Cellular": 15, "Cluster": 200,
-                   "Macroscopic": 1000, "Multi-range": 100, "—": 50}
+    # ── Fig 1: Half-life vs particulate dose, shaped by range class ──
+    range_markers = {"Subcellular": "v", "Cellular": "s", "Cluster": "o",
+                     "Macroscopic": "D", "Multi-range": "^", "—": "."}
     imaging_colors = {"PET": "#e41a1c", "SPECT": "#377eb8",
-                      "Pair": "#4daf4a", "None": "#999999"}
+                      "Pair": "#4daf4a", "None": "#aaaaaa"}
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot safe isotopes prominently, unsafe ones faded
     for img_type, color in imaging_colors.items():
-        subset = [c for c in candidates if c["imaging"] == img_type]
-        if not subset:
+        for safe_val, alpha_val, edge_w in [(True, 0.85, 0.5), (False, 0.2, 0.2)]:
+            subset = [c for c in candidates
+                      if c["imaging"] == img_type and c["safe"] == safe_val]
+            if not subset:
+                continue
+            for rng, marker in range_markers.items():
+                rng_subset = [c for c in subset if c["range_class"] == rng]
+                if not rng_subset:
+                    continue
+                x = [c["half_life_s"] / 3600 for c in rng_subset]  # hours
+                y = [c["particulate"] for c in rng_subset]
+                ax.scatter(x, y, c=color, marker=marker, alpha=alpha_val,
+                           s=35, edgecolors="k", linewidths=edge_w)
+
+    # Label notable isotopes (safe, high dose or known)
+    notable = {("Lu", 177), ("Ac", 225), ("At", 211), ("Tb", 161),
+               ("Cu", 67), ("I", 131), ("Y", 90), ("Sc", 47),
+               ("Re", 186), ("Ho", 166), ("Sm", 153), ("Er", 169),
+               ("Ga", 67), ("In", 111), ("Br", 77), ("Rh", 105)}
+    for c in candidates:
+        if not c["safe"]:
             continue
-        x = [range_order.get(c["range_class"], 50) for c in subset]
-        y = [c["particulate"] for c in subset]
-        labels = [f"{c['symbol']}-{c['A']}" for c in subset]
-        ax.scatter(x, y, c=color, label=img_type, alpha=0.7, s=40, edgecolors="k", linewidths=0.3)
-        for xi, yi, lab in zip(x, y, labels):
-            if yi > 0.05 or img_type != "None":
-                ax.annotate(lab, (xi, yi), fontsize=5, alpha=0.8,
-                            xytext=(2, 2), textcoords="offset points")
+        is_notable = (c["symbol"], c["A"]) in notable
+        if is_notable or c["particulate"] > 1.0:
+            ax.annotate(f"{c['symbol']}-{c['A']}",
+                        (c["half_life_s"] / 3600, c["particulate"]),
+                        fontsize=6, alpha=0.9,
+                        xytext=(3, 3), textcoords="offset points")
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("Approximate range class (μm)", fontsize=10)
+    ax.set_xlabel("Half-life (hours)", fontsize=10)
     ax.set_ylabel("Particulate dose (MeV/Bq·s)", fontsize=10)
-    ax.set_title("Therapeutic Isotope Landscape", fontsize=12)
-    ax.legend(title="Imaging", fontsize=8)
-    ax.grid(True, alpha=0.3)
+    ax.set_title("Theranostic Isotope Landscape", fontsize=12)
+
+    # Legend for imaging (color)
+    from matplotlib.lines import Line2D
+    img_handles = [Line2D([0], [0], marker="o", color="w", markerfacecolor=c,
+                          markersize=8, label=k) for k, c in imaging_colors.items()]
+    rng_handles = [Line2D([0], [0], marker=m, color="w", markerfacecolor="gray",
+                          markersize=7, label=k) for k, m in range_markers.items()
+                   if k != "—"]
+    leg1 = ax.legend(handles=img_handles, title="Imaging", loc="upper left",
+                     fontsize=7, title_fontsize=8)
+    ax.add_artist(leg1)
+    ax.legend(handles=rng_handles, title="Range class", loc="lower right",
+              fontsize=7, title_fontsize=8)
+
+    ax.grid(True, alpha=0.2)
     fig.tight_layout()
-    fig1_path = OUT_DIR / "fig_dose_range.svg"
-    fig.savefig(fig1_path, format="svg")
+    fig.savefig(OUT_DIR / "fig_landscape.svg", format="svg")
     plt.close(fig)
     typst.append(
         '#figure(\n'
-        '  image("fig_dose_range.svg", width: 100%),\n'
-        '  caption: [Therapeutic isotope landscape: particulate dose vs. '
-        'approximate range class, coloured by intrinsic imaging capability.],\n'
-        ') <fig:dose-range>\n'
+        '  image("fig_landscape.svg", width: 100%),\n'
+        '  caption: [Theranostic isotope landscape: half-life vs. particulate '
+        'dose. Colour = imaging modality, shape = therapeutic range class. '
+        'Faded points have unsafe decay chains.],\n'
+        ') <fig:landscape>\n'
     )
 
     # ── Fig 2: Periodic table heatmap ──
-    # Count candidates per element
     z_counts: dict[int, int] = {}
     for c in candidates:
         z_counts[c["Z"]] = z_counts.get(c["Z"], 0) + 1
 
-    # Standard periodic table layout: (row, col) for each Z
     PT_LAYOUT: dict[int, tuple[int, int]] = {
         1: (0, 0), 2: (0, 17),
         3: (1, 0), 4: (1, 1), 5: (1, 12), 6: (1, 13), 7: (1, 14),
@@ -590,20 +853,15 @@ def generate_figures(db, candidates: list[dict]) -> str:
         71: (5, 2), 72: (5, 3), 73: (5, 4), 74: (5, 5), 75: (5, 6),
         76: (5, 7), 77: (5, 8), 78: (5, 9), 79: (5, 10), 80: (5, 11),
         81: (5, 12), 82: (5, 13), 83: (5, 14), 84: (5, 15), 85: (5, 16), 86: (5, 17),
-        87: (6, 0), 88: (6, 1),
-        103: (6, 2),
-        # Lanthanides
+        87: (6, 0), 88: (6, 1), 103: (6, 2),
         57: (8, 2), 58: (8, 3), 59: (8, 4), 60: (8, 5), 61: (8, 6),
         62: (8, 7), 63: (8, 8), 64: (8, 9), 65: (8, 10), 66: (8, 11),
         67: (8, 12), 68: (8, 13), 69: (8, 14), 70: (8, 15),
-        # Actinides
         89: (9, 2), 90: (9, 3), 91: (9, 4), 92: (9, 5),
     }
 
-    # Z → symbol lookup from elements table
     sym_lookup = {}
-    all_elems = db.sql("SELECT Z, symbol FROM elements ORDER BY Z").fetchall()
-    for r in all_elems:
+    for r in db.sql("SELECT Z, symbol FROM elements ORDER BY Z").fetchall():
         sym_lookup[r[0]] = r[1]
 
     fig2, ax2 = plt.subplots(figsize=(10, 5))
@@ -629,22 +887,19 @@ def generate_figures(db, candidates: list[dict]) -> str:
     ax2.axis("off")
     ax2.set_title("Theranostic Candidate Coverage Across the Periodic Table", fontsize=11)
 
-    # Colorbar
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, max_count))
+    import matplotlib.pyplot as mpl_plt
+    sm = mpl_plt.cm.ScalarMappable(cmap=cmap, norm=mpl_plt.Normalize(0, max_count))
     sm.set_array([])
     cbar = fig2.colorbar(sm, ax=ax2, shrink=0.4, aspect=20, pad=0.02)
     cbar.set_label("Number of candidates", fontsize=8)
 
     fig2.tight_layout()
-    fig2_path = OUT_DIR / "fig_periodic_table.svg"
-    fig2.savefig(fig2_path, format="svg")
+    fig2.savefig(OUT_DIR / "fig_periodic_table.svg", format="svg")
     plt.close(fig2)
     typst.append(
         '#figure(\n'
         '  image("fig_periodic_table.svg", width: 100%),\n'
-        '  caption: [Periodic table heatmap showing the number of theranostic '
-        'candidates per element. Darker shading indicates more isotopes in the '
-        '2 h – 30 d therapeutic window.],\n'
+        '  caption: [Periodic table heatmap of theranostic candidates per element.],\n'
         ') <fig:periodic-table>\n'
     )
 
@@ -666,6 +921,9 @@ TYPST_PREAMBLE = r"""// Auto-generated by docs/theranostics/generate.py — do n
   ],
 )
 #set heading(numbering: "1.1")
+
+// Allow tables in figures to break across pages
+#show figure.where(kind: table): set block(breakable: true)
 
 // Nuclear notation helper
 #let nuc(el, A) = [#super[#str(A)]#el]
@@ -711,6 +969,11 @@ theranostic pairing — matching each therapeutic isotope with a diagnostic
 companion via same-element or chemical-family strategies, guided by
 chelator coordination chemistry.
 
+Each candidate with an identified production route receives a detailed
+profile including complete emission spectra, all evaluated reaction
+routes, target material abundances, chelator compatibility, and paired
+diagnostic isotopes — all cross-linked throughout the document.
+
 #v(0.5em)
 
 = Introduction
@@ -735,17 +998,18 @@ database, aggregating ENSDF decay data, TENDL/ENDF evaluated cross-sections,
 natural abundances, and stopping powers, enables a comprehensive
 computational screening @nelson2020.
 
-This report proceeds in three parts:
+This report proceeds in four parts:
 + *Screening* — identifying therapeutic candidates by half-life and dose.
 + *Production* — evaluating cross-section routes and facility requirements.
 + *Pairing* — matching therapeutic isotopes with diagnostic companions and chelators.
++ *Detailed profiles* — comprehensive data sheets for each viable candidate.
 
 """
 
 
 # ── Conclusion ────────────────────────────────────────────────────────
 
-def section_conclusion(candidates: list[dict]) -> str:
+def section_conclusion(candidates: list[dict], has_detail: set[tuple[int, int]]) -> str:
     n_pet = sum(1 for c in candidates if c["imaging"] == "PET")
     n_spect = sum(1 for c in candidates if c["imaging"] == "SPECT")
     n_alpha = sum(1 for c in candidates if c["alpha"] > 0.001)
@@ -757,6 +1021,8 @@ This data-driven survey identifies *{len(candidates)} therapeutic isotope
 candidates* in the 2-hour to 30-day half-life window, of which
 {n_pet} offer intrinsic PET imaging, {n_spect} are SPECT-compatible,
 and {n_alpha} emit α-particles for targeted alpha therapy.
+*{len(has_detail)} candidates* have at least one evaluated production
+route and receive detailed profiles in @sec:profiles.
 
 Several observations emerge:
 
@@ -788,19 +1054,31 @@ def main():
     print("Connecting to nucl-parquet...")
     db = nucl_parquet.connect()
 
-    print("Section 1: Screening...")
-    s1, candidates = section_screening(db)
-
+    print("Screening candidates...")
+    candidates = _query_candidates(db)
     print(f"  → {len(candidates)} candidates")
 
-    print("Section 2: Production routes...")
-    s2 = section_production(db, candidates)
+    print("Querying production routes...")
+    routes_by_iso = _query_production_routes(db, candidates)
 
-    print("Section 3: Pairing + coordination chemistry...")
-    s3 = section_pairing(db, candidates)
+    print("Querying diagnostics...")
+    diag_by_Z = _query_diagnostics(db)
+
+    # Candidates with at least one production route get a detail profile
+    has_detail = {(c["Z"], c["A"]) for c in candidates
+                  if routes_by_iso.get((c["Z"], c["A"]))}
+    print(f"  → {len(has_detail)} isotopes with production routes (detailed profiles)")
+
+    print("Building sections...")
+    s1 = section_screening(candidates, has_detail)
+    s2 = section_production(candidates, routes_by_iso, has_detail)
+    s3 = section_pairing(candidates, diag_by_Z, has_detail)
 
     print("Generating figures...")
     figs = generate_figures(db, candidates)
+
+    print("Building detailed profiles...")
+    s5 = section_detailed_profiles(db, candidates, routes_by_iso, diag_by_Z, has_detail)
 
     print("Assembling Typst document...")
     doc = TYPST_PREAMBLE
@@ -809,7 +1087,8 @@ def main():
     doc += figs + "\n\n"
     doc += s2 + "\n\n"
     doc += s3 + "\n\n"
-    doc += section_conclusion(candidates) + "\n"
+    doc += s5 + "\n\n"
+    doc += section_conclusion(candidates, has_detail) + "\n"
     doc += TYPST_BIBLIOGRAPHY
 
     TYP_FILE.write_text(doc)
@@ -819,14 +1098,14 @@ def main():
     try:
         result = subprocess.run(
             ["typst", "compile", str(TYP_FILE)],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=900,
         )
         if result.returncode == 0:
             print(f"Compiled: {TYP_FILE.with_suffix('.pdf')}")
         else:
             print(f"Typst compilation failed:\n{result.stderr}")
     except FileNotFoundError:
-        print("typst not found — skipping compilation. Run: typst compile docs/theranostics/theranostics.typ")
+        print("typst not found — run: typst compile docs/theranostics/theranostics.typ")
     except subprocess.TimeoutExpired:
         print("typst compilation timed out")
 
