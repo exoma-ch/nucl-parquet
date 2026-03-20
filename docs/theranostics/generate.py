@@ -1047,8 +1047,11 @@ The _theranostic_ paradigm — using a diagnostic isotope to image, quantify,
 and select patients before switching to a therapeutic companion on the same
 molecular vector — requires that diagnostic and therapeutic isotopes share
 virtually identical chemical behaviour. This is achieved through
-same-element pairing (e.g., #super[68]Ga / #super[177]Lu via DOTA) or
-chemical-family substitution within a chelator scaffold @price2014.
+same-element pairing (e.g., #super[44]Sc diagnostic / #super[47]Sc therapeutic),
+same-chelator pairing across chemical analogues
+(e.g., #super[68]Ga or #super[44]Sc for PET imaging paired with
+#super[177]Lu therapy, all via DOTA), or direct covalent labelling
+for halogens (e.g., #super[123]I SPECT / #super[131]I therapy) @price2014.
 
 Historically, theranostic isotope selection has been opportunistic: driven
 by available supply rather than systematic optimisation. The nucl-parquet
