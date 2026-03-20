@@ -279,11 +279,15 @@ def _query_candidates(db) -> list[dict]:
         # Decay chain safety check
         is_safe, unsafe_daughter = _check_decay_chain_safety(db, Z, A)
 
+        # γ/particulate ratio — high values mean most energy escapes the tumour
+        gamma_ratio = gamma / particulate if particulate > 0 else 0.0
+
         candidates.append({
             "Z": Z, "A": A, "symbol": sym, "half_life_s": hl,
             "jp": jp or "", "decay": decay_1,
             "ce": ce, "auger": auger, "beta": beta, "alpha": alpha,
             "gamma": gamma, "particulate": particulate,
+            "gamma_ratio": gamma_ratio,
             "imaging": imaging, "range_class": range_cls,
             "safe": is_safe, "unsafe_daughter": unsafe_daughter,
         })
@@ -426,19 +430,20 @@ def section_screening(candidates: list[dict], has_detail: set[tuple[int, int]]) 
         hl = _hl_label(c["half_life_s"])
         decay = _typst_escape(c["decay"]) if c["decay"] else "—"
         safe_mark = "✓" if c["safe"] else "⚠"
+        gr = f"{c['gamma_ratio']:.1f}" if c["gamma_ratio"] < 100 else f"{c['gamma_ratio']:.0f}"
         table_rows.append([
             nuc, hl, decay,
             _dose_fmt(c["ce"]), _dose_fmt(c["auger"]),
             _dose_fmt(c["beta"]), _dose_fmt(c["alpha"]),
-            _dose_fmt(c["gamma"]),
+            _dose_fmt(c["gamma"]), gr,
             c["imaging"], c["range_class"], safe_mark,
         ])
 
     lines.extend(_booktabs_table(
-        columns="(auto, auto, auto, auto, auto, auto, auto, auto, auto, auto, auto)",
-        align="(center,) * 11",
+        columns="(auto, auto, auto, auto, auto, auto, auto, auto, auto, auto, auto, auto)",
+        align="(center,) * 12",
         header=["Isotope", "t#sub[½]", "Decay", "CE", "Auger",
-                "β⁻", "α", "γ dose", "Imaging", "Range", "Safe"],
+                "β⁻", "α", "γ dose", "γ/p", "Imaging", "Range", "Safe"],
         rows=table_rows,
         caption=f"Therapeutic isotope candidates (n={len(candidates)}). "
                 "Dose in MeV/(Bq$dot$s). ⚠ = long-lived daughter in decay chain.",
@@ -1054,10 +1059,18 @@ same-chelator pairing across chemical analogues
 for halogens (e.g., #super[123]I SPECT / #super[131]I therapy) @price2014.
 
 Historically, theranostic isotope selection has been opportunistic: driven
-by available supply rather than systematic optimisation. The nucl-parquet
-database, aggregating ENSDF decay data, TENDL/ENDF evaluated cross-sections,
-natural abundances, and stopping powers, enables a comprehensive
-computational screening @nelson2020.
+by available supply rather than systematic optimisation. The nucl-parquet database aggregates decay data from ENSDF (Evaluated
+Nuclear Structure Data File, BNL/NNDC), evaluated cross-section libraries
+from TENDL (TALYS-based, PSI/NRG), ENDF/B-VIII.1 (BNL), JEFF-4.0 (NEA),
+JENDL-5 (JAEA), IAEA photonuclear and medical isotope libraries, EAF-2010
+(Euroatom), IRDFF-2 (IAEA dosimetry), and experimental data from EXFOR.
+Natural isotopic abundances follow the IAEA Nuclear Wallet Cards; enriched
+target availability and pricing from commercial suppliers (Isoflex USA,
+Trace Sciences, ORNL Isotope Program) are not yet included but represent
+a critical practical constraint for production route feasibility.
+Stopping powers derive from NIST PSTAR/ASTAR/ESTAR and CatIMA
+(for heavy ions). This combination enables a comprehensive computational
+screening across the full landscape @nelson2020.
 
 This report proceeds in four parts:
 + *Screening* — identifying therapeutic candidates by half-life and dose.
@@ -1098,6 +1111,9 @@ penalised for exotic beams (t, ³He: ×0.1) or high energy (>50 MeV: ×0.5).
 - *Imaging:* PET (β⁺/EC), SPECT (γ 80–400 keV, I>5%), pair (γ >1022 keV)
 - *Range:* Subcellular (\\<1 μm, Auger), Cellular (1–30 μm, CE/low β),
   Cluster (30–500 μm, β⁻), Macroscopic (\\>500 μm, high β⁻/α)
+- *γ/p:* ratio of photon dose to particulate dose — values \\>1 indicate
+  most energy escapes the tumour (poor therapeutic ratio, higher
+  radiation protection burden). Ideal therapeutic isotopes have γ/p \\< 0.5.
 - *Safe:* ✓ = all daughters short-lived, ⚠ = long-lived daughter (t#sub[½] \\> 1 y)
 - "—" in dose columns indicates negligible emission (\\<0.001 MeV/Bq·s)
 
