@@ -18,13 +18,6 @@ IMAGE="nucl-talys"
 PROJ="${1:-c12,o16,ne20,si28,ar40,fe56}"
 ZMAX="${2:-92}"
 
-# --- Sanity checks ---
-if [[ ! -f "$SCRIPT_DIR/talys2.0.tar" ]]; then
-    echo "ERROR: talys2.0.tar not found in containers/talys/"
-    echo "  Download from: https://tendl.web.psi.ch/tendl_2025/talys.html"
-    exit 1
-fi
-
 # --- Build image ---
 echo "==> Building $IMAGE..."
 podman build -t "$IMAGE" "$SCRIPT_DIR"
