@@ -332,18 +332,27 @@ def _query_production_routes(db, candidates: list[dict]) -> dict[tuple[int, int]
             frac = abund_map.get((target_A, target_sym), 0.0)
             nat_abund = frac * 100
 
-            score = peak_xs * frac
+            # Natural score: σ × abundance (practical without enrichment)
+            nat_score = peak_xs * frac
+            # Enriched score: σ alone (assumes 100% enriched target)
+            enr_score = peak_xs
+            # Penalties for exotic beams / high energy
             if projectile in ("t", "h", "g"):
-                score *= 0.1
+                nat_score *= 0.1
+                enr_score *= 0.1
             if peak_E > 50:
-                score *= 0.5
+                nat_score *= 0.5
+                enr_score *= 0.5
+
+            needs_enrichment = nat_abund < 5.0  # below 5% → enrichment needed
 
             parsed.append({
                 "projectile": projectile, "target_A": target_A,
                 "target_sym": target_sym,
                 "peak_xs": peak_xs, "peak_E": peak_E,
                 "library": rt[2], "abundance": nat_abund,
-                "score": score,
+                "score": nat_score, "enr_score": enr_score,
+                "needs_enrichment": needs_enrichment,
                 "facility": _classify_facility(projectile, peak_E),
             })
 
@@ -419,8 +428,15 @@ def section_screening(candidates: list[dict], has_detail: set[tuple[int, int]]) 
         "Isotope names link to detailed profiles in @sec:profiles."
     )
     lines.append("")
+    n_high_gp = sum(1 for c in candidates if c["gamma_ratio"] > 1.0)
     lines.append(f"The screening yields *{len(candidates)} candidates* "
-                 f"({n_safe} safe, {n_unsafe} flagged for daughter toxicity).")
+                 f"({n_safe} safe, {n_unsafe} flagged for daughter toxicity). "
+                 f"Of these, *{n_high_gp}* have γ/p > 1.0 "
+                 f"(#text(fill: rgb(\"#c0392b\"))[red] in table) — these are excluded "
+                 f"from subsequent production, pairing, and profile analysis since most "
+                 f"decay energy escapes as photons rather than depositing locally. "
+                 f"Candidates with 0.5 < γ/p ≤ 1.0 (#text(fill: rgb(\"#e67e22\"))[orange]) "
+                 f"are retained but flagged as having elevated photon burden.")
     lines.append("")
 
     table_rows = []
@@ -430,12 +446,18 @@ def section_screening(candidates: list[dict], has_detail: set[tuple[int, int]]) 
         hl = _hl_label(c["half_life_s"])
         decay = _typst_escape(c["decay"]) if c["decay"] else "—"
         safe_mark = "✓" if c["safe"] else "⚠"
-        gr = f"{c['gamma_ratio']:.1f}" if c["gamma_ratio"] < 100 else f"{c['gamma_ratio']:.0f}"
+        gr_val = c["gamma_ratio"]
+        gr_str = f"{gr_val:.1f}" if gr_val < 100 else f"{gr_val:.0f}"
+        # Color-code γ/p: orange >0.5, red >1.0
+        if gr_val > 1.0:
+            gr_str = f"#text(fill: rgb(\"#c0392b\"))[{gr_str}]"
+        elif gr_val > 0.5:
+            gr_str = f"#text(fill: rgb(\"#e67e22\"))[{gr_str}]"
         table_rows.append([
             nuc, hl, decay,
             _dose_fmt(c["ce"]), _dose_fmt(c["auger"]),
             _dose_fmt(c["beta"]), _dose_fmt(c["alpha"]),
-            _dose_fmt(c["gamma"]), gr,
+            _dose_fmt(c["gamma"]), gr_str,
             c["imaging"], c["range_class"], safe_mark,
         ])
 
@@ -486,18 +508,21 @@ def section_production(candidates: list[dict], routes_by_iso, has_detail) -> str
         iso = rt["isotope"]
         key = (iso["Z"], iso["A"])
         nuc = _nuc_ref(iso["symbol"], iso["A"]) if key in has_detail else _nuc_typst(iso["symbol"], iso["A"])
+        abund_str = f"{rt['abundance']:.1f}" if rt["abundance"] > 0.05 else "—"
+        enr = "enr" if rt["needs_enrichment"] else "nat"
         prod_rows.append([
-            nuc, rt["projectile"], str(rt["target_A"]),
-            f"{rt['abundance']:.1f}" if rt["abundance"] > 0.05 else "—",
+            nuc, rt["projectile"],
+            f"#super[{rt['target_A']}]{rt['target_sym']}",
+            abund_str, enr,
             f"{rt['peak_xs']:.1f}", f"{rt['peak_E']:.1f}",
-            _typst_escape(rt["library"]), rt["facility"],
+            rt["facility"],
         ])
 
     lines.extend(_booktabs_table(
         columns="(auto, auto, auto, auto, auto, auto, auto, auto)",
         align="(center,) * 8",
-        header=["Isotope", "Beam", "Target A", "Abund. (%)",
-                "σ#sub[peak] (mb)", "E#sub[peak] (MeV)", "Library", "Facility"],
+        header=["Isotope", "Beam", "Target", "Abund. (%)",
+                "Tgt", "σ#sub[peak] (mb)", "E#sub[peak] (MeV)", "Facility"],
         rows=prod_rows,
         caption=f"Best production route per candidate (top {min(60, len(best_routes))} by feasibility score).",
         label="tab:production",
@@ -732,16 +757,19 @@ def section_detailed_profiles(db, candidates: list[dict], routes_by_iso,
             lines.append("")
             rt_rows = []
             for rt in rts[:20]:
+                abund_str = f"{rt['abundance']:.1f}" if rt["abundance"] > 0.05 else "—"
+                enr = "enr" if rt["needs_enrichment"] else "nat"
                 rt_rows.append([
-                    rt["projectile"], rt["target_sym"], str(rt["target_A"]),
-                    f"{rt['abundance']:.1f}" if rt["abundance"] > 0.05 else "—",
+                    rt["projectile"],
+                    f"#super[{rt['target_A']}]{rt['target_sym']}",
+                    abund_str, enr,
                     f"{rt['peak_xs']:.1f}", f"{rt['peak_E']:.1f}",
                     rt["facility"],
                 ])
             lines.extend(_booktabs_table(
                 columns="(auto, auto, auto, auto, auto, auto, auto)",
                 align="(center,) * 7",
-                header=["Beam", "Target", "A", "Abund. (%)",
+                header=["Beam", "Target", "Abund. (%)", "Tgt",
                         "σ#sub[peak] (mb)", "E#sub[peak] (MeV)", "Facility"],
                 rows=rt_rows,
                 caption=f"Production routes for {nuc} "
@@ -1064,10 +1092,14 @@ Nuclear Structure Data File, BNL/NNDC), evaluated cross-section libraries
 from TENDL (TALYS-based, PSI/NRG), ENDF/B-VIII.1 (BNL), JEFF-4.0 (NEA),
 JENDL-5 (JAEA), IAEA photonuclear and medical isotope libraries, EAF-2010
 (Euroatom), IRDFF-2 (IAEA dosimetry), and experimental data from EXFOR.
-Natural isotopic abundances follow the IAEA Nuclear Wallet Cards; enriched
-target availability and pricing from commercial suppliers (Isoflex USA,
-Trace Sciences, ORNL Isotope Program) are not yet included but represent
-a critical practical constraint for production route feasibility.
+Natural isotopic abundances follow the IAEA Nuclear Wallet Cards.
+A route's feasibility score = σ#sub[peak] × natural abundance,
+penalised for exotic beams (t, ³He: ×0.1) or high energy (\\>50 MeV: ×0.5).
+Routes where the target isotope has natural abundance \\<5% are marked
+"enr" (enriched target required); those ≥5% are "nat" (natural target
+viable). Enriched targets are commercially available (Isoflex USA,
+Trace Sciences, ORNL Isotope Program) — enrichment adds cost but opens
+routes on low-abundance isotopes with excellent cross-sections.
 Stopping powers derive from NIST PSTAR/ASTAR/ESTAR and CatIMA
 (for heavy ions). This combination enables a comprehensive computational
 screening across the full landscape @nelson2020.
@@ -1168,30 +1200,38 @@ def main():
     db = nucl_parquet.connect()
 
     print("Screening candidates...")
-    candidates = _query_candidates(db)
-    print(f"  → {len(candidates)} candidates")
+    all_candidates = _query_candidates(db)
+    print(f"  → {len(all_candidates)} candidates (all)")
+
+    # Filter: γ/particulate ≤ 1.0 for subsequent analysis
+    # (high γ/p means most energy escapes — poor therapeutic candidate)
+    viable = [c for c in all_candidates if c["gamma_ratio"] <= 1.0]
+    excluded_gp = len(all_candidates) - len(viable)
+    print(f"  → {len(viable)} viable (γ/p ≤ 1.0), {excluded_gp} excluded")
 
     print("Querying production routes...")
-    routes_by_iso = _query_production_routes(db, candidates)
+    routes_by_iso = _query_production_routes(db, viable)
 
     print("Querying diagnostics...")
     diag_by_Z = _query_diagnostics(db)
 
     # Candidates with at least one production route get a detail profile
-    has_detail = {(c["Z"], c["A"]) for c in candidates
+    has_detail = {(c["Z"], c["A"]) for c in viable
                   if routes_by_iso.get((c["Z"], c["A"]))}
     print(f"  → {len(has_detail)} isotopes with production routes (detailed profiles)")
 
     print("Building sections...")
-    s1 = section_screening(candidates, has_detail)
-    s2 = section_production(candidates, routes_by_iso, has_detail)
-    s3 = section_pairing(candidates, diag_by_Z, has_detail)
+    # Screening table shows ALL candidates (including high γ/p, for completeness)
+    s1 = section_screening(all_candidates, has_detail)
+    # Subsequent sections use only viable candidates
+    s2 = section_production(viable, routes_by_iso, has_detail)
+    s3 = section_pairing(viable, diag_by_Z, has_detail)
 
     print("Generating figures...")
-    figs = generate_figures(db, candidates)
+    figs = generate_figures(db, viable)
 
     print("Building detailed profiles...")
-    s5 = section_detailed_profiles(db, candidates, routes_by_iso, diag_by_Z, has_detail)
+    s5 = section_detailed_profiles(db, viable, routes_by_iso, diag_by_Z, has_detail)
 
     print("Assembling Typst document...")
     doc = TYPST_PREAMBLE
@@ -1201,7 +1241,7 @@ def main():
     doc += s2 + "\n\n"
     doc += s3 + "\n\n"
     doc += s5 + "\n\n"
-    doc += section_conclusion(candidates, has_detail) + "\n"
+    doc += section_conclusion(viable, has_detail) + "\n"
     doc += TYPST_BIBLIOGRAPHY
 
     TYP_FILE.write_text(doc)
