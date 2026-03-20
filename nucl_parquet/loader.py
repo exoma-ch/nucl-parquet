@@ -26,12 +26,29 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import duckdb
 import numpy as np
 
 from .download import data_dir as _resolve_data_dir
+
+# Element symbol → Z lookup for dynamic heavy-ion projectile resolution
+_SYMBOL_TO_Z: dict[str, int] = {
+    sym.lower(): z for z, sym in enumerate([
+        "H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne",
+        "Na", "Mg", "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca",
+        "Sc", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+        "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr",
+        "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+        "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+        "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+        "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg",
+        "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+        "Pa", "U",
+    ], start=1)
+}
 
 
 def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
@@ -95,6 +112,7 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     # --- Stopping powers ---
     _register_parquet(db, data_dir / "stopping" / "stopping.parquet", "stopping")
+    _register_parquet(db, data_dir / "stopping" / "catima.parquet", "catima_stopping")
 
     # --- ENSDF data ---
     _register_parquet(db, data_dir / "meta" / "ensdf" / "ground_states.parquet", "ground_states")
@@ -264,18 +282,47 @@ ORDER BY coinc_prob_pct DESC NULLS LAST
 # ---------------------------------------------------------------------------
 
 # Projectile properties: (A, Z, reference_source)
-_PROJECTILES = {
-    "p": (1, 1, "PSTAR"),
-    "d": (2, 1, "PSTAR"),
-    "t": (3, 1, "PSTAR"),
-    "h": (3, 2, "ASTAR"),  # 3He
-    "he3": (3, 2, "ASTAR"),
-    "a": (4, 2, "ASTAR"),
-    "he4": (4, 2, "ASTAR"),
+# (A, Z, source) for light projectiles covered by NIST tables
+_PROJECTILES: dict[str, tuple[int, int, str]] = {
+    "p":   (1, 1,  "PSTAR"),
+    "d":   (2, 1,  "PSTAR"),
+    "t":   (3, 1,  "PSTAR"),
+    "h":   (3, 2,  "ASTAR"),  # 3He
+    "he3": (3, 2,  "ASTAR"),
+    "a":   (4, 2,  "ASTAR"),
+    "he4": (4, 2,  "ASTAR"),
+    "e":   (0, -1, "ESTAR"),  # electron
+    "e-":  (0, -1, "ESTAR"),
 }
+
+_CATIMA_PATTERN = re.compile(r"^([a-z]+)(\d+)$")
+
+
+def _resolve_projectile(name: str) -> tuple[int, int, str]:
+    """Return (A, proj_Z, source) for a projectile name.
+
+    Light projectiles (p, d, t, h/he3, a/he4, e) use NIST tables.
+    Heavy ions (e.g. 'c12', 'pb208', 'xe132') use the catima table;
+    any isotope of element Z works since catima stores data in MeV/u.
+    """
+    key = name.lower()
+    if key in _PROJECTILES:
+        return _PROJECTILES[key]
+
+    m = _CATIMA_PATTERN.match(key)
+    if m:
+        sym, a = m.group(1), int(m.group(2))
+        z = _SYMBOL_TO_Z.get(sym)
+        if z is not None:
+            return (a, z, "catima")
+
+    raise KeyError(f"Unknown projectile {name!r}. Use 'p','d','t','h','a','e' or e.g. 'c12','pb208'.")
 
 # Cache: (source, target_Z) -> (log_E, log_S) arrays
 _stopping_cache: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
+
+# Cache: (proj_Z, target_Z) -> (log_E_MeV_u, log_S) arrays
+_catima_cache: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
 
 
 def _get_stopping_table(
@@ -299,6 +346,27 @@ def _get_stopping_table(
     return _stopping_cache[key]
 
 
+def _get_catima_table(
+    db: duckdb.DuckDBPyConnection,
+    proj_Z: int,
+    target_Z: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get log-log catima stopping arrays (energy in MeV/u), cached."""
+    key = (proj_Z, target_Z)
+    if key not in _catima_cache:
+        result = db.sql(
+            "SELECT energy_MeV_u, dedx FROM catima_stopping WHERE proj_Z = $pz AND target_Z = $tz ORDER BY energy_MeV_u",
+            params={"pz": proj_Z, "tz": target_Z},
+        ).fetchnumpy()
+        E = result["energy_MeV_u"]
+        S = result["dedx"]
+        if len(E) == 0:
+            _catima_cache[key] = (np.array([]), np.array([]))
+        else:
+            _catima_cache[key] = (np.log(E), np.log(S))
+    return _catima_cache[key]
+
+
 def _interp_loglog(
     log_E: np.ndarray,
     log_S: np.ndarray,
@@ -316,35 +384,45 @@ def elemental_dedx(
 ) -> np.ndarray:
     """Mass stopping power [MeV cm2/g] for a projectile in a pure element.
 
-    Supports p, d, t, 3He (h), alpha (a). Deuteron/triton are velocity-scaled
-    from PSTAR; 3He is velocity-scaled from ASTAR.
+    Supports all projectiles:
+    - Light ions via NIST tables: p, d, t, h/he3, a/he4, e/e-
+    - Any heavy ion via catima: 'c12', 'pb208', 'xe132', 'fe56', etc.
+      Any isotope of a given element works — catima stores data in MeV/u
+      and the lookup divides total energy by A automatically.
 
     Args:
         db: DuckDB connection from connect().
-        projectile: One of 'p', 'd', 't', 'h'/'he3', 'a'/'he4'.
-        target_Z: Target element atomic number.
-        energy_MeV: Projectile kinetic energy [MeV].
+        projectile: Projectile name. Light ions: 'p','d','t','h','a','e'.
+                    Heavy ions: element symbol + mass number, e.g. 'c12',
+                    'pb208', 'xe132' (any isotope of Z=1-92).
+        target_Z: Target element atomic number (1-92).
+        energy_MeV: Total projectile kinetic energy [MeV].
 
     Returns:
         Mass stopping power [MeV cm2/g].
     """
     energy_MeV = np.atleast_1d(np.asarray(energy_MeV, dtype=float))
-    proj_A, proj_Z, ref_source = _PROJECTILES[projectile.lower()]
-    log_E, log_S = _get_stopping_table(db, ref_source, target_Z)
+    proj_A, proj_Z, ref_source = _resolve_projectile(projectile)
 
+    if ref_source == "catima":
+        log_E, log_S = _get_catima_table(db, proj_Z, target_Z)
+        if len(log_E) == 0:
+            return np.full_like(energy_MeV, np.nan)
+        # catima table is in MeV/u — convert total MeV by dividing by A
+        return _interp_loglog(log_E, log_S, energy_MeV / proj_A)
+
+    log_E, log_S = _get_stopping_table(db, ref_source, target_Z)
     if len(log_E) == 0:
         return np.full_like(energy_MeV, np.nan)
 
-    if ref_source == "PSTAR":
-        # PSTAR is per-nucleon for protons (A=1), so for d/t:
-        # same velocity means E_p = E_proj / A_proj
-        lookup_E = energy_MeV / proj_A
-        return _interp_loglog(log_E, log_S, lookup_E)
+    if ref_source == "ESTAR":
+        return _interp_loglog(log_E, log_S, energy_MeV)
+    elif ref_source == "PSTAR":
+        # velocity-scale for d/t: same velocity → E_p = E_proj / A
+        return _interp_loglog(log_E, log_S, energy_MeV / proj_A)
     else:
-        # ASTAR is for alpha (A=4, Z=2), velocity-scale for 3He:
-        # same velocity means E_alpha = E_proj * (4 / A_proj)
-        lookup_E = energy_MeV * (4.0 / proj_A)
-        return _interp_loglog(log_E, log_S, lookup_E)
+        # ASTAR for alpha (A=4); velocity-scale for 3He: E_alpha = E_proj * (4/A)
+        return _interp_loglog(log_E, log_S, energy_MeV * (4.0 / proj_A))
 
 
 def compound_dedx(

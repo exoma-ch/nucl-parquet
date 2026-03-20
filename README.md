@@ -40,9 +40,15 @@ db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_A=63 AND residual
 # Decay chain
 db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
 
-# Stopping power
-nucl_parquet.elemental_dedx(db, "p", 29, 10.0)  # protons in Cu at 10 MeV
+# Stopping power — light ions (NIST PSTAR/ASTAR/ESTAR)
+nucl_parquet.elemental_dedx(db, "p", 29, 10.0)     # protons in Cu at 10 MeV
+nucl_parquet.elemental_dedx(db, "e", 29, 1.0)      # electrons in Cu at 1 MeV
 nucl_parquet.compound_dedx(db, "p", [(29, 0.5), (30, 0.5)], 10.0)
+
+# Stopping power — heavy ions (CatIMA, any isotope of Z=1-92)
+nucl_parquet.elemental_dedx(db, "c12",  6, 12 * 100.0)   # C-12 in C at 100 MeV/u
+nucl_parquet.elemental_dedx(db, "pb208", 82, 208 * 50.0)  # Pb-208 in Pb at 50 MeV/u
+nucl_parquet.elemental_dedx(db, "xe132", 14, 132 * 50.0)  # Xe-132 in Si at 50 MeV/u
 ```
 
 ### Data resolution
@@ -126,10 +132,21 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 
 | Column | Type | Description |
 |--------|------|-------------|
-| source | Utf8 | PSTAR, ASTAR, ICRU73, MSTAR |
-| target_Z | Int32 | Target element |
-| energy_MeV | Float64 | Projectile energy |
-| dedx | Float64 | Stopping power (MeV cm²/g) |
+| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR` |
+| target_Z | Int32 | Target element Z (1–92) |
+| energy_MeV | Float64 | Projectile kinetic energy (MeV) |
+| dedx | Float64 | Mass stopping power (MeV cm²/g) |
+
+**Heavy-ion stopping powers** (`stopping/catima.parquet`):
+
+Full 92×92 matrix — all projectile elements Z=1–92 against all target elements Z=1–92, computed with [CatIMA](https://github.com/hrosiak/catima). Energy stored in MeV/u; isotope-independent (divide total MeV by A to look up).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| proj_Z | Int32 | Projectile atomic number (1–92) |
+| target_Z | Int32 | Target atomic number (1–92) |
+| energy_MeV_u | Float64 | Kinetic energy per nucleon (MeV/u) |
+| dedx | Float64 | Mass stopping power (MeV cm²/g) |
 
 ## Development
 

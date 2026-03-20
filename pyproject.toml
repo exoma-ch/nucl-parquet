@@ -4,12 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nucl-parquet"
-version = "0.3.7"
+version = "0.3.8"
 description = "Nuclear data as Parquet — queryable with DuckDB"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-dependencies = ["duckdb>=1.5.0", "numpy>=1.24"]
+dependencies = [
+    "duckdb>=1.5.0",
+    "numpy>=1.24",
+    "pycatima>=1.981",
+]
 
 [project.optional-dependencies]
 dev = ["polars>=1.0", "pytest>=8.0", "requests>=2.31"]

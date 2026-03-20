@@ -206,11 +206,12 @@ wheels = [
 
 [[package]]
 name = "nucl-parquet"
-version = "0.3.1"
+version = "0.3.8"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
     { name = "numpy" },
+    { name = "pycatima" },
 ]
 
 [package.optional-dependencies]
@@ -234,6 +235,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.5.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "polars", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "pycatima", specifier = ">=1.981" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "requests", marker = "extra == 'dev'", specifier = ">=2.31" },
 ]
@@ -371,6 +373,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/f3/b2a5e720cc56eaa38b4518e63aa577b4bbd60e8b05a00fe43ca051be5879/polars_runtime_32-1.38.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:61e8d73c614b46a00d2f853625a7569a2e4a0999333e876354ac81d1bf1bb5e2", size = 45336615, upload-time = "2026-02-06T18:12:14.074Z" },
     { url = "https://files.pythonhosted.org/packages/f1/8d/ee2e4b7de948090cfb3df37d401c521233daf97bfc54ddec5d61d1d31618/polars_runtime_32-1.38.1-cp310-abi3-win_amd64.whl", hash = "sha256:08c2b3b93509c1141ac97891294ff5c5b0c548a373f583eaaea873a4bf506437", size = 45680732, upload-time = "2026-02-06T18:12:19.097Z" },
     { url = "https://files.pythonhosted.org/packages/bf/18/72c216f4ab0c82b907009668f79183ae029116ff0dd245d56ef58aac48e7/polars_runtime_32-1.38.1-cp310-abi3-win_arm64.whl", hash = "sha256:6d07d0cc832bfe4fb54b6e04218c2c27afcfa6b9498f9f6bbf262a00d58cc7c4", size = 41639413, upload-time = "2026-02-06T18:12:22.044Z" },
+]
+
+[[package]]
+name = "pycatima"
+version = "1.981"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/4b/ddc2497139e4a07885f88626eb3240fa2309d88fd905025b67dd415a7f70/pycatima-1.981.tar.gz", hash = "sha256:4ca0f5f2cea0926f84382e2c4772b94013129d10b5c4f59fcabab5ac3438c2f5", size = 12449, upload-time = "2025-10-17T20:37:10.94Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/d5/c0a18a47e97634950fe93d4d91d6b80adfe961d90eba7453ade5f32a9f1c/pycatima-1.981-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:08643394ec7a3faa8373dd58eccd2e91f0959ff22e03452731534a322dd2d3e0", size = 701032, upload-time = "2025-10-17T20:36:47.207Z" },
+    { url = "https://files.pythonhosted.org/packages/27/50/ea9254967ee14815954304c861400e0ace9e1ebe564a7f1a27440ebdfc06/pycatima-1.981-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:9810881bcc7a00f72528fa6124ec3bc44da61238ad0a37e6a23c91e6d8a88865", size = 685531, upload-time = "2025-10-17T20:36:48.959Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/3e/7392762211452776b9b50a9039a1393635c66c05216c3d76f2607ed56da0/pycatima-1.981-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9c480d8334f48836ad10ec3722208d0e1b86f04f4674f60610cfc3362d64e7a3", size = 728947, upload-time = "2025-10-17T20:36:50.295Z" },
+    { url = "https://files.pythonhosted.org/packages/45/a1/3aab0c779c9554214fb155978e7c6367bf3ce570c1108b952e5f5fa0db56/pycatima-1.981-cp311-cp311-win_amd64.whl", hash = "sha256:17ed15cd353171a57c38ef5f8260ca77d5f65ae7f8c4bdaafb1fed5d4270c3e1", size = 684978, upload-time = "2025-10-17T20:36:51.565Z" },
+    { url = "https://files.pythonhosted.org/packages/29/cf/740fddd63ad60ac2052744138bd993d8c30c95aecb49473afb436bbeaa0a/pycatima-1.981-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:2be32387842539cc9bd085dd8c57e6a5668d1a880c8d50c78a862beb990536ac", size = 704278, upload-time = "2025-10-17T20:36:53.249Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/aa/62468ac02822e97a99ff7b7f3c241023d1509420eab491a61623cd298ff4/pycatima-1.981-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:19426a40fb8c61a53266bf3d2548b87a2d454aa277069c31c29844c7b4383cba", size = 687272, upload-time = "2025-10-17T20:36:55.127Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/ce/7f3968f2d9006959aaf2a8cc9c2258199025d002d7c26cda6727b09a3aa0/pycatima-1.981-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:554479b2dfd71ef69630f0eddf54ad2ad8b35b47bce1091da83c0f921498c90e", size = 731458, upload-time = "2025-10-17T20:36:56.642Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/bd/86c0b191d9f7dcea29caeed6202351b982ce91981489ebc1f9b6a69f5945/pycatima-1.981-cp312-cp312-win_amd64.whl", hash = "sha256:bb538fc314c2c351d124b6ee8ab3e768d0704f824e812140ad8fb7f9f10dc6ba", size = 687190, upload-time = "2025-10-17T20:36:58.068Z" },
 ]
 
 [[package]]

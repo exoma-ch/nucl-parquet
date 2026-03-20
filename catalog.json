@@ -151,9 +151,16 @@
     "stopping": {
       "path": "stopping/",
       "files": {
-        "stopping": "stopping.parquet"
+        "stopping": "stopping.parquet",
+        "catima": "catima.parquet"
       },
-      "sources": ["PSTAR", "ASTAR", "ICRU73", "MSTAR"]
+      "sources": ["PSTAR", "ASTAR", "ESTAR", "ICRU73", "MSTAR"],
+      "catima": {
+        "proj_Z_range": [1, 92],
+        "target_Z_range": [1, 92],
+        "energy_unit": "MeV/u",
+        "note": "Any isotope of proj_Z — divide total MeV by A to get MeV/u"
+      }
     }
   }
 }

@@ -368,7 +368,7 @@ async fn handle_request(
             Some(JsonRpcResponse::success(id, serde_json::json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "nucl-parquet", "version": "0.3.7" }
+                "serverInfo": { "name": "nucl-parquet", "version": "0.3.8" }
             })))
         }
         "tools/list" => {
@@ -395,7 +395,7 @@ async fn handle_request(
 #[tokio::main]
 async fn main() {
     let client = reqwest::Client::builder()
-        .user_agent("nucl-parquet-mcp/0.3.7")
+        .user_agent("nucl-parquet-mcp/0.3.8")
         .build()
         .expect("Failed to build HTTP client");
 
