@@ -49,6 +49,13 @@ nucl_parquet.compound_dedx(db, "p", [(29, 0.5), (30, 0.5)], 10.0)
 nucl_parquet.elemental_dedx(db, "c12",  6, 12 * 100.0)   # C-12 in C at 100 MeV/u
 nucl_parquet.elemental_dedx(db, "pb208", 82, 208 * 50.0)  # Pb-208 in Pb at 50 MeV/u
 nucl_parquet.elemental_dedx(db, "xe132", 14, 132 * 50.0)  # Xe-132 in Si at 50 MeV/u
+
+# Heavy-ion total reaction cross-sections (Tripathi 1997)
+db.sql("SELECT * FROM hi_xs WHERE target_Z=29 ORDER BY energy_MeV")  # c12 on Cu
+db.sql("""
+    SELECT energy_MeV, energy_MeV/12 AS energy_MeV_u, xs_mb
+    FROM hi_xs WHERE target_Z=6
+""")  # c12 on C — typical carbon therapy channel
 ```
 
 ### Data resolution
@@ -97,6 +104,7 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | [IRDFF-II](https://www-nds.iaea.org/IRDFF/) | n | IAEA |
 | [IAEA-Medical](https://www-nds.iaea.org/medical/) | p, d | IAEA |
 | [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS (experimental) |
+| [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | p, ⁴He, ¹²C, ¹⁶O, ²⁰Ne, ²⁸Si, ⁴⁰Ar, ⁴⁰Ca, ⁵⁶Fe, ⁵⁸Ni, ¹³²Xe, ²⁰⁸Pb | semi-empirical (Tripathi 1997) |
 
 ## Parquet schemas
 
@@ -136,6 +144,17 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | target_Z | Int32 | Target element Z (1–92) |
 | energy_MeV | Float64 | Projectile kinetic energy (MeV) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
+
+**Heavy-ion total reaction cross-sections** (`hi-xs/xs/{proj}_{target}.parquet`):
+
+Tripathi (1997) semi-empirical parameterization — total reaction cross-sections for all 12 projectiles against all 92 target elements.  Energy stored as total MeV for the projectile; 1–1000 MeV/u range, 60 log-spaced points.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| target_Z | Int32 | Target atomic number (1–92) |
+| target_A | Int32 | Target mass number (most-abundant stable isotope) |
+| energy_MeV | Float64 | Total projectile kinetic energy (MeV) |
+| xs_mb | Float64 | Total reaction cross-section (mb) |
 
 **Heavy-ion stopping powers** (`stopping/catima.parquet`):
 

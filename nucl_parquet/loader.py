@@ -86,18 +86,13 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         view_name = lib_key.replace("-", "_").replace(".", "_")
         glob_path = str(lib_dir / "*.parquet")
 
-        if lib_info.get("data_type") == "experimental_cross_sections":
-            db.execute(f"""
-                CREATE VIEW {view_name} AS
-                SELECT *, '{lib_key}' AS library
-                FROM read_parquet('{glob_path}', filename=true)
-            """)
-        else:
-            db.execute(f"""
-                CREATE VIEW {view_name} AS
-                SELECT *, '{lib_key}' AS library
-                FROM read_parquet('{glob_path}', filename=true)
-            """)
+        data_type = lib_info.get("data_type", "cross_sections")
+        db.execute(f"""
+            CREATE VIEW {view_name} AS
+            SELECT *, '{lib_key}' AS library
+            FROM read_parquet('{glob_path}', filename=true)
+        """)
+        if data_type == "cross_sections":
             lib_views.append(view_name)
 
     # Unified xs view: UNION ALL of all evaluated libraries

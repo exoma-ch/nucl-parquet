@@ -1,6 +1,6 @@
 [package]
 name = "nucl-parquet-mcp"
-version = "0.3.8"
+version = "0.3.9"
 edition = "2021"
 description = "MCP server for nuclear data — lazy-loads Parquet from GitHub"
 license = "MIT"
