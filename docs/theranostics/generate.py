@@ -258,15 +258,18 @@ def _query_candidates(db) -> list[dict]:
         imaging = " + ".join(img_modes) if img_modes else "—"
 
         # Therapeutic range classification
+        # Auger: <1 μm (subcellular), CE: 1–30 μm (cellular),
+        # α: 30–100 μm (cluster — few cell diameters, high LET),
+        # β⁻: 30–500+ μm (cluster to macroscopic depending on energy)
         ranges = []
         if auger > 0.001:
             ranges.append("Subcellular")
         if ce > 0.001:
             ranges.append("Cellular")
+        if alpha > 0.001:
+            ranges.append("Cluster")  # 30–100 μm in tissue
         if beta > 0.001:
             ranges.append("Cluster" if beta > 0.1 else "Cellular")
-        if alpha > 0.001:
-            ranges.append("Macroscopic")
 
         unique = list(dict.fromkeys(ranges))
         if len(unique) == 0:
@@ -880,7 +883,7 @@ def generate_figures(db, candidates: list[dict]) -> str:
 
     # ── Fig 1: Half-life vs particulate dose, shaped by range class ──
     range_markers = {"Subcellular": "v", "Cellular": "s", "Cluster": "o",
-                     "Macroscopic": "D", "Multi-range": "^", "—": "."}
+                     "Multi-range": "^", "—": "."}
     fig, ax = plt.subplots(figsize=(10, 6))
 
     imaging_colors = {"PET": "#e41a1c", "SPECT": "#377eb8",
@@ -1187,7 +1190,7 @@ penalised for exotic beams (t, ³He: ×0.1) or high energy (>50 MeV: ×0.5).
 - *γ dose:* photon dose (gamma + X-ray)
 - *Imaging:* PET (β⁺/EC), SPECT (γ 80–400 keV, I>5%), pair (γ >1022 keV)
 - *Range:* Subcellular (\\<1 μm, Auger), Cellular (1–30 μm, CE/low β),
-  Cluster (30–500 μm, β⁻), Macroscopic (\\>500 μm, high β⁻/α)
+  Cluster (30–500 μm, α 30–100 μm / β⁻ 30–500 μm)
 - *γ/p:* ratio of photon dose to particulate dose — values \\>1 indicate
   most energy escapes the tumour (poor therapeutic ratio, higher
   radiation protection burden). Ideal therapeutic isotopes have γ/p \\< 0.5.
