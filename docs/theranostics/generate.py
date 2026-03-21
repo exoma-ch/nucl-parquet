@@ -495,33 +495,52 @@ def section_production(candidates: list[dict], routes_by_iso, has_detail) -> str
     )
     lines.append("")
 
-    # Best route per isotope
-    best_routes = []
+    # Best route per facility class per isotope
+    FACILITY_ORDER = [
+        "Med. cyclotron (≤18 MeV p)", "Med. cyclotron (≤9 MeV d)",
+        "Research cyclotron", "Reactor", "High-E accelerator", "Exotic",
+    ]
+
     no_route = []
-    for c in candidates:
+    prod_rows = []
+    n_with_routes = 0
+    all_facility_counts: list[str] = []
+
+    for c in sorted(candidates, key=lambda c: c["Z"] * 1000 + c["A"]):
         key = (c["Z"], c["A"])
         rts = routes_by_iso.get(key, [])
-        if rts:
-            best_routes.append({"isotope": c, **rts[0]})
-        else:
+        if not rts:
             no_route.append(c)
+            continue
+        n_with_routes += 1
 
-    best_routes.sort(key=lambda x: x["score"], reverse=True)
+        # Group routes by facility class, pick best per class
+        best_per_fac: dict[str, dict] = {}
+        for rt in rts:
+            fac = rt["facility"]
+            if fac not in best_per_fac or rt["score"] > best_per_fac[fac]["score"]:
+                best_per_fac[fac] = rt
 
-    prod_rows = []
-    for rt in best_routes[:60]:
-        iso = rt["isotope"]
-        key = (iso["Z"], iso["A"])
-        nuc = _nuc_ref(iso["symbol"], iso["A"]) if key in has_detail else _nuc_typst(iso["symbol"], iso["A"])
-        abund_str = f"{rt['abundance']:.1f}" if rt["abundance"] > 0.05 else "—"
-        enr = "enr" if rt["needs_enrichment"] else "nat"
-        prod_rows.append([
-            nuc, rt["projectile"],
-            f"#super[{rt['target_A']}]{rt['target_sym']}",
-            abund_str, enr,
-            f"{rt['peak_xs']:.1f}", f"{rt['peak_E']:.1f}",
-            rt["facility"],
-        ])
+        # Sort by facility order
+        sorted_facs = sorted(best_per_fac.keys(),
+                             key=lambda f: FACILITY_ORDER.index(f) if f in FACILITY_ORDER else 99)
+
+        nuc = _nuc_ref(c["symbol"], c["A"]) if key in has_detail else _nuc_typst(c["symbol"], c["A"])
+        first = True
+        for fac in sorted_facs:
+            rt = best_per_fac[fac]
+            abund_str = f"{rt['abundance']:.1f}" if rt["abundance"] > 0.05 else "—"
+            enr = "enr" if rt["needs_enrichment"] else "nat"
+            iso_cell = nuc if first else ""
+            prod_rows.append([
+                iso_cell, rt["projectile"],
+                f"#super[{rt['target_A']}]{rt['target_sym']}",
+                abund_str, enr,
+                f"{rt['peak_xs']:.1f}", f"{rt['peak_E']:.1f}",
+                rt["facility"],
+            ])
+            all_facility_counts.append(fac)
+            first = False
 
     lines.extend(_booktabs_table(
         columns="(auto, auto, auto, auto, auto, auto, auto, auto)",
@@ -529,16 +548,31 @@ def section_production(candidates: list[dict], routes_by_iso, has_detail) -> str
         header=["Isotope", "Beam", "Target", "Abund. (%)",
                 "Tgt", "σ#sub[peak] (mb)", "E#sub[peak] (MeV)", "Facility"],
         rows=prod_rows,
-        caption=f"Best production route per candidate (top {min(60, len(best_routes))} by feasibility score).",
+        caption=f"Production routes for {n_with_routes} candidates — best route per "
+                "facility class. Isotope name shown on first row of each group.",
         label="tab:production",
+        font_size="7.5pt",
     ))
     lines.append("")
 
-    fac_counts = Counter(rt["facility"] for rt in best_routes)
-    lines.append(f"Of the {len(best_routes)} candidates with identified routes, "
-                 + ", ".join(f"{n} via *{f}*" for f, n in fac_counts.most_common())
+    fac_counts = Counter(all_facility_counts)
+    lines.append(f"Across {n_with_routes} candidates ({len(prod_rows)} routes total): "
+                 + ", ".join(f"*{n}* {f}" for f, n in fac_counts.most_common())
                  + ".")
     lines.append("")
+
+    # Summary of medical cyclotron accessibility
+    med_cyc_isotopes = set()
+    for c in candidates:
+        key = (c["Z"], c["A"])
+        rts = routes_by_iso.get(key, [])
+        if any("Med. cyclotron" in r["facility"] for r in rts):
+            med_cyc_isotopes.add(key)
+    if med_cyc_isotopes:
+        lines.append(f"*{len(med_cyc_isotopes)} candidates* have at least one route "
+                     "on a medical cyclotron (≤18 MeV p / ≤9 MeV d), visible in the "
+                     "table above alongside their reactor/research cyclotron alternatives.")
+        lines.append("")
 
     if no_route:
         syms = ", ".join(_nuc_typst(c["symbol"], c["A"]) for c in no_route[:15])
