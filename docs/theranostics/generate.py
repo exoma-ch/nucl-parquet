@@ -317,6 +317,9 @@ def _query_production_routes(db, candidates: list[dict]) -> dict[tuple[int, int]
                 ARG_MAX(energy_MeV, xs_mb) AS peak_E
             FROM xs
             WHERE residual_Z = $rz AND residual_A = $ra AND state = ''
+              AND xs_mb < 1e10  -- exclude TALYS overflow/sentinel values
+              AND xs_mb IS NOT NULL
+              AND NOT isnan(xs_mb)
             GROUP BY proj_elem, target_A, library
             HAVING MAX(xs_mb) > 0.1
             ORDER BY peak_xs DESC
