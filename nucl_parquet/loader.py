@@ -408,6 +408,13 @@ def elemental_dedx(
 
     log_E, log_S = _get_stopping_table(db, ref_source, target_Z)
     if len(log_E) == 0:
+        # NIST PSTAR/ASTAR only covers 74 predefined materials; fall back to
+        # CatIMA (Bethe-Bloch) for elements not in the NIST table (e.g. Ra, Rn,
+        # Ac, Po, Fr, At, Tc, Pm and many others).
+        if ref_source in ("PSTAR", "ASTAR"):
+            log_E_c, log_S_c = _get_catima_table(db, proj_Z, target_Z)
+            if len(log_E_c) > 0:
+                return _interp_loglog(log_E_c, log_S_c, energy_MeV / proj_A)
         return np.full_like(energy_MeV, np.nan)
 
     if ref_source == "ESTAR":
