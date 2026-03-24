@@ -31,19 +31,25 @@
 //! # }
 //! ```
 
+mod electron;
 mod error;
 mod interp;
 mod meta;
 mod photon;
 mod relaxation;
 mod stopping;
+mod subshell_pe;
+mod xcom;
 mod xs;
 
+pub use electron::{ElectronDb, ElectronProcess};
 pub use error::Error;
 pub use meta::{AbundanceEntry, AbundancesDb, DecayDb, DecayEntry, DoseDb};
 pub use photon::{PhotonDb, Process};
 pub use relaxation::{RelaxationDb, Transition, TransitionType};
 pub use stopping::StoppingDb;
+pub use subshell_pe::SubshellPeDb;
+pub use xcom::XcomDb;
 pub use xs::{CrossSectionDb, XsEntry};
 
 /// Result type for nucl-parquet operations.
