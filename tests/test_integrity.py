@@ -133,3 +133,17 @@ def test_no_talys_sentinels(data_dir_path: Path) -> None:
             f"{lib_dir.name}: found {n} invalid xs_mb rows "
             "(sentinel >1e30, NaN, or NULL) — clean at parquet level"
         )
+
+
+@pytest.mark.data
+def test_catima_straggling(data_dir_path: Path) -> None:
+    """catima.parquet should have a positive straggling column."""
+    import polars as pl
+
+    df = pl.read_parquet(data_dir_path / "stopping" / "catima" / "catima.parquet")
+    assert "straggling" in df.columns, "straggling column missing"
+    # C-12 in Cu: straggling should be positive
+    row = df.filter(
+        (pl.col("proj_Z") == 6) & (pl.col("target_Z") == 29)
+    ).head(1)
+    assert row["straggling"][0] > 0, "Expected positive straggling for C-12 in Cu"

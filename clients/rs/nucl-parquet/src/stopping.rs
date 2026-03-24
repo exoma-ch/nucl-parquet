@@ -23,6 +23,8 @@ pub struct StoppingDb {
     nist: HashMap<(String, u32), (Vec<f64>, Vec<f64>)>,
     /// (proj_Z, target_Z) -> (energy_MeV_u sorted, dedx sorted)
     catima: HashMap<(u32, u32), (Vec<f64>, Vec<f64>)>,
+    /// (proj_Z, target_Z) -> Bohr straggling dΩ²/d(ρx) [MeV² cm²/g] (constant per pair)
+    catima_strag: HashMap<(u32, u32), f64>,
 }
 
 // Safety: all data is immutable after construction.
@@ -42,9 +44,9 @@ impl StoppingDb {
         }
 
         let nist = Self::load_nist(dir)?;
-        let catima = Self::load_catima(dir)?;
+        let (catima, catima_strag) = Self::load_catima(dir)?;
 
-        Ok(Self { nist, catima })
+        Ok(Self { nist, catima, catima_strag })
     }
 
     /// Mass stopping power [MeV cm²/g] for a NIST source (e.g. "PSTAR", "ASTAR", "ESTAR").
@@ -68,6 +70,15 @@ impl StoppingDb {
             Some((e, s)) => log_log_interp(e, s, energy_mev_u),
             None => f64::NAN,
         }
+    }
+
+    /// Bohr energy straggling variance dΩ²/d(ρx) [MeV² cm²/g].
+    ///
+    /// Energy-independent (high-energy Bohr limit).
+    /// Returns `f64::NAN` if the (proj_Z, target_Z) pair is not loaded.
+    #[inline]
+    pub fn catima_straggling(&self, proj_z: u32, target_z: u32) -> f64 {
+        self.catima_strag.get(&(proj_z, target_z)).copied().unwrap_or(f64::NAN)
     }
 
     // --- Internal loaders ---
@@ -122,12 +133,15 @@ impl StoppingDb {
         Ok(map)
     }
 
-    fn load_catima(dir: &Path) -> crate::Result<HashMap<(u32, u32), (Vec<f64>, Vec<f64>)>> {
+    fn load_catima(
+        dir: &Path,
+    ) -> crate::Result<(HashMap<(u32, u32), (Vec<f64>, Vec<f64>)>, HashMap<(u32, u32), f64>)> {
         let catima_path = dir.join("catima").join("catima.parquet");
         let mut map: HashMap<(u32, u32), (Vec<f64>, Vec<f64>)> = HashMap::new();
+        let mut strag_map: HashMap<(u32, u32), f64> = HashMap::new();
 
         if !catima_path.exists() {
-            return Ok(map);
+            return Ok((map, strag_map));
         }
 
         let file = fs::File::open(&catima_path)?;
@@ -148,6 +162,9 @@ impl StoppingDb {
             let s_col = batch
                 .column_by_name("dedx")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+            let strag_col = batch
+                .column_by_name("straggling")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
             if let (Some(pz), Some(tz), Some(e), Some(s)) = (pz_col, tz_col, e_col, s_col) {
                 for i in 0..batch.num_rows() {
@@ -155,6 +172,9 @@ impl StoppingDb {
                     let entry = map.entry(key).or_default();
                     entry.0.push(e.value(i));
                     entry.1.push(s.value(i));
+                    if let Some(strag) = strag_col {
+                        strag_map.entry(key).or_insert(strag.value(i));
+                    }
                 }
             }
         }
@@ -163,7 +183,7 @@ impl StoppingDb {
             sort_paired_vecs(e_vec, s_vec);
         }
 
-        Ok(map)
+        Ok((map, strag_map))
     }
 }
 

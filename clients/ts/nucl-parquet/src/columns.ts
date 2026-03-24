@@ -35,6 +35,8 @@ export interface CatimaColumns {
   targetZ: Int32Array;
   energyMeVu: Float64Array;
   dedx: Float64Array;
+  /** Bohr energy straggling variance dOmega2/d(rho*x) [MeV^2 cm^2/g]. */
+  straggling: Float64Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +118,7 @@ export async function stoppingColumns(buffer: ArrayBuffer): Promise<StoppingColu
 
 /**
  * Extract catima stopping columns from a `catima.parquet` ArrayBuffer.
- * Schema: proj_Z i32, target_Z i32, energy_MeV_u f64, dedx f64
+ * Schema: proj_Z i32, target_Z i32, energy_MeV_u f64, dedx f64, straggling f64
  */
 export async function catimaColumns(buffer: ArrayBuffer): Promise<CatimaColumns> {
   const cols = await extractColumns(buffer);
@@ -125,6 +127,7 @@ export async function catimaColumns(buffer: ArrayBuffer): Promise<CatimaColumns>
     targetZ: getI32(cols, "target_Z"),
     energyMeVu: getF64(cols, "energy_MeV_u"),
     dedx: getF64(cols, "dedx"),
+    straggling: getF64(cols, "straggling"),
   };
 }
 

@@ -7,7 +7,13 @@ Stopping power at a given MeV/u depends only on projectile Z and velocity,
 not on the specific isotope — so energy is stored in MeV/u. Any isotope of
 element Z can be looked up by converting total MeV → MeV/u (divide by A).
 
-Output: stopping/catima.parquet  (schema: proj_Z, target_Z, energy_MeV_u, dedx)
+Also computes Bohr energy straggling variance dΩ²/d(ρx) [MeV² cm²/g] per
+(proj_Z, target_Z) pair.  Bohr straggling is energy-independent (the high-
+energy limit); it overestimates at very low β but is acceptable for therapy-
+range ions.
+
+Output: stopping/catima.parquet
+        (schema: proj_Z, target_Z, energy_MeV_u, dedx, straggling)
 
 Usage:
     uv run python -m nucl_parquet.build_heavy_ions
@@ -22,6 +28,11 @@ from .download import data_dir as _resolve_data_dir
 
 # Energy grid in MeV/u: 0.001–300, 200 log-spaced points
 _ENERGIES_MEV_U: np.ndarray = np.geomspace(0.001, 300.0, 200)
+
+# Bohr energy straggling constant [MeV² cm²/g]:
+#   4π N_A r_e² m_e c² = 0.15737 MeV² cm²/mol
+# dΩ²/d(ρx) = BOHR_CONST × Z_p² × Z_t / A_t
+_BOHR_CONST: float = 0.15737
 
 
 def build(data_dir: Path | None = None) -> None:
@@ -46,6 +57,12 @@ def build(data_dir: Path | None = None) -> None:
     all_target_zs: list[int] = []
     all_energies: list[float] = []
     all_dedxs: list[float] = []
+    all_strag: list[float] = []
+
+    # Pre-compute target atomic weights from pycatima for Bohr straggling.
+    target_A: dict[int, float] = {}
+    for z in range(1, 93):
+        target_A[z] = catima.get_material(z).molar_mass()
 
     # A only affects velocity at a given total energy — at fixed MeV/u, dedx is
     # isotope-independent. We use a representative A (≈2Z) purely to initialise
@@ -56,12 +73,15 @@ def build(data_dir: Path | None = None) -> None:
 
         for target_Z in range(1, 93):
             mat = catima.get_material(target_Z)
+            # Bohr straggling: dΩ²/d(ρx) = const × Z_p² × Z_t / A_t
+            strag = _BOHR_CONST * proj_Z**2 * target_Z / target_A[target_Z]
             for e in _ENERGIES_MEV_U:
                 proj.T(float(e))
                 all_proj_zs.append(proj_Z)
                 all_target_zs.append(target_Z)
                 all_energies.append(float(e))
                 all_dedxs.append(catima.dedx(proj, mat))
+                all_strag.append(strag)
 
         print(f"  Z={proj_Z:2d}: done")
 
@@ -71,6 +91,7 @@ def build(data_dir: Path | None = None) -> None:
             "target_Z":     pl.Series(all_target_zs, dtype=pl.Int32),
             "energy_MeV_u": pl.Series(all_energies,  dtype=pl.Float64),
             "dedx":         pl.Series(all_dedxs,     dtype=pl.Float64),
+            "straggling":   pl.Series(all_strag,     dtype=pl.Float64),
         }
     ).sort("proj_Z", "target_Z", "energy_MeV_u")
 
