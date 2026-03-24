@@ -1,0 +1,281 @@
+{
+  "$schema": "./catalog.schema.json",
+  "version": 1,
+  "description": "Registry of available nuclear data libraries",
+  "libraries": {
+    "tendl-2024": {
+      "name": "TENDL-2024",
+      "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)",
+      "source_url": "https://tendl.web.psi.ch/tendl_2024/tendl2024.html",
+      "projectiles": [
+        "p",
+        "d",
+        "t",
+        "h",
+        "a"
+      ],
+      "data_type": "cross_sections",
+      "version": "2024",
+      "path": "tendl-2024/xs/"
+    },
+    "endfb-8.1": {
+      "name": "ENDF/B-VIII.1",
+      "description": "US Evaluated Nuclear Data File (NNDC/BNL)",
+      "source_url": "https://www.nndc.bnl.gov/endf-b8.1/",
+      "projectiles": [
+        "n",
+        "p",
+        "d",
+        "t",
+        "h",
+        "a"
+      ],
+      "data_type": "cross_sections",
+      "version": "VIII.1",
+      "path": "endfb-8.1/xs/"
+    },
+    "jeff-4.0": {
+      "name": "JEFF-4.0",
+      "description": "Joint Evaluated Fission and Fusion File (NEA)",
+      "source_url": "https://www.oecd-nea.org/dbdata/jeff/",
+      "projectiles": [
+        "n",
+        "p"
+      ],
+      "data_type": "cross_sections",
+      "version": "4.0",
+      "path": "jeff-4.0/xs/"
+    },
+    "jendl-5": {
+      "name": "JENDL-5",
+      "description": "Japanese Evaluated Nuclear Data Library (JAEA)",
+      "source_url": "https://wwwndc.jaea.go.jp/jendl/j5/j5.html",
+      "projectiles": [
+        "n",
+        "p",
+        "d",
+        "a"
+      ],
+      "data_type": "cross_sections",
+      "version": "5",
+      "path": "jendl-5/xs/"
+    },
+    "tendl-2025": {
+      "name": "TENDL-2025",
+      "description": "TALYS Evaluated Nuclear Data Library 2025 (PSI)",
+      "source_url": "https://tendl.web.psi.ch/",
+      "projectiles": [
+        "n",
+        "p",
+        "d",
+        "t",
+        "h",
+        "a"
+      ],
+      "data_type": "cross_sections",
+      "version": "2025",
+      "path": "tendl-2025/xs/"
+    },
+    "cendl-3.2": {
+      "name": "CENDL-3.2",
+      "description": "Chinese Evaluated Nuclear Data Library (CIAE)",
+      "source_url": "http://www.nuclear.csdb.cn/",
+      "projectiles": [
+        "n"
+      ],
+      "data_type": "cross_sections",
+      "version": "3.2",
+      "path": "cendl-3.2/xs/"
+    },
+    "brond-3.1": {
+      "name": "BROND-3.1",
+      "description": "Russian Evaluated Nuclear Data Library (IPPE)",
+      "source_url": "https://vant.ippe.ru/",
+      "projectiles": [
+        "n"
+      ],
+      "data_type": "cross_sections",
+      "version": "3.1",
+      "path": "brond-3.1/xs/"
+    },
+    "fendl-3.2": {
+      "name": "FENDL-3.2",
+      "description": "Fusion Evaluated Nuclear Data Library (IAEA)",
+      "source_url": "https://www-nds.iaea.org/fendl/",
+      "projectiles": [
+        "n"
+      ],
+      "data_type": "cross_sections",
+      "version": "3.2",
+      "path": "fendl-3.2/xs/"
+    },
+    "eaf-2010": {
+      "name": "EAF-2010",
+      "description": "European Activation File (CCFE)",
+      "source_url": "https://fispact.ukaea.uk/",
+      "projectiles": [
+        "n"
+      ],
+      "data_type": "cross_sections",
+      "version": "2010",
+      "path": "eaf-2010/xs/"
+    },
+    "irdff-2": {
+      "name": "IRDFF-II",
+      "description": "International Reactor Dosimetry and Fusion File (IAEA)",
+      "source_url": "https://www-nds.iaea.org/IRDFF/",
+      "projectiles": [
+        "n"
+      ],
+      "data_type": "cross_sections",
+      "version": "II",
+      "path": "irdff-2/xs/"
+    },
+    "iaea-medical": {
+      "name": "IAEA-Medical",
+      "description": "Medical isotope production cross-sections (IAEA)",
+      "source_url": "https://www-nds.iaea.org/medical/",
+      "projectiles": [
+        "p",
+        "d",
+        "h",
+        "a"
+      ],
+      "data_type": "cross_sections",
+      "version": "latest",
+      "path": "iaea-medical/xs/"
+    },
+    "jendl-ad-2017": {
+      "name": "JENDL/AD-2017",
+      "description": "Activation/Dosimetry Library (JAEA)",
+      "source_url": "https://wwwndc.jaea.go.jp/jendl/jad/jad.html",
+      "projectiles": [
+        "n",
+        "p"
+      ],
+      "data_type": "cross_sections",
+      "version": "2017",
+      "path": "jendl-ad-2017/xs/"
+    },
+    "jendl-deu-2020": {
+      "name": "JENDL-DEU-2020",
+      "description": "Dedicated deuteron-induced reaction library (JAEA)",
+      "source_url": "https://wwwndc.jaea.go.jp/jendl/deu/deu.html",
+      "projectiles": [
+        "d"
+      ],
+      "data_type": "cross_sections",
+      "version": "2020",
+      "path": "jendl-deu-2020/xs/"
+    },
+    "iaea-pd-2019": {
+      "name": "IAEA-PD-2019",
+      "description": "Photonuclear Data Library (IAEA)",
+      "source_url": "https://www-nds.iaea.org/photonuclear/",
+      "projectiles": [
+        "g"
+      ],
+      "data_type": "cross_sections",
+      "version": "2019",
+      "path": "iaea-pd-2019/xs/"
+    },
+    "exfor": {
+      "name": "EXFOR",
+      "description": "Experimental nuclear reaction data (IAEA NDS)",
+      "source_url": "https://www-nds.iaea.org/exfor/",
+      "projectiles": [
+        "n",
+        "p",
+        "d",
+        "t",
+        "h",
+        "a"
+      ],
+      "data_type": "experimental_cross_sections",
+      "version": "latest",
+      "path": "exfor/"
+    },
+    "hi-xs-prod": {
+      "name": "HI-XS Production (Geant4 INCL++/ABLA07)",
+      "description": "Heavy-ion production cross-sections σ(Zf,Af,E) computed via Geant4 11.3.2 FTFP_INCLXX physics list (INCL++ cascade + ABLA07 de-excitation).  Covers 6 projectiles × 92 targets × ~60 energy points (1–1000 MeV/u).  Normalized to Tripathi (1997) total reaction XS.",
+      "source_url": "https://geant4.org/",
+      "projectiles": [
+        "c12",
+        "o16",
+        "ne20",
+        "si28",
+        "ar40",
+        "fe56"
+      ],
+      "data_type": "production_cross_sections",
+      "version": "geant4-11.3.2-inclxx",
+      "path": "hi-xs-prod/xs/"
+    },
+    "hi-xs": {
+      "name": "HI-XS (Tripathi 1997)",
+      "description": "Heavy-ion total reaction cross-sections computed with the Tripathi (1997) semi-empirical parameterization.  Covers all projectile/target combinations Z=1-92.",
+      "source_url": "https://doi.org/10.1016/S0168-583X(96)00331-X",
+      "projectiles": [
+        "ar40",
+        "c12",
+        "ca40",
+        "fe56",
+        "he4",
+        "ne20",
+        "ni58",
+        "o16",
+        "p",
+        "pb208",
+        "si28",
+        "xe132"
+      ],
+      "data_type": "total_reaction_cross_sections",
+      "version": "tripathi-1997",
+      "path": "hi-xs/xs/"
+    }
+  },
+  "shared": {
+    "meta": {
+      "path": "meta/",
+      "files": {
+        "abundances": "abundances.parquet",
+        "decay": "decay.parquet",
+        "elements": "elements.parquet",
+        "spectrum_xs": "spectrum_xs.parquet"
+      },
+      "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs."
+    },
+    "stopping": {
+      "path": "stopping/",
+      "layout": "one file per source — stopping/{source}.parquet (e.g. PSTAR.parquet, catima_C12.parquet)",
+      "catima_full_matrix": "stopping/catima/catima.parquet",
+      "sources": [
+        "PSTAR",
+        "ASTAR",
+        "ESTAR",
+        "dSTAR",
+        "tSTAR",
+        "He3STAR",
+        "catima_C12",
+        "catima_O16",
+        "catima_Ne20",
+        "catima_Si28",
+        "catima_Ar40",
+        "catima_Fe56"
+      ],
+      "sources_note": "dSTAR/tSTAR/He3STAR are velocity-scaled from PSTAR/ASTAR (exact for electronic stopping). catima_* are pycatima tables for common heavy-ion beams.",
+      "catima": {
+        "proj_Z_range": [
+          1,
+          92
+        ],
+        "target_Z_range": [
+          1,
+          92
+        ],
+        "energy_unit": "MeV/u",
+        "note": "Any isotope of proj_Z \u2014 divide total MeV by A to get MeV/u"
+      }
+    }
+  }
+}

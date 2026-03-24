@@ -21,7 +21,7 @@ Or clone the repo directly for the full dataset:
 
 ```bash
 git clone https://github.com/exoma-ch/nucl-parquet.git
-export NUCL_PARQUET_DATA=/path/to/nucl-parquet
+export NUCL_PARQUET_DATA=/path/to/nucl-parquet/data
 ```
 
 ## Usage

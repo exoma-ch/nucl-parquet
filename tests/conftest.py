@@ -11,8 +11,8 @@ _REPO_ROOT = Path(__file__).parent.parent
 
 def _find_data_dir() -> Path | None:
     """Find data directory, or None if not available."""
-    if (_REPO_ROOT / "catalog.json").exists():
-        return _REPO_ROOT
+    if (_REPO_ROOT / "data" / "catalog.json").exists():
+        return _REPO_ROOT / "data"
     return None
 
 
