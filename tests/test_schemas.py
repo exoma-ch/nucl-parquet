@@ -16,9 +16,19 @@ from nucl_parquet._schemas import (
     DECAY_SCHEMA,
     ELEMENTS_SCHEMA,
     EXFOR_SCHEMA,
+    HI_XS_PROD_SCHEMA,
+    HI_XS_SCHEMA,
     STOPPING_SCHEMA,
     XS_SCHEMA,
 )
+
+# Maps catalog data_type → expected schema (None = skip)
+_XS_SCHEMA_BY_TYPE: dict[str, dict | None] = {
+    "cross_sections": XS_SCHEMA,
+    "production_cross_sections": HI_XS_PROD_SCHEMA,
+    "total_reaction_cross_sections": HI_XS_SCHEMA,
+    "experimental_cross_sections": None,  # skip — EXFOR has its own test
+}
 
 # DuckDB type name mapping for comparison
 _DTYPE_MAP = {
@@ -67,12 +77,14 @@ def test_xs_schema_sample(data_dir_path: Path) -> None:
     catalog = json.loads((data_dir_path / "catalog.json").read_text())
     checked = 0
     for lib_key, lib_info in catalog["libraries"].items():
-        if lib_info.get("data_type") == "experimental_cross_sections":
+        data_type = lib_info.get("data_type", "cross_sections")
+        schema = _XS_SCHEMA_BY_TYPE.get(data_type)
+        if schema is None:
             continue
         lib_dir = data_dir_path / lib_info["path"]
         files = sorted(lib_dir.glob("*.parquet"))
         if files:
-            _check_schema(files[0], XS_SCHEMA)
+            _check_schema(files[0], schema)
             checked += 1
     assert checked > 0, "No xs parquet files found to validate"
 

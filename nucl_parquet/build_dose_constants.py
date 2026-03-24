@@ -163,12 +163,16 @@ def build(data_dir: Path | None = None) -> None:
             za_levels[key] = set()
         za_levels[key].add(round(pl_i, 1))
 
-    # Determine which levels are ground vs metastable
+    # Determine which levels are ground vs metastable.
+    # Ground state decays have parent_level ≈ 0 keV; any non-zero parent level
+    # indicates an isomeric/metastable state decay.  The len==1 guard was
+    # incorrect for pure-IT isomers whose stable parent ground state has no
+    # radiation entry (e.g. In-113m): those appear as a single non-zero level
+    # and must still be labelled "m".
     for i in range(len(Z)):
         z_i, a_i = int(Z[i]), int(A[i])
         pl_i = round(float(parent_level[i]), 1)
-        levels = za_levels[(z_i, a_i)]
-        if len(levels) == 1 or pl_i == 0.0:
+        if pl_i == 0.0:
             state = ""
         else:
             state = "m"
@@ -189,10 +193,15 @@ def build(data_dir: Path | None = None) -> None:
     for (z, a, state), indices in sorted(state_groups.items()):
         idx = np.array(indices)
 
-        # Filter photon lines: E >= 10 keV, positive dose
+        # Filter photon lines: E >= 20 keV, positive dose.
+        # The 20 keV low-energy threshold (δ = 20 keV) follows Ninkovic &
+        # Adrovic 2012 and avoids grossly overestimating the dose from soft
+        # X-rays (≲ 20 keV) that are nearly fully absorbed in air before
+        # reaching 1 m.  Below ~20 keV the µ_en/ρ values are so large that
+        # even modest photon yields produce unrealistically large k values.
         e = E_keV[idx]
         d = dose[idx]
-        mask = (e >= 10) & (d > 0)
+        mask = (e >= 20) & (d > 0)
 
         if mask.sum() == 0:
             out_Z.append(z)
@@ -264,8 +273,8 @@ def build(data_dir: Path | None = None) -> None:
             if (z, a, "m") in existing or (z, a, "") in existing:
                 continue
             e_level = float(it_levels["energy_keV"][i])
-            if e_level < 10:
-                continue  # below µ_en/ρ table range
+            if e_level < 20:
+                continue  # below low-energy cutoff (δ = 20 keV)
 
             # Approximate photon fraction from ICC
             photon_fraction = 0.5 if e_level < 200 else 0.9

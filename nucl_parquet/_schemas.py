@@ -11,6 +11,26 @@ XS_SCHEMA = {
     "xs_mb": "Float64",
 }
 
+# Heavy-ion production XS (hi-xs-prod): carries projectile identity
+HI_XS_PROD_SCHEMA = {
+    "proj_Z": "Int32",
+    "proj_A": "Int32",
+    "target_Z": "Int32",
+    "target_A": "Int32",
+    "residual_Z": "Int32",
+    "residual_A": "Int32",
+    "energy_MeV": "Float64",
+    "xs_mb": "Float64",
+}
+
+# Heavy-ion total reaction XS (hi-xs): projectile-target pair only
+HI_XS_SCHEMA = {
+    "target_Z": "Int32",
+    "target_A": "Int32",
+    "energy_MeV": "Float64",
+    "xs_mb": "Float64",
+}
+
 STOPPING_SCHEMA = {
     "source": "Utf8",
     "target_Z": "Int32",
