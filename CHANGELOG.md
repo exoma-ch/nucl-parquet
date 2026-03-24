@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0] — 2026-03-24
+
+### Added
+- Neutron KERMA coefficients computed from ENDF/B-VIII.1 cross-sections (89 elements, 208K data points)
+- `kerma` DuckDB view: `SELECT * FROM kerma WHERE Z=29 AND A=63`
+- `build_kerma.py` script: analytical KERMA from elastic recoil + charged-product kinematics
+- Elemental KERMA is Bragg-additive for compounds — enables neutron dose in hyrr
+
 ## [0.4.0] — 2026-03-24
 
 ### Added
