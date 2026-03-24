@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0] — 2026-03-25
+
+### Added
+- Rust crate: `SubshellPeDb` (subshell photoelectric XS from EPDL97) (#29)
+- Rust crate: `XcomDb` (mass attenuation µ/ρ and µ_en/ρ for elements + compounds) (#29)
+- Rust crate: `ElectronDb` (EEDL elastic, bremsstrahlung, ionization XS) (#29)
+
 ## [0.6.0] — 2026-03-24
 
 ### Added
