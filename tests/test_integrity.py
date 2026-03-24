@@ -60,6 +60,85 @@ def test_element_symbols(data_dir_path: Path) -> None:
 
 
 @pytest.mark.data
+def test_no_talys_sentinels(data_dir_path: Path) -> None:
+    """No xs_mb values should be TALYS overflow sentinels (~1.99e38) or NaN/NULL."""
+    db = duckdb.connect()
+    for lib_dir in sorted(data_dir_path.iterdir()):
+        xs_dir = lib_dir / "xs"
+        if not xs_dir.is_dir():
+            continue
+        parquets = list(xs_dir.glob("*.parquet"))
+        if not parquets:
+            continue
+        glob = str(xs_dir / "*.parquet")
+        # 1e30 mb separates TALYS sentinels (~1.99e38) from legitimate values
+        # (largest known physical xs: Xe-135 thermal capture ~90 Gb = 9e10 mb)
+        n = db.sql(
+            f"SELECT COUNT(*) FROM read_parquet('{glob}') "
+            "WHERE xs_mb > 1e30 OR isnan(xs_mb) OR xs_mb IS NULL"
+        ).fetchone()[0]
+        assert n == 0, (
+            f"{lib_dir.name}: found {n} invalid xs_mb rows "
+            "(sentinel >1e30, NaN, or NULL)"
+        )
+
+
+@pytest.mark.data
+def test_hi_xs_prod_coverage(data_dir_path: Path) -> None:
+    """Geant4 fragment production XS should cover all 6 projectiles × 92 targets."""
+    xs_dir = data_dir_path / "hi-xs-prod" / "xs"
+    if not xs_dir.is_dir():
+        pytest.skip("hi-xs-prod not present")
+    db = duckdb.connect()
+    glob = str(xs_dir / "*.parquet")
+
+    # All 552 files should be present
+    n_files = db.sql(
+        f"SELECT COUNT(DISTINCT filename) FROM read_parquet('{glob}', filename=true)"
+    ).fetchone()[0]
+    assert n_files == 552, f"Expected 552 files (6 proj × 92 targets), got {n_files}"
+
+    # No NULL/NaN/negative/sentinel values
+    n_bad = db.sql(
+        f"SELECT COUNT(*) FROM read_parquet('{glob}') "
+        "WHERE xs_mb IS NULL OR isnan(xs_mb) OR xs_mb < 0 OR xs_mb > 1e10"
+    ).fetchone()[0]
+    assert n_bad == 0, f"Found {n_bad} invalid xs_mb rows in hi-xs-prod"
+
+    # Spot-check: C12 on Cu should produce He-4 fragments with xs > 100 mb
+    c12_cu = xs_dir / "c12_Cu.parquet"
+    result = db.sql(
+        f"SELECT MAX(xs_mb) FROM read_parquet('{c12_cu}') "
+        "WHERE residual_Z=2 AND residual_A=4"
+    ).fetchone()
+    assert result is not None and result[0] is not None, "No He-4 production in C12+Cu"
+    assert result[0] > 100, f"C12+Cu He-4 max xs={result[0]:.1f} mb, expected >100 mb"
+
+
+@pytest.mark.data
+def test_light_ion_stopping_velocity_scaling(data_dir_path: Path) -> None:
+    """dSTAR/tSTAR/He3STAR should match PSTAR/ASTAR at the same velocity."""
+    db = duckdb.connect()
+    path = data_dir_path / "stopping" / "stopping.parquet"
+    if not path.exists():
+        pytest.skip("stopping.parquet not present")
+
+    # Deuteron at 20 MeV == proton at 10 MeV (same velocity)
+    p10 = db.sql(
+        f"SELECT dedx FROM read_parquet('{path}') "
+        "WHERE source='PSTAR' AND target_Z=29 AND energy_MeV=10.0"
+    ).fetchone()
+    d20 = db.sql(
+        f"SELECT dedx FROM read_parquet('{path}') "
+        "WHERE source='dSTAR' AND target_Z=29 AND energy_MeV=20.0"
+    ).fetchone()
+    assert p10 is not None and d20 is not None, "Missing PSTAR/dSTAR Cu data"
+    assert p10[0] == pytest.approx(d20[0], rel=1e-9), (
+        f"dSTAR velocity scaling broken: p@10={p10[0]}, d@20={d20[0]}"
+    )
+
+
+@pytest.mark.data
 def test_cu63_xs_tendl(data_dir_path: Path) -> None:
     """TENDL-2024 should have cross-section data for Cu-63(p,n)Zn-63."""
     xs_path = data_dir_path / "tendl-2024" / "xs" / "p_Cu.parquet"
