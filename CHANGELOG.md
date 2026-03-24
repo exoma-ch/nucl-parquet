@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0] — 2026-03-24
+
+### Added
+- Neutron total/elastic XS from ENDF/B-VIII.1 (`neutron_total` view, 97 elements, 214K rows) (#26)
+- Bohr energy straggling column (`straggling` [MeV² cm²/g]) in catima stopping tables (#25)
+- Rust `StoppingDb::catima_straggling()` and TS `CatimaColumns.straggling` wrappers
+
 ## [0.5.0] — 2026-03-24
 
 ### Added
