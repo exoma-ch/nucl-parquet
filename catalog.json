@@ -195,6 +195,22 @@
       "version": "latest",
       "path": "exfor/"
     },
+    "hi-xs-prod": {
+      "name": "HI-XS Production (Geant4 INCL++/ABLA07)",
+      "description": "Heavy-ion production cross-sections σ(Zf,Af,E) computed via Geant4 11.3.2 FTFP_INCLXX physics list (INCL++ cascade + ABLA07 de-excitation).  Covers 6 projectiles × 92 targets × ~60 energy points (1–1000 MeV/u).  Normalized to Tripathi (1997) total reaction XS.",
+      "source_url": "https://geant4.org/",
+      "projectiles": [
+        "c12",
+        "o16",
+        "ne20",
+        "si28",
+        "ar40",
+        "fe56"
+      ],
+      "data_type": "production_cross_sections",
+      "version": "geant4-11.3.2-inclxx",
+      "path": "hi-xs-prod/xs/"
+    },
     "hi-xs": {
       "name": "HI-XS (Tripathi 1997)",
       "description": "Heavy-ion total reaction cross-sections computed with the Tripathi (1997) semi-empirical parameterization.  Covers all projectile/target combinations Z=1-92.",
