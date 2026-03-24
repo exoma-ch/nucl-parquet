@@ -16,8 +16,8 @@ def data_dir() -> Path:
     """Resolve the nucl-parquet data directory.
 
     Resolution order:
-        1. $NUCL_PARQUET_DATA environment variable
-        2. Sibling repo checkout (../nucl-parquet relative to this package)
+        1. $NUCL_PARQUET_DATA environment variable (should point to the data/ subdir)
+        2. Repo checkout — data/ detected by presence of data/catalog.json
         3. ~/.nucl-parquet/
 
     Returns:
@@ -35,8 +35,8 @@ def data_dir() -> Path:
 
     # 2. Repo root (when installed as editable or running from checkout)
     repo_root = Path(__file__).parent.parent
-    if (repo_root / "catalog.json").exists():
-        return repo_root
+    if (repo_root / "data" / "catalog.json").exists():
+        return repo_root / "data"
 
     # 3. Home directory
     home = Path.home() / ".nucl-parquet"
