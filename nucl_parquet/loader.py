@@ -119,6 +119,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
 
+    # --- Spectrum-averaged cross-sections ---
+    _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
+
     # --- Dose constants ---
     _register_parquet(db, data_dir / "meta" / "dose_constants.parquet", "dose_constants")
 

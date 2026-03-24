@@ -154,3 +154,17 @@ def test_cu63_xs_tendl(data_dir_path: Path) -> None:
     count, max_xs = result
     assert count > 10, f"Expected >10 data points, got {count}"
     assert max_xs > 100, f"Expected max xs > 100 mb, got {max_xs}"
+
+
+@pytest.mark.data
+def test_spectrum_xs_sanity() -> None:
+    """Cu-63(n,γ)Cu-64 thermal average must be positive in ENDF/B-VIII.1."""
+    import nucl_parquet
+
+    db = nucl_parquet.connect()
+    row = db.sql(
+        "SELECT xs_avg_mb FROM spectrum_xs "
+        "WHERE target_Z=29 AND target_A=63 AND residual_Z=29 AND residual_A=64 "
+        "AND spectrum='thermal' AND library='endfb-8.1'"
+    ).fetchone()
+    assert row is not None and row[0] > 0, f"Expected positive thermal XS, got {row}"
