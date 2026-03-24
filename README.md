@@ -150,12 +150,12 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 
 | Column | Type | Description |
 |--------|------|-------------|
-| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR` |
+| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR`, `dSTAR`, `tSTAR`, `He3STAR` |
 | target_Z | Int32 | Target element Z (1–92) |
-| energy_MeV | Float64 | Projectile kinetic energy (MeV) |
+| energy_MeV | Float64 | Projectile kinetic energy (MeV, total) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
 
-NIST PSTAR/ASTAR cover 74 predefined materials. For elements not in the NIST table (e.g. Ra, Rn, Ac, Po, Fr, At, Tc, Pm), `elemental_dedx()` automatically falls back to CatIMA (Bethe-Bloch), which covers all Z=1–92.
+NIST PSTAR (proton) and ASTAR (alpha) cover 74 predefined materials. `dSTAR`, `tSTAR`, and `He3STAR` are velocity-scaled from PSTAR/ASTAR — exact for electronic stopping since Z_proj and velocity fully determine dE/dx. For elements not in the NIST table (e.g. Ra, Rn, Ac, Po, Fr, At, Tc, Pm), `elemental_dedx()` automatically falls back to CatIMA (Bethe-Bloch), which covers all Z=1–92.
 
 **Heavy-ion total reaction cross-sections** (`hi-xs/xs/{proj}_{target}.parquet`):
 
