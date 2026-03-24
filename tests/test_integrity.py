@@ -73,3 +73,33 @@ def test_cu63_xs_tendl(data_dir_path: Path) -> None:
     count, max_xs = result
     assert count > 10, f"Expected >10 data points, got {count}"
     assert max_xs > 100, f"Expected max xs > 100 mb, got {max_xs}"
+
+
+@pytest.mark.data
+def test_no_talys_sentinels(data_dir_path: Path) -> None:
+    """No xs library should contain TALYS overflow sentinel values (>1e10 mb).
+
+    TALYS emits ~1.99e38 (near FLT_MAX) when a reaction is undefined or the
+    calculation diverges.  These must be removed at ingestion; any recurrence
+    here means a new library was added without cleaning.
+    """
+    db = duckdb.connect()
+    for lib_dir in sorted(data_dir_path.iterdir()):
+        xs_dir = lib_dir / "xs"
+        if not xs_dir.is_dir():
+            continue
+        parquets = list(xs_dir.glob("*.parquet"))
+        if not parquets:
+            continue
+        glob = str(xs_dir / "*.parquet")
+        # Threshold 1e30 mb safely separates TALYS overflow sentinels
+        # (~1.99e38, near FLT_MAX) from the largest legitimate cross-sections
+        # (~90 Gb = 9e10 mb, e.g. Xe-135 neutron capture at cold energies).
+        n = db.sql(
+            f"SELECT COUNT(*) FROM read_parquet('{glob}') "
+            "WHERE xs_mb > 1e30 OR isnan(xs_mb) OR xs_mb IS NULL"
+        ).fetchone()[0]
+        assert n == 0, (
+            f"{lib_dir.name}: found {n} invalid xs_mb rows "
+            "(sentinel >1e30, NaN, or NULL) — clean at parquet level"
+        )
