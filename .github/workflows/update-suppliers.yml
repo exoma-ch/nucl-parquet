@@ -1,0 +1,67 @@
+name: Update Suppliers
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Every Monday at 06:00 UTC
+  workflow_dispatch:       # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  check-suppliers:
+    name: Check supplier URLs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Run supplier check
+        id: check
+        run: |
+          python scripts/update_suppliers.py
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet data/suppliers.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and tag
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/suppliers.json
+          git commit -m "chore(data): update supplier status $(date +%Y-%m-%d)"
+          git push
+
+      - name: Create release if status changed
+        if: steps.diff.outputs.changed == 'true' && steps.check.outputs.exit_code == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find suppliers that went down
+          BODY=$(python3 -c "
+          import json, sys
+          data = json.load(open('data/suppliers.json'))
+          down = [s for s in data if s['status'] == 'down']
+          if down:
+              print('### ⚠ Suppliers with issues\n')
+              for s in down:
+                  print(f\"- **{s['name']}** — {s['url']}\")
+          else:
+              print('All supplier URLs verified OK. Status timestamps updated.')
+          ")
+          TAG="suppliers-$(date +%Y%m%d)"
+          gh release create "$TAG" \
+            --title "Supplier data update $(date +%Y-%m-%d)" \
+            --notes "$BODY" \
+            --latest=false \
+            data/suppliers.json
