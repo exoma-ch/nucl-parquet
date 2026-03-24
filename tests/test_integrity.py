@@ -93,6 +93,19 @@ def test_spectrum_xs_thermal_cu63(data_dir_path: Path) -> None:
 
 
 @pytest.mark.data
+def test_neutron_total_xs_sanity():
+    """Cu-63 total XS at ~1 MeV should be ~4-5 barn (4000-5000 mb)."""
+    import nucl_parquet
+    db = nucl_parquet.connect()
+    row = db.sql(
+        "SELECT xs_total_mb FROM neutron_total "
+        "WHERE Z=29 AND A=63 AND energy_MeV BETWEEN 0.9 AND 1.1 "
+        "ORDER BY energy_MeV LIMIT 1"
+    ).fetchone()
+    assert row is not None and 2000 < row[0] < 15000, f"Unexpected Cu-63 total XS: {row}"
+
+
+@pytest.mark.data
 def test_no_talys_sentinels(data_dir_path: Path) -> None:
     """No xs library should contain TALYS overflow sentinel values (>1e10 mb).
 

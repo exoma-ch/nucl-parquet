@@ -125,6 +125,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- Neutron KERMA factors ---
     _register_glob(db, data_dir / "meta" / "kerma", "kerma")
 
+    # --- Neutron total/elastic cross-sections ---
+    _register_glob(db, data_dir / "meta" / "neutron_total", "neutron_total")
+
     # --- Dose constants ---
     _register_parquet(db, data_dir / "meta" / "dose_constants.parquet", "dose_constants")
 
