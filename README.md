@@ -146,16 +146,18 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | author | Utf8 | First author |
 | year | Int32 | Publication year |
 
-**Stopping powers** (`stopping/stopping.parquet`):
+**Stopping powers** (`stopping/{source}.parquet` — one file per source):
 
 | Column | Type | Description |
 |--------|------|-------------|
-| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR`, `dSTAR`, `tSTAR`, `He3STAR` |
+| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR`, `dSTAR`, `tSTAR`, `He3STAR`, `catima_C12`, … |
 | target_Z | Int32 | Target element Z (1–92) |
 | energy_MeV | Float64 | Projectile kinetic energy (MeV, total) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
 
-NIST PSTAR (proton) and ASTAR (alpha) cover 74 predefined materials. `dSTAR`, `tSTAR`, and `He3STAR` are velocity-scaled from PSTAR/ASTAR — exact for electronic stopping since Z_proj and velocity fully determine dE/dx. For elements not in the NIST table (e.g. Ra, Rn, Ac, Po, Fr, At, Tc, Pm), `elemental_dedx()` automatically falls back to CatIMA (Bethe-Bloch), which covers all Z=1–92.
+Files: `PSTAR.parquet`, `ASTAR.parquet`, `ESTAR.parquet`, `dSTAR.parquet`, `tSTAR.parquet`, `He3STAR.parquet`, and `catima_{beam}.parquet` for C12/O16/Ne20/Si28/Ar40/Fe56. The full 92×92 CaTiMA matrix (MeV/u units) lives separately at `stopping/catima/catima.parquet`.
+
+`dSTAR`, `tSTAR`, and `He3STAR` are velocity-scaled from PSTAR/ASTAR — exact for electronic stopping since Z_proj and velocity fully determine dE/dx. For elements not in the NIST table (e.g. Ra, Rn, Ac, Po, Fr, At, Tc, Pm), `elemental_dedx()` automatically falls back to CaTiMA (Bethe-Bloch), which covers all Z=1–92.
 
 **Heavy-ion total reaction cross-sections** (`hi-xs/xs/{proj}_{target}.parquet`):
 

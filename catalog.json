@@ -229,10 +229,8 @@
     },
     "stopping": {
       "path": "stopping/",
-      "files": {
-        "stopping": "stopping.parquet",
-        "catima": "catima.parquet"
-      },
+      "layout": "one file per source — stopping/{source}.parquet (e.g. PSTAR.parquet, catima_C12.parquet)",
+      "catima_full_matrix": "stopping/catima/catima.parquet",
       "sources": [
         "PSTAR",
         "ASTAR",
