@@ -1,3 +1,17 @@
+/// Sort two parallel `Vec<f64>` arrays together by the first (key) array.
+///
+/// Used when loading tabular data to ensure the key array is in ascending
+/// order before binary-search interpolation.
+pub fn sort_paired_vecs(keys: &mut Vec<f64>, values: &mut Vec<f64>) {
+    debug_assert_eq!(keys.len(), values.len());
+    let mut indices: Vec<usize> = (0..keys.len()).collect();
+    indices.sort_by(|&a, &b| keys[a].partial_cmp(&keys[b]).unwrap());
+    let sorted_keys: Vec<f64> = indices.iter().map(|&i| keys[i]).collect();
+    let sorted_vals: Vec<f64> = indices.iter().map(|&i| values[i]).collect();
+    *keys = sorted_keys;
+    *values = sorted_vals;
+}
+
 /// Log-log interpolation on sorted energy/value arrays.
 ///
 /// Both arrays must be the same length and sorted by energy (ascending).

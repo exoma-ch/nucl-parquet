@@ -11,6 +11,9 @@
 //! - **EADL**: Atomic relaxation (fluorescence X-ray and Auger transition probabilities)
 //! - **EEDL**: Electron cross-sections (elastic, bremsstrahlung, ionization)
 //! - **XCOM**: Total mass attenuation coefficients (µ/ρ, µ_en/ρ)
+//! - **Stopping**: NIST PSTAR/ASTAR/ESTAR and CatIMA mass stopping power tables
+//! - **Meta**: Isotopic abundances, radioactive decay chains, and dose rate constants
+//! - **XS**: Nuclear reaction cross-sections (TENDL and other evaluated libraries)
 //!
 //! ## Usage
 //!
@@ -30,12 +33,18 @@
 
 mod error;
 mod interp;
+mod meta;
 mod photon;
 mod relaxation;
+mod stopping;
+mod xs;
 
 pub use error::Error;
+pub use meta::{AbundanceEntry, AbundancesDb, DecayDb, DecayEntry, DoseDb};
 pub use photon::{PhotonDb, Process};
 pub use relaxation::{RelaxationDb, Transition, TransitionType};
+pub use stopping::StoppingDb;
+pub use xs::{CrossSectionDb, XsEntry};
 
 /// Result type for nucl-parquet operations.
 pub type Result<T> = std::result::Result<T, Error>;
