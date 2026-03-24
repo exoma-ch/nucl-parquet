@@ -56,6 +56,15 @@ db.sql("""
     SELECT energy_MeV, energy_MeV/12 AS energy_MeV_u, xs_mb
     FROM hi_xs WHERE target_Z=6
 """)  # c12 on C — typical carbon therapy channel
+
+# Heavy-ion production cross-sections (Geant4 INCL++/ABLA07)
+# σ(Zf, Af, E) per residual isotope — 6 projectiles × 92 targets × ~60 energies
+db.sql("""
+    SELECT residual_Z, residual_A, energy_MeV, xs_mb
+    FROM hi_xs_prod
+    WHERE target_Z=29 AND library='hi-xs-prod'
+    ORDER BY residual_Z, residual_A, energy_MeV
+""")  # all C-12 fragmentation products on Cu
 ```
 
 ### Data resolution
@@ -105,6 +114,7 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | [IAEA-Medical](https://www-nds.iaea.org/medical/) | p, d | IAEA |
 | [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS (experimental) |
 | [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | p, ⁴He, ¹²C, ¹⁶O, ²⁰Ne, ²⁸Si, ⁴⁰Ar, ⁴⁰Ca, ⁵⁶Fe, ⁵⁸Ni, ¹³²Xe, ²⁰⁸Pb | semi-empirical (Tripathi 1997) |
+| HI-XS Production (Geant4 INCL++/ABLA07) | ¹²C, ¹⁶O, ²⁰Ne, ²⁸Si, ⁴⁰Ar, ⁵⁶Fe | Geant4 11.3.2 Monte Carlo |
 
 ## Parquet schemas
 
@@ -145,6 +155,8 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | energy_MeV | Float64 | Projectile kinetic energy (MeV) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
 
+NIST PSTAR/ASTAR cover 74 predefined materials. For elements not in the NIST table (e.g. Ra, Rn, Ac, Po, Fr, At, Tc, Pm), `elemental_dedx()` automatically falls back to CatIMA (Bethe-Bloch), which covers all Z=1–92.
+
 **Heavy-ion total reaction cross-sections** (`hi-xs/xs/{proj}_{target}.parquet`):
 
 Tripathi (1997) semi-empirical parameterization — total reaction cross-sections for all 12 projectiles against all 92 target elements.  Energy stored as total MeV for the projectile; 1–1000 MeV/u range, 60 log-spaced points.
@@ -155,6 +167,21 @@ Tripathi (1997) semi-empirical parameterization — total reaction cross-section
 | target_A | Int32 | Target mass number (most-abundant stable isotope) |
 | energy_MeV | Float64 | Total projectile kinetic energy (MeV) |
 | xs_mb | Float64 | Total reaction cross-section (mb) |
+
+**Heavy-ion production cross-sections** (`hi-xs-prod/xs/{proj}_{target}.parquet`):
+
+Geant4 11.3.2 `FTFP_INCLXX` physics list (INCL++ cascade + ABLA07 de-excitation) — per-isotope fragment production cross-sections σ(Zf,Af,E) in mb, normalized to Tripathi (1997) σ_R.  Covers C-12, O-16, Ne-20, Si-28, Ar-40, Fe-56 projectiles against all 92 target elements, ~60 log-spaced energy points from 1–1000 MeV/u.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| proj_Z | Int32 | Projectile atomic number |
+| proj_A | Int32 | Projectile mass number |
+| target_Z | Int32 | Target atomic number (1–92) |
+| target_A | Int32 | Target mass number (most-abundant stable isotope) |
+| residual_Z | Int32 | Fragment atomic number |
+| residual_A | Int32 | Fragment mass number |
+| energy_MeV | Float64 | Mean actual reaction vertex energy (MeV total) |
+| xs_mb | Float64 | Production cross-section (mb) |
 
 **Heavy-ion stopping powers** (`stopping/catima.parquet`):
 
