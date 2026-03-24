@@ -3,7 +3,7 @@
 Fetches total mass stopping power [MeV cm2/g] for all 92 elements (Z=1-92)
 from the NIST ESTAR database (https://physics.nist.gov/PhysRefData/Star/Text/ESTAR.html).
 
-Output: stopping/stopping.parquet  (appends ESTAR rows; preserves PSTAR/ASTAR)
+Output: stopping/ESTAR.parquet  (one file per source; idempotent)
 
 Usage:
     uv run python -m nucl_parquet.build_stopping
@@ -60,31 +60,16 @@ def _parse_estar_html(html: str) -> list[tuple[float, float]]:
 
 
 def build(data_dir: Path | None = None) -> None:
-    """Fetch ESTAR data and append to stopping/stopping.parquet."""
+    """Fetch ESTAR data and write to stopping/ESTAR.parquet."""
     if data_dir is None:
         data_dir = _resolve_data_dir()
     data_dir = Path(data_dir)
 
     import polars as pl
 
-    out_path = data_dir / "stopping" / "stopping.parquet"
-
-    # Load existing stopping data to preserve PSTAR/ASTAR rows
-    if out_path.exists():
-        existing = pl.read_parquet(out_path)
-        # Drop any stale ESTAR rows so a re-run is idempotent
-        existing = existing.filter(pl.col("source") != "ESTAR")
-    else:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        existing = pl.DataFrame(
-            {"source": [], "target_Z": [], "energy_MeV": [], "dedx": []},
-            schema={
-                "source": pl.Utf8,
-                "target_Z": pl.Int32,
-                "energy_MeV": pl.Float64,
-                "dedx": pl.Float64,
-            },
-        )
+    stopping_dir = data_dir / "stopping"
+    stopping_dir.mkdir(parents=True, exist_ok=True)
+    out_path = stopping_dir / "ESTAR.parquet"
 
     # --- Fetch ESTAR for Z=1..92 ---
     # NIST matno matches atomic number directly (001=H, 002=He, ..., 092=U)
@@ -119,11 +104,10 @@ def build(data_dir: Path | None = None) -> None:
             "energy_MeV": pl.Series(energies, dtype=pl.Float64),
             "dedx": pl.Series(dedxs, dtype=pl.Float64),
         }
-    )
+    ).sort("target_Z", "energy_MeV")
 
-    combined = pl.concat([existing, estar_df]).sort("source", "target_Z", "energy_MeV")
-    combined.write_parquet(out_path, compression="zstd")
-    print(f"\nWrote {len(combined)} rows ({len(estar_df)} ESTAR) to {out_path}")
+    estar_df.write_parquet(out_path, compression="zstd")
+    print(f"\nWrote {len(estar_df)} rows to {out_path}")
 
 
 if __name__ == "__main__":

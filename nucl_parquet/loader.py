@@ -19,9 +19,6 @@ Usage:
     # Gamma coincidences:
     db.sql("SELECT * FROM coincidences WHERE Z=27 AND A=60")
 
-    # Spectrum-averaged neutron XS (thermal / epithermal / fast):
-    db.sql("SELECT * FROM spectrum_xs WHERE target_Z=29 AND target_A=63 AND spectrum='thermal'")
-
     # Decay chain (recursive):
     db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
 """
@@ -109,8 +106,11 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_parquet(db, data_dir / "meta" / "elements.parquet", "elements")
 
     # --- Stopping powers ---
-    _register_parquet(db, data_dir / "stopping" / "stopping.parquet", "stopping")
-    _register_parquet(db, data_dir / "stopping" / "catima.parquet", "catima_stopping")
+    # Per-source files: stopping/PSTAR.parquet, ASTAR.parquet, ESTAR.parquet,
+    # dSTAR.parquet, tSTAR.parquet, He3STAR.parquet, catima_*.parquet
+    # catima.parquet (92×92 MeV/u table, different schema) lives in stopping/catima/
+    _register_glob(db, data_dir / "stopping", "stopping")
+    _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
 
     # --- ENSDF data ---
     _register_parquet(db, data_dir / "meta" / "ensdf" / "ground_states.parquet", "ground_states")
@@ -119,7 +119,7 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
 
-    # --- Spectrum-averaged neutron cross-sections ---
+    # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
 
     # --- Dose constants ---

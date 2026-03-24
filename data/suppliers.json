@@ -1,0 +1,82 @@
+[
+  {
+    "name": "Isoflex USA",
+    "url": "https://www.isoflex.com/products/stable-isotopes",
+    "note": "Major enriched isotope supplier",
+    "type": "enriched_isotopes",
+    "last_checked": "2026-03-20",
+    "status": "ok"
+  },
+  {
+    "name": "Trace Sciences",
+    "url": "https://www.tracesciences.com",
+    "note": "Enriched metals, oxides",
+    "type": "enriched_isotopes",
+    "last_checked": "2026-03-20",
+    "status": "ok"
+  },
+  {
+    "name": "ORNL / DOE NIDC",
+    "url": "https://www.isotopes.gov",
+    "note": "US national isotope program",
+    "type": "national_program",
+    "last_checked": "2026-03-20",
+    "status": "ok"
+  },
+  {
+    "name": "Urenco Stable Isotopes",
+    "url": "https://www.urenco.com/stableisotopes",
+    "note": "Centrifuge-enriched stable isotopes",
+    "type": "enriched_isotopes",
+    "last_checked": "2026-03-20",
+    "status": "down"
+  },
+  {
+    "name": "Euriso-top",
+    "url": "https://www.eurisotop.com",
+    "note": "European enriched isotope supplier",
+    "type": "enriched_isotopes",
+    "last_checked": "2026-03-20",
+    "status": "ok"
+  },
+  {
+    "name": "Cambridge Isotope Laboratories",
+    "url": "https://www.isotope.com",
+    "note": "Labeled compounds and enriched materials",
+    "type": "labeled_compounds",
+    "last_checked": "2026-03-20",
+    "status": "ok"
+  },
+  {
+    "name": "ROSATOM (JSC Isotope)",
+    "url": "https://www.isotop.ru/en/",
+    "note": "Russian national isotope producer",
+    "type": "national_program",
+    "last_checked": "2026-03-20",
+    "status": "down"
+  },
+  {
+    "name": "Bruce Power Medical Isotopes",
+    "url": "https://www.brucepower.com/isotopes/",
+    "note": "Lu-177 reactor production (Canada)",
+    "type": "reactor_production",
+    "last_checked": "2026-03-20",
+    "status": "ok"
+  },
+  {
+    "name": "IRE ELiT (Belgium)",
+    "url": "https://www.ire-elit.com",
+    "note": "European radioisotope producer (Mo-99, I-131, Lu-177)",
+    "type": "radioisotope_producer",
+    "last_checked": "2026-03-20",
+    "status": "down"
+  },
+  {
+    "name": "NorthStar Medical Radioisotopes",
+    "url": "https://www.northstarnm.com",
+    "note": "Non-reactor Mo-99/Tc-99m production (US)",
+    "type": "radioisotope_producer",
+    "last_checked": "2026-03-20",
+    "status": "ok"
+  }
+]

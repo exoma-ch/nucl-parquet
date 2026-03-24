@@ -247,17 +247,23 @@
     },
     "stopping": {
       "path": "stopping/",
-      "files": {
-        "stopping": "stopping.parquet",
-        "catima": "catima.parquet"
-      },
+      "layout": "one file per source — stopping/{source}.parquet (e.g. PSTAR.parquet, catima_C12.parquet)",
+      "catima_full_matrix": "stopping/catima/catima.parquet",
       "sources": [
         "PSTAR",
         "ASTAR",
         "ESTAR",
-        "ICRU73",
-        "MSTAR"
+        "dSTAR",
+        "tSTAR",
+        "He3STAR",
+        "catima_C12",
+        "catima_O16",
+        "catima_Ne20",
+        "catima_Si28",
+        "catima_Ar40",
+        "catima_Fe56"
       ],
+      "sources_note": "dSTAR/tSTAR/He3STAR are velocity-scaled from PSTAR/ASTAR (exact for electronic stopping). catima_* are pycatima tables for common heavy-ion beams.",
       "catima": {
         "proj_Z_range": [
           1,
