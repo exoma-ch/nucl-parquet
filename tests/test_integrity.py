@@ -36,10 +36,10 @@ def test_co60_half_life(data_dir_path: Path) -> None:
 def test_proton_stopping_cu(data_dir_path: Path) -> None:
     """PSTAR stopping power for protons in Cu at 10 MeV should be ~30-60 MeV cm2/g."""
     db = duckdb.connect()
-    path = data_dir_path / "stopping" / "stopping.parquet"
+    path = data_dir_path / "stopping" / "PSTAR.parquet"
     result = db.sql(
         f"SELECT dedx FROM read_parquet('{path}') "
-        "WHERE source='PSTAR' AND target_Z=29 "
+        "WHERE target_Z=29 "
         "AND energy_MeV BETWEEN 9.0 AND 11.0 "
         "ORDER BY ABS(energy_MeV - 10.0) LIMIT 1"
     ).fetchone()
@@ -119,18 +119,20 @@ def test_hi_xs_prod_coverage(data_dir_path: Path) -> None:
 def test_light_ion_stopping_velocity_scaling(data_dir_path: Path) -> None:
     """dSTAR/tSTAR/He3STAR should match PSTAR/ASTAR at the same velocity."""
     db = duckdb.connect()
-    path = data_dir_path / "stopping" / "stopping.parquet"
-    if not path.exists():
-        pytest.skip("stopping.parquet not present")
+    stopping_dir = data_dir_path / "stopping"
+    pstar_path = stopping_dir / "PSTAR.parquet"
+    dstar_path = stopping_dir / "dSTAR.parquet"
+    if not pstar_path.exists() or not dstar_path.exists():
+        pytest.skip("PSTAR.parquet or dSTAR.parquet not present")
 
     # Deuteron at 20 MeV == proton at 10 MeV (same velocity)
     p10 = db.sql(
-        f"SELECT dedx FROM read_parquet('{path}') "
-        "WHERE source='PSTAR' AND target_Z=29 AND energy_MeV=10.0"
+        f"SELECT dedx FROM read_parquet('{pstar_path}') "
+        "WHERE target_Z=29 AND energy_MeV=10.0"
     ).fetchone()
     d20 = db.sql(
-        f"SELECT dedx FROM read_parquet('{path}') "
-        "WHERE source='dSTAR' AND target_Z=29 AND energy_MeV=20.0"
+        f"SELECT dedx FROM read_parquet('{dstar_path}') "
+        "WHERE target_Z=29 AND energy_MeV=20.0"
     ).fetchone()
     assert p10 is not None and d20 is not None, "Missing PSTAR/dSTAR Cu data"
     assert p10[0] == pytest.approx(d20[0], rel=1e-9), (
