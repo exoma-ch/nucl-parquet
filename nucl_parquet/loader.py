@@ -122,6 +122,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
 
+    # --- Neutron KERMA factors ---
+    _register_glob(db, data_dir / "meta" / "kerma", "kerma")
+
     # --- Dose constants ---
     _register_parquet(db, data_dir / "meta" / "dose_constants.parquet", "dose_constants")
 
