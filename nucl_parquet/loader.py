@@ -19,6 +19,9 @@ Usage:
     # Gamma coincidences:
     db.sql("SELECT * FROM coincidences WHERE Z=27 AND A=60")
 
+    # Spectrum-averaged neutron XS (thermal / epithermal / fast):
+    db.sql("SELECT * FROM spectrum_xs WHERE target_Z=29 AND target_A=63 AND spectrum='thermal'")
+
     # Decay chain (recursive):
     db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
 """
@@ -115,6 +118,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "levels", "ensdf_levels")
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
+
+    # --- Spectrum-averaged neutron cross-sections ---
+    _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
 
     # --- Dose constants ---
     _register_parquet(db, data_dir / "meta" / "dose_constants.parquet", "dose_constants")

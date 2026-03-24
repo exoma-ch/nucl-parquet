@@ -76,6 +76,23 @@ def test_cu63_xs_tendl(data_dir_path: Path) -> None:
 
 
 @pytest.mark.data
+def test_spectrum_xs_thermal_cu63(data_dir_path: Path) -> None:
+    """Cu-63(n,γ) thermal spectrum-averaged XS from activation libraries should be ~3500–5500 mb."""
+    db = duckdb.connect()
+    path = data_dir_path / "meta" / "spectrum_xs.parquet"
+    if not path.exists():
+        pytest.skip("spectrum_xs.parquet not built")
+    result = db.sql(
+        f"SELECT xs_avg_mb FROM read_parquet('{path}') "
+        "WHERE target_Z=29 AND target_A=63 AND residual_Z=29 AND residual_A=64 "
+        "AND spectrum='thermal' LIMIT 1"
+    ).fetchone()
+    if result is None:
+        pytest.skip("Cu-63(n,γ) thermal XS not available (no activation library data)")
+    assert 3000 < result[0] < 6000, f"Unexpected thermal XS: {result[0]} mb"
+
+
+@pytest.mark.data
 def test_no_talys_sentinels(data_dir_path: Path) -> None:
     """No xs library should contain TALYS overflow sentinel values (>1e10 mb).
 

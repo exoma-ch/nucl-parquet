@@ -240,8 +240,10 @@
       "files": {
         "abundances": "abundances.parquet",
         "decay": "decay.parquet",
-        "elements": "elements.parquet"
-      }
+        "elements": "elements.parquet",
+        "spectrum_xs": "spectrum_xs.parquet"
+      },
+      "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs."
     },
     "stopping": {
       "path": "stopping/",
