@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Float64Array, Int32Array, StringArray};
+use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 /// Type of atomic relaxation transition.
@@ -77,15 +77,12 @@ impl RelaxationDb {
                 let z_col = batch
                     .column_by_name("Z")
                     .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-                let vacancy_col = batch
-                    .column_by_name("vacancy_shell")
-                    .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-                let filling_col = batch
-                    .column_by_name("filling_shell")
-                    .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-                let type_col = batch
-                    .column_by_name("transition_type")
-                    .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+                let vac_col_ref = batch.column_by_name("vacancy_shell");
+                let vac_values = vac_col_ref.and_then(|c| crate::interp::as_string_array(c));
+                let fill_col_ref = batch.column_by_name("filling_shell");
+                let fill_values = fill_col_ref.and_then(|c| crate::interp::as_string_array(c));
+                let type_col_ref = batch.column_by_name("transition_type");
+                let type_values = type_col_ref.and_then(|c| crate::interp::as_string_array(c));
                 let energy_col = batch
                     .column_by_name("energy_keV")
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
@@ -98,9 +95,9 @@ impl RelaxationDb {
 
                 if let (Some(z), Some(vac), Some(fill), Some(tt), Some(e), Some(p), Some(edge)) = (
                     z_col,
-                    vacancy_col,
-                    filling_col,
-                    type_col,
+                    vac_values,
+                    fill_values,
+                    type_values,
                     energy_col,
                     prob_col,
                     edge_col,
@@ -110,9 +107,9 @@ impl RelaxationDb {
                             z_val = Some(z.value(i) as u8);
                         }
                         trans_list.push(Transition {
-                            vacancy_shell: vac.value(i).to_string(),
-                            filling_shell: fill.value(i).to_string(),
-                            transition_type: match tt.value(i) {
+                            vacancy_shell: vac[i].unwrap_or("").to_string(),
+                            filling_shell: fill[i].unwrap_or("").to_string(),
+                            transition_type: match tt[i].unwrap_or("") {
                                 "radiative" => TransitionType::Radiative,
                                 _ => TransitionType::Auger,
                             },

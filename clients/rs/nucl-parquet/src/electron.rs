@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Float64Array, Int32Array, StringArray};
+use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::error::Error;
@@ -73,20 +73,19 @@ impl ElectronDb {
                 let e_col = batch
                     .column_by_name("energy_MeV")
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-                let proc_col = batch
-                    .column_by_name("process")
-                    .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+                let proc_col_ref = batch.column_by_name("process");
+                let proc_values = proc_col_ref.and_then(|c| crate::interp::as_string_array(c));
                 let xs_col = batch
                     .column_by_name("xs_barns")
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
-                if let (Some(z), Some(e), Some(proc), Some(xs)) = (z_col, e_col, proc_col, xs_col)
+                if let (Some(z), Some(e), Some(proc), Some(xs)) = (z_col, e_col, proc_values, xs_col)
                 {
                     for i in 0..batch.num_rows() {
                         if z_val.is_none() {
                             z_val = Some(z.value(i) as u8);
                         }
-                        let proc_str = proc.value(i);
+                        let proc_str = match proc[i] { Some(s) => s, None => continue };
                         let process = match proc_str {
                             "elastic" => Some(ElectronProcess::Elastic),
                             "bremsstrahlung" => Some(ElectronProcess::Bremsstrahlung),

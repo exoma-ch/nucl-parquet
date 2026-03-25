@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Array, Float64Array, Int32Array, StringArray};
+use arrow::array::{Array, Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 
@@ -53,9 +53,8 @@ impl AbundancesDb {
             let a_col = batch
                 .column_by_name("A")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let sym_col = batch
-                .column_by_name("symbol")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let sym_col_ref = batch.column_by_name("symbol");
+            let sym_values = sym_col_ref.and_then(|c| crate::interp::as_string_array(c));
             let ab_col = batch
                 .column_by_name("abundance")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
@@ -64,13 +63,13 @@ impl AbundancesDb {
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
             if let (Some(z), Some(a), Some(sym), Some(ab), Some(mass)) =
-                (z_col, a_col, sym_col, ab_col, mass_col)
+                (z_col, a_col, sym_values, ab_col, mass_col)
             {
                 for i in 0..batch.num_rows() {
                     let entry = AbundanceEntry {
                         z: z.value(i) as u32,
                         a: a.value(i) as u32,
-                        symbol: sym.value(i).to_string(),
+                        symbol: sym[i].unwrap_or("").to_string(),
                         abundance: ab.value(i),
                         atomic_mass: mass.value(i),
                     };
@@ -152,24 +151,21 @@ impl DecayDb {
             let a_col = batch
                 .column_by_name("A")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let state_col = batch
-                .column_by_name("state")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let state_col_ref = batch.column_by_name("state");
+            let state_values = state_col_ref.and_then(|c| crate::interp::as_string_array(c));
             let hl_col = batch
                 .column_by_name("half_life_s")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-            let mode_col = batch
-                .column_by_name("decay_mode")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let mode_col_ref = batch.column_by_name("decay_mode");
+            let mode_values = mode_col_ref.and_then(|c| crate::interp::as_string_array(c));
             let dz_col = batch
                 .column_by_name("daughter_Z")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
             let da_col = batch
                 .column_by_name("daughter_A")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let ds_col = batch
-                .column_by_name("daughter_state")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let ds_col_ref = batch.column_by_name("daughter_state");
+            let ds_values = ds_col_ref.and_then(|c| crate::interp::as_string_array(c));
             let br_col = batch
                 .column_by_name("branching")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
@@ -185,7 +181,7 @@ impl DecayDb {
                 Some(ds),
                 Some(br),
             ) = (
-                z_col, a_col, state_col, hl_col, mode_col, dz_col, da_col, ds_col, br_col,
+                z_col, a_col, state_values, hl_col, mode_values, dz_col, da_col, ds_values, br_col,
             ) {
                 for i in 0..batch.num_rows() {
                     let z_val = z.value(i) as u32;
@@ -193,13 +189,13 @@ impl DecayDb {
                     let entry = DecayEntry {
                         z: z_val,
                         a: a_val,
-                        state: state.value(i).to_string(),
+                        state: state[i].unwrap_or("").to_string(),
                         half_life_s: if hl.is_null(i) {
                             None
                         } else {
                             Some(hl.value(i))
                         },
-                        decay_mode: mode.value(i).to_string(),
+                        decay_mode: mode[i].unwrap_or("").to_string(),
                         daughter_z: if dz.is_null(i) {
                             None
                         } else {
@@ -210,7 +206,7 @@ impl DecayDb {
                         } else {
                             Some(da.value(i) as u32)
                         },
-                        daughter_state: ds.value(i).to_string(),
+                        daughter_state: ds[i].unwrap_or("").to_string(),
                         branching: br.value(i),
                     };
                     data.entry((z_val, a_val)).or_default().push(entry);
@@ -269,17 +265,16 @@ impl DoseDb {
             let a_col = batch
                 .column_by_name("A")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let state_col = batch
-                .column_by_name("state")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let state_col_ref = batch.column_by_name("state");
+            let state_values = state_col_ref.and_then(|c| crate::interp::as_string_array(c));
             let k_col = batch
                 .column_by_name("k_uSv_m2_MBq_h")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
-            if let (Some(z), Some(a), Some(state), Some(k)) = (z_col, a_col, state_col, k_col) {
+            if let (Some(z), Some(a), Some(state), Some(k)) = (z_col, a_col, state_values, k_col) {
                 for i in 0..batch.num_rows() {
                     data.insert(
-                        (z.value(i) as u32, a.value(i) as u32, state.value(i).to_string()),
+                        (z.value(i) as u32, a.value(i) as u32, state[i].unwrap_or("").to_string()),
                         k.value(i),
                     );
                 }

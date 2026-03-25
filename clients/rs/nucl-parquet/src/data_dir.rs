@@ -149,9 +149,16 @@ impl DataDir {
             .map_err(|e| Error::Download(format!("zstd: {e}")))?;
 
         let mut archive = tar::Archive::new(decoder);
-        archive
-            .unpack(&cache)
-            .map_err(|e| Error::Download(format!("tar: {e}")))?;
+        // Filter out macOS resource fork files (._*) that may be in the archive
+        for entry in archive.entries().map_err(|e| Error::Download(format!("tar: {e}")))? {
+            let mut entry = entry.map_err(|e| Error::Download(format!("tar: {e}")))?;
+            let path = entry.path().map_err(|e| Error::Download(format!("tar: {e}")))?;
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with("._") {
+                continue;
+            }
+            entry.unpack_in(&cache).map_err(|e| Error::Download(format!("tar: {e}")))?;
+        }
 
         eprintln!("Data extracted to {}", cache.display());
         Ok(())

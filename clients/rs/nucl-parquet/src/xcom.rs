@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Float64Array, Int32Array, StringArray};
+use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::interp::{log_log_interp, sort_paired_vecs};
@@ -174,9 +174,8 @@ impl XcomDb {
         for batch in reader {
             let batch = batch?;
 
-            let mat_col = batch
-                .column_by_name("material")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let mat_col_ref = batch.column_by_name("material");
+            let mat_values = mat_col_ref.and_then(|c| crate::interp::as_string_array(c));
             let e_col = batch
                 .column_by_name("energy_MeV")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
@@ -187,9 +186,9 @@ impl XcomDb {
                 .column_by_name("mu_en_rho_cm2_g")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
-            if let (Some(mat), Some(e), Some(mr), Some(men)) = (mat_col, e_col, mr_col, men_col) {
+            if let (Some(mat), Some(e), Some(mr), Some(men)) = (mat_values, e_col, mr_col, men_col) {
                 for i in 0..batch.num_rows() {
-                    let name = mat.value(i).to_string();
+                    let name = mat[i].unwrap_or("").to_string();
                     let ev = e.value(i);
                     let entry_mr = mu_rho.entry(name.clone()).or_default();
                     entry_mr.0.push(ev);

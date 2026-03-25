@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Float64Array, Int32Array, StringArray};
+use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::error::Error;
@@ -199,6 +199,10 @@ impl PhotonDb {
             if path.extension().and_then(|e| e.to_str()) != Some("parquet") {
                 continue;
             }
+            // Skip macOS resource fork files (._*.parquet)
+            if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("._")) {
+                continue;
+            }
 
             let file = fs::File::open(&path)?;
             let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
@@ -241,9 +245,8 @@ impl PhotonDb {
                     .ok_or_else(|| Error::MissingColumn {
                         file: path.clone(),
                         column: "process".into(),
-                    })?
-                    .as_any()
-                    .downcast_ref::<StringArray>()
+                    })?;
+                let proc_values = crate::interp::as_string_array(proc_col)
                     .ok_or_else(|| Error::MissingColumn {
                         file: path.clone(),
                         column: "process (wrong type)".into(),
@@ -267,7 +270,7 @@ impl PhotonDb {
                         z_val = Some(z_col.value(i) as u8);
                     }
 
-                    let proc_str = proc_col.value(i);
+                    let proc_str = match proc_values[i] { Some(s) => s, None => continue };
                     if let Some(process) = Process::from_str(proc_str) {
                         let entry = process_data.entry(process).or_default();
                         entry.0.push(e_col.value(i));
@@ -305,6 +308,9 @@ impl PhotonDb {
             let entry = entry?;
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("parquet") {
+                continue;
+            }
+            if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("._")) {
                 continue;
             }
 

@@ -1,6 +1,6 @@
 [package]
 name = "nucl-parquet"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 description = "Nuclear data as Parquet — zero-copy cross-section lookups for Monte Carlo transport"
 license = "MIT"
@@ -13,7 +13,7 @@ default = []
 fetch = ["dep:reqwest", "dep:tar", "dep:zstd"]
 
 [dependencies]
-parquet = { version = "54", default-features = false, features = ["arrow"] }
+parquet = { version = "54", default-features = false, features = ["arrow", "zstd"] }
 arrow = { version = "54", default-features = false, features = ["ffi"] }
 thiserror = "2"
 reqwest = { version = "0.12", features = ["blocking", "native-tls"], optional = true }

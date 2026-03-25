@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Float64Array, Int32Array, StringArray};
+use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::error::Error;
@@ -102,9 +102,8 @@ impl StoppingDb {
             for batch in reader {
                 let batch = batch?;
 
-                let source_col = batch
-                    .column_by_name("source")
-                    .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+                let src_col_ref = batch.column_by_name("source");
+                let src_values = src_col_ref.and_then(|c| crate::interp::as_string_array(c));
                 let z_col = batch
                     .column_by_name("target_Z")
                     .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
@@ -115,9 +114,9 @@ impl StoppingDb {
                     .column_by_name("dedx")
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
-                if let (Some(src), Some(z), Some(e), Some(s)) = (source_col, z_col, e_col, s_col) {
+                if let (Some(src), Some(z), Some(e), Some(s)) = (src_values, z_col, e_col, s_col) {
                     for i in 0..batch.num_rows() {
-                        let key = (src.value(i).to_string(), z.value(i) as u32);
+                        let key = (src[i].unwrap_or("").to_string(), z.value(i) as u32);
                         let entry = map.entry(key).or_default();
                         entry.0.push(e.value(i));
                         entry.1.push(s.value(i));

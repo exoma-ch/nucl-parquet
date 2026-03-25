@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Float64Array, Int32Array, StringArray};
+use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::error::Error;
@@ -65,9 +65,8 @@ impl CrossSectionDb {
             let ra_col = batch
                 .column_by_name("residual_A")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let st_col = batch
-                .column_by_name("state")
-                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let st_col_ref = batch.column_by_name("state");
+            let st_values = st_col_ref.and_then(|c| crate::interp::as_string_array(c));
             let e_col = batch
                 .column_by_name("energy_MeV")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
@@ -76,14 +75,14 @@ impl CrossSectionDb {
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
             if let (Some(ta), Some(rz), Some(ra), Some(st), Some(e), Some(xs)) =
-                (ta_col, rz_col, ra_col, st_col, e_col, xs_col)
+                (ta_col, rz_col, ra_col, st_values, e_col, xs_col)
             {
                 for i in 0..batch.num_rows() {
                     let key = (
                         ta.value(i) as u32,
                         rz.value(i) as u32,
                         ra.value(i) as u32,
-                        st.value(i).to_string(),
+                        st[i].unwrap_or("").to_string(),
                     );
                     let entry = reactions.entry(key).or_default();
                     entry.0.push(e.value(i));

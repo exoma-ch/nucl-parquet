@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use arrow::array::{Float64Array, Int32Array, StringArray};
+use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::error::Error;
@@ -66,9 +66,8 @@ impl SubshellPeDb {
                 let e_col = batch
                     .column_by_name("energy_MeV")
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-                let shell_col = batch
-                    .column_by_name("subshell")
-                    .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+                let shell_col_ref = batch.column_by_name("subshell");
+                let shell_values = shell_col_ref.and_then(|c| crate::interp::as_string_array(c));
                 let xs_col = batch
                     .column_by_name("xs_barns")
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
@@ -77,13 +76,13 @@ impl SubshellPeDb {
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
                 if let (Some(z), Some(e), Some(shell), Some(xs), Some(edge)) =
-                    (z_col, e_col, shell_col, xs_col, edge_col)
+                    (z_col, e_col, shell_values, xs_col, edge_col)
                 {
                     for i in 0..batch.num_rows() {
                         if z_val.is_none() {
                             z_val = Some(z.value(i) as u8);
                         }
-                        let shell_name = shell.value(i).to_string();
+                        let shell_name = shell[i].unwrap_or("").to_string();
                         let entry = shell_data
                             .entry(shell_name)
                             .or_insert_with(|| (Vec::new(), Vec::new(), edge.value(i)));
