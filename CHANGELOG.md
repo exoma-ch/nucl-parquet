@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0] — 2026-03-25
+
+### Added
+- Rust crate: `DataDir` with auto-download + cache from GitHub Releases (#31)
+- Feature-gated `fetch` adds `reqwest`/`tar`/`zstd` for one-line data bootstrapping
+- `DataDir::ensure()` downloads ~383 MB data archive to `~/.nucl-parquet/v{VERSION}/`
+- Convenience methods: `data.photon_db()`, `data.stopping_db()`, etc.
+- Data archive attached to GitHub releases as `nucl-parquet-data-v{VERSION}.tar.zst`
+
 ## [0.7.0] — 2026-03-25
 
 ### Added

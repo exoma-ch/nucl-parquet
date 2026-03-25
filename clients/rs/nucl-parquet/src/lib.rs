@@ -30,7 +30,16 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! ## Quick start (with `fetch` feature)
+//!
+//! ```ignore
+//! // requires `fetch` feature
+//! let data = nucl_parquet::DataDir::ensure()?;
+//! let photon = data.photon_db()?;
+//! ```
 
+mod data_dir;
 mod electron;
 mod error;
 mod interp;
@@ -42,6 +51,7 @@ mod subshell_pe;
 mod xcom;
 mod xs;
 
+pub use data_dir::DataDir;
 pub use electron::{ElectronDb, ElectronProcess};
 pub use error::Error;
 pub use meta::{AbundanceEntry, AbundancesDb, DecayDb, DecayEntry, DoseDb};

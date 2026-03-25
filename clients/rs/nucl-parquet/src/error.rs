@@ -23,4 +23,10 @@ pub enum Error {
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("nucl-parquet data not found; set $NUCL_PARQUET_DATA or enable the `fetch` feature")]
+    DataNotFound,
+
+    #[error("download failed: {0}")]
+    Download(String),
 }
