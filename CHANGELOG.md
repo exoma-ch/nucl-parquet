@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1] — 2026-03-25
+
+### Fixed
+- Rust crate: enable parquet `zstd` codec (data files use zstd compression) (#32)
+- Rust crate: handle `LargeStringArray` (LargeUtf8) alongside `StringArray` in all loaders (#33)
+- Filter macOS `._` resource fork files in directory scans and tar extraction
+
 ## [0.8.0] — 2026-03-25
 
 ### Added
