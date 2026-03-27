@@ -232,20 +232,26 @@ def build(data_dir: Path | None = None) -> None:
         out_n_lines.append(int(mask.sum()))
         out_source.append("ensdf")
 
-    # Also add pure-beta emitters with k=0 from ground_states
+    # Also add pure-beta emitters with k=0 from nuclides (or ground_states fallback)
+    nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
     gs_path = data_dir / "meta" / "ensdf" / "ground_states.parquet"
-    if gs_path.exists():
-        gs = db.sql(f"""
-            SELECT DISTINCT Z, A FROM read_parquet('{gs_path}')
+    backfill_path = nuclides_path if nuclides_path.exists() else gs_path
+    if backfill_path.exists():
+        backfill_sql = f"""
+            SELECT DISTINCT Z, A, state FROM read_parquet('{backfill_path}')
             WHERE half_life_s IS NOT NULL AND half_life_s > 0 AND Z > 0
-        """).fetchnumpy()
+        """ if backfill_path == nuclides_path else f"""
+            SELECT DISTINCT Z, A, '' AS state FROM read_parquet('{backfill_path}')
+            WHERE half_life_s IS NOT NULL AND half_life_s > 0 AND Z > 0
+        """
+        gs = db.sql(backfill_sql).fetchnumpy()
         existing = {(z, a, s) for z, a, s in zip(out_Z, out_A, out_state)}
-        for z, a in zip(gs["Z"], gs["A"]):
-            z, a = int(z), int(a)
-            if (z, a, "") not in existing:
+        for z, a, s in zip(gs["Z"], gs["A"], gs["state"]):
+            z, a, s = int(z), int(a), str(s)
+            if (z, a, s) not in existing:
                 out_Z.append(z)
                 out_A.append(a)
-                out_state.append("")
+                out_state.append(s)
                 out_k.append(0.0)
                 out_dominant_keV.append(0.0)
                 out_n_lines.append(0)

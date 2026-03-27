@@ -139,6 +139,20 @@ EEDL_ELECTRON_XS_SCHEMA = {
     "xs_barns": "Float64",
 }
 
+NUCLIDES_SCHEMA = {
+    "Z": "Int32",
+    "A": "Int32",
+    "state": "Utf8",
+    "symbol": "Utf8",
+    "jp": "Utf8",
+    "half_life_s": "Float64",
+    "level_keV": "Float64",
+    "decay_1": "Utf8",
+    "decay_1_pct": "Float64",
+    "decay_2": "Utf8",
+    "decay_2_pct": "Float64",
+}
+
 EXFOR_SCHEMA = {
     "exfor_entry": "Utf8",
     "target_Z": "Int32",

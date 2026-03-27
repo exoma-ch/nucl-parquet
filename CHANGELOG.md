@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.9.0] — 2026-03-27
+
+### Added
+- `nuclides.parquet`: isomeric states (Tc-99m, Sc-44m, Eu-152m, Ba-137m, etc.)
+  as separate entries with own half-life, spin-parity, and decay modes (#34)
+  - 699 isomeric states added alongside 3383 ground states
+  - Keyed on `(Z, A, state)` where state is `""`, `"m"`, `"m2"`, etc.
+- `state` column in `radiation` table scoping gamma/X-ray lines to the correct
+  parent nuclear state — queries now return correct-by-default results
+- `nuclides` DuckDB view as the primary nuclide lookup table
+- `build_nuclides` and `build_radiation_state` build scripts
+
+### Changed
+- `GAMMA_LINES_SQL` and `IDENTIFY_GAMMA_SQL` now join on `(Z, A, state)` via
+  the `nuclides` view, returning only radiation lines belonging to the queried
+  nuclear state
+- `COINCIDENCE_SQL` scopes radiation intensity lookups to ground state
+- Dose constants backfill now uses `nuclides.parquet` (covers isomeric pure-beta
+  emitters in addition to ground states)
+
+### Deprecated
+- `ground_states` DuckDB view: use `nuclides` instead. `ground_states` is now a
+  filtered view (`WHERE state = ''`) for backwards compatibility and will be
+  removed in v1.0.
+
+### Migration notes
+- The `radiation` table has a new `state` column. Existing queries without a
+  `state` filter continue to return all parent states (backwards compatible).
+- To get ground-state-only radiation (e.g. for aged calibration sources):
+  `SELECT * FROM radiation WHERE Z=63 AND A=152 AND state=''`
+- The `nuclides` view replaces `ground_states` for general nuclide lookups.
+  `ground_states` remains as a compatibility alias filtering `state=''`.
+
 ## [0.8.1] — 2026-03-25
 
 ### Fixed

@@ -113,7 +113,13 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
 
     # --- ENSDF data ---
-    _register_parquet(db, data_dir / "meta" / "ensdf" / "ground_states.parquet", "ground_states")
+    nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
+    if nuclides_path.exists():
+        _register_parquet(db, nuclides_path, "nuclides")
+        db.execute("CREATE VIEW ground_states AS SELECT * FROM nuclides WHERE state = ''")
+    else:
+        # Fallback for data dirs without nuclides.parquet
+        _register_parquet(db, data_dir / "meta" / "ensdf" / "ground_states.parquet", "ground_states")
     _register_glob(db, data_dir / "meta" / "ensdf" / "gammas", "ensdf_gammas")
     _register_glob(db, data_dir / "meta" / "ensdf" / "levels", "ensdf_levels")
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
@@ -235,22 +241,22 @@ ORDER BY generation
 """
 
 GAMMA_LINES_SQL = """
-SELECT r.Z, r.A, gs.symbol, r.energy_keV, r.intensity_pct,
+SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
        r.decay_mode, r.rad_subtype, r.dose_MeV_per_Bq_s,
-       gs.half_life_s
+       n.half_life_s
 FROM radiation r
-JOIN ground_states gs ON r.Z = gs.Z AND r.A = gs.A
+JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
 WHERE r.rad_type = 'gamma'
   AND r.intensity_pct > $min_intensity
 ORDER BY r.intensity_pct DESC
 """
 
 IDENTIFY_GAMMA_SQL = """
-SELECT r.Z, r.A, gs.symbol, r.energy_keV, r.intensity_pct,
-       r.decay_mode, gs.half_life_s,
+SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
+       r.decay_mode, n.half_life_s,
        ABS(r.energy_keV - $energy) AS delta_keV
 FROM radiation r
-JOIN ground_states gs ON r.Z = gs.Z AND r.A = gs.A
+JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
 WHERE r.rad_type = 'gamma'
   AND r.energy_keV BETWEEN ($energy - $tolerance) AND ($energy + $tolerance)
   AND r.intensity_pct > 0.1
@@ -267,16 +273,16 @@ SELECT DISTINCT
        ROUND(r1.intensity_pct / 100.0 * r2.intensity_pct / 100.0 * 100, 6) AS coinc_prob_pct
 FROM coincidences c
 LEFT JOIN (
-    SELECT Z, A, energy_keV, MAX(intensity_pct) AS intensity_pct
+    SELECT Z, A, state, energy_keV, MAX(intensity_pct) AS intensity_pct
     FROM radiation WHERE rad_type = 'gamma'
-    GROUP BY Z, A, energy_keV
-) r1 ON c.Z = r1.Z AND c.A = r1.A
+    GROUP BY Z, A, state, energy_keV
+) r1 ON c.Z = r1.Z AND c.A = r1.A AND r1.state = ''
     AND ABS(c.gamma_energy_keV - r1.energy_keV) < 0.5
 LEFT JOIN (
-    SELECT Z, A, energy_keV, MAX(intensity_pct) AS intensity_pct
+    SELECT Z, A, state, energy_keV, MAX(intensity_pct) AS intensity_pct
     FROM radiation WHERE rad_type = 'gamma'
-    GROUP BY Z, A, energy_keV
-) r2 ON c.Z = r2.Z AND c.A = r2.A
+    GROUP BY Z, A, state, energy_keV
+) r2 ON c.Z = r2.Z AND c.A = r2.A AND r2.state = ''
     AND ABS(c.coinc_energy_keV - r2.energy_keV) < 0.5
 WHERE c.Z = $z AND c.A = $a
   AND c.gamma_energy_keV < c.coinc_energy_keV  -- avoid symmetric duplicates
