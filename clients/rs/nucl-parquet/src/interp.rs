@@ -36,7 +36,7 @@ pub fn log_log_interp(energies: &[f64], values: &[f64], energy: f64) -> f64 {
     debug_assert_eq!(energies.len(), values.len());
 
     let n = energies.len();
-    if n == 0 || energy <= 0.0 {
+    if n == 0 || energy < 0.0 {
         return f64::NAN;
     }
 
@@ -59,10 +59,14 @@ pub fn log_log_interp(energies: &[f64], values: &[f64], energy: f64) -> f64 {
     let v0 = values[idx];
     let v1 = values[idx + 1];
 
-    // Handle zero or negative values (can't take log)
-    if v0 <= 0.0 || v1 <= 0.0 {
+    // Handle zero or negative values/energies (can't take log)
+    if v0 <= 0.0 || v1 <= 0.0 || e0 <= 0.0 || e1 <= 0.0 {
         // Fall back to linear interpolation
-        let t = (energy - e0) / (e1 - e0);
+        let denom = e1 - e0;
+        if denom.abs() < f64::MIN_POSITIVE {
+            return v0;
+        }
+        let t = (energy - e0) / denom;
         return v0 + t * (v1 - v0);
     }
 
