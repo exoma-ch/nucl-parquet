@@ -46,7 +46,8 @@ impl CrossSectionDb {
     pub fn open(xs_file: impl AsRef<Path>) -> crate::Result<Self> {
         let path = xs_file.as_ref();
 
-        let target_z = z_from_path(path).ok_or_else(|| Error::DataDirNotFound(path.to_path_buf()))?;
+        let target_z =
+            z_from_path(path).ok_or_else(|| Error::DataDirNotFound(path.to_path_buf()))?;
 
         let mut reactions: HashMap<(u32, u32, u32, String), (Vec<f64>, Vec<f64>)> = HashMap::new();
 
@@ -95,7 +96,10 @@ impl CrossSectionDb {
             sort_paired_vecs(e_vec, xs_vec);
         }
 
-        Ok(Self { reactions, target_z })
+        Ok(Self {
+            reactions,
+            target_z,
+        })
     }
 
     /// Interpolated cross-section [mb] at `energy_mev`.
@@ -170,7 +174,10 @@ impl CrossSectionDb {
 fn z_from_path(path: &Path) -> Option<u32> {
     let stem = path.file_stem()?.to_str()?;
     let symbol = stem.split('_').nth(1)?;
-    SYMBOL_TO_Z.iter().find(|(s, _)| *s == symbol).map(|(_, z)| *z)
+    SYMBOL_TO_Z
+        .iter()
+        .find(|(s, _)| *s == symbol)
+        .map(|(_, z)| *z)
 }
 
 /// Static element symbol → Z lookup table (Z = 1..118).
@@ -312,7 +319,10 @@ mod tests {
     #[test]
     fn symbol_to_z_cu() {
         assert_eq!(
-            SYMBOL_TO_Z.iter().find(|(s, _)| *s == "Cu").map(|(_, z)| *z),
+            SYMBOL_TO_Z
+                .iter()
+                .find(|(s, _)| *s == "Cu")
+                .map(|(_, z)| *z),
             Some(29)
         );
     }

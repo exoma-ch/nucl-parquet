@@ -23,11 +23,18 @@ def test_cu63_abundance(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_co60_half_life(data_dir_path: Path) -> None:
-    """Co-60 half-life should be ~5.2714 years = ~1.663e8 s."""
+    """Co-60 (ground state) half-life should be ~5.2714 years = ~1.663e8 s.
+
+    Filter `state=''` explicitly — Co-60m also exists (~10.5 min) and sharing
+    `(Z, A)` would make an unfiltered `LIMIT 1` non-deterministic.
+    """
     db = duckdb.connect()
     path = data_dir_path / "meta" / "decay.parquet"
-    result = db.sql(f"SELECT half_life_s FROM read_parquet('{path}') WHERE Z=27 AND A=60 LIMIT 1").fetchone()
-    assert result is not None, "Co-60 not found in decay data"
+    result = db.sql(
+        f"SELECT half_life_s FROM read_parquet('{path}') "
+        "WHERE Z=27 AND A=60 AND state='' LIMIT 1"
+    ).fetchone()
+    assert result is not None, "Co-60 ground state not found in decay data"
     expected_s = 5.2714 * 365.25 * 24 * 3600  # ~1.663e8 s
     assert result[0] == pytest.approx(expected_s, rel=0.05)
 
@@ -96,6 +103,7 @@ def test_spectrum_xs_thermal_cu63(data_dir_path: Path) -> None:
 def test_neutron_total_xs_sanity():
     """Cu-63 total XS at ~1 MeV should be ~4-5 barn (4000-5000 mb)."""
     import nucl_parquet
+
     db = nucl_parquet.connect()
     row = db.sql(
         "SELECT xs_total_mb FROM neutron_total "
@@ -126,12 +134,10 @@ def test_no_talys_sentinels(data_dir_path: Path) -> None:
         # (~1.99e38, near FLT_MAX) from the largest legitimate cross-sections
         # (~90 Gb = 9e10 mb, e.g. Xe-135 neutron capture at cold energies).
         n = db.sql(
-            f"SELECT COUNT(*) FROM read_parquet('{glob}') "
-            "WHERE xs_mb > 1e30 OR isnan(xs_mb) OR xs_mb IS NULL"
+            f"SELECT COUNT(*) FROM read_parquet('{glob}') WHERE xs_mb > 1e30 OR isnan(xs_mb) OR xs_mb IS NULL"
         ).fetchone()[0]
         assert n == 0, (
-            f"{lib_dir.name}: found {n} invalid xs_mb rows "
-            "(sentinel >1e30, NaN, or NULL) — clean at parquet level"
+            f"{lib_dir.name}: found {n} invalid xs_mb rows (sentinel >1e30, NaN, or NULL) — clean at parquet level"
         )
 
 
@@ -143,7 +149,5 @@ def test_catima_straggling(data_dir_path: Path) -> None:
     df = pl.read_parquet(data_dir_path / "stopping" / "catima" / "catima.parquet")
     assert "straggling" in df.columns, "straggling column missing"
     # C-12 in Cu: straggling should be positive
-    row = df.filter(
-        (pl.col("proj_Z") == 6) & (pl.col("target_Z") == 29)
-    ).head(1)
+    row = df.filter((pl.col("proj_Z") == 6) & (pl.col("target_Z") == 29)).head(1)
     assert row["straggling"][0] > 0, "Expected positive straggling for C-12 in Cu"

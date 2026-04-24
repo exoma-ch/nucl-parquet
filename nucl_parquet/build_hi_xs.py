@@ -35,16 +35,98 @@ import polars as pl
 # ---------------------------------------------------------------------------
 
 ELEMENT_SYMBOLS = [
-    "H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne",
-    "Na", "Mg", "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca",
-    "Sc", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr",
-    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-    "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-    "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg",
-    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-    "Pa", "U",
+    "H",
+    "He",
+    "Li",
+    "Be",
+    "B",
+    "C",
+    "N",
+    "O",
+    "F",
+    "Ne",
+    "Na",
+    "Mg",
+    "Al",
+    "Si",
+    "P",
+    "S",
+    "Cl",
+    "Ar",
+    "K",
+    "Ca",
+    "Sc",
+    "Ti",
+    "V",
+    "Cr",
+    "Mn",
+    "Fe",
+    "Co",
+    "Ni",
+    "Cu",
+    "Zn",
+    "Ga",
+    "Ge",
+    "As",
+    "Se",
+    "Br",
+    "Kr",
+    "Rb",
+    "Sr",
+    "Y",
+    "Zr",
+    "Nb",
+    "Mo",
+    "Tc",
+    "Ru",
+    "Rh",
+    "Pd",
+    "Ag",
+    "Cd",
+    "In",
+    "Sn",
+    "Sb",
+    "Te",
+    "I",
+    "Xe",
+    "Cs",
+    "Ba",
+    "La",
+    "Ce",
+    "Pr",
+    "Nd",
+    "Pm",
+    "Sm",
+    "Eu",
+    "Gd",
+    "Tb",
+    "Dy",
+    "Ho",
+    "Er",
+    "Tm",
+    "Yb",
+    "Lu",
+    "Hf",
+    "Ta",
+    "W",
+    "Re",
+    "Os",
+    "Ir",
+    "Pt",
+    "Au",
+    "Hg",
+    "Tl",
+    "Pb",
+    "Bi",
+    "Po",
+    "At",
+    "Rn",
+    "Fr",
+    "Ra",
+    "Ac",
+    "Th",
+    "Pa",
+    "U",
 ]
 Z_TO_SYMBOL = {i + 1: s for i, s in enumerate(ELEMENT_SYMBOLS)}
 
@@ -52,42 +134,125 @@ Z_TO_SYMBOL = {i + 1: s for i, s in enumerate(ELEMENT_SYMBOLS)}
 # Used as the representative target isotope; for radioactive elements a
 # long-lived isotope is chosen.
 MOST_ABUNDANT_A = [
-    1,  4,  7,  9, 11, 12, 14, 16, 19, 20,   # Z 1-10
-   23, 24, 27, 28, 31, 32, 35, 40, 39, 40,   # Z 11-20
-   45, 48, 51, 52, 55, 56, 59, 58, 63, 64,   # Z 21-30
-   69, 74, 75, 80, 79, 84, 85, 88, 89, 90,   # Z 31-40
-   93, 98, 98, 102, 103, 106, 107, 114, 115, 120,  # Z 41-50
-   121, 130, 127, 132, 133, 138, 139, 140, 141, 144,  # Z 51-60
-   145, 152, 153, 158, 159, 164, 165, 166, 169, 174,  # Z 61-70
-   175, 180, 181, 184, 187, 192, 193, 195, 197, 202,  # Z 71-80
-   205, 208, 209, 210, 210, 222, 223, 226, 227, 232,  # Z 81-90
-   231, 238,                                          # Z 91-92
+    1,
+    4,
+    7,
+    9,
+    11,
+    12,
+    14,
+    16,
+    19,
+    20,  # Z 1-10
+    23,
+    24,
+    27,
+    28,
+    31,
+    32,
+    35,
+    40,
+    39,
+    40,  # Z 11-20
+    45,
+    48,
+    51,
+    52,
+    55,
+    56,
+    59,
+    58,
+    63,
+    64,  # Z 21-30
+    69,
+    74,
+    75,
+    80,
+    79,
+    84,
+    85,
+    88,
+    89,
+    90,  # Z 31-40
+    93,
+    98,
+    98,
+    102,
+    103,
+    106,
+    107,
+    114,
+    115,
+    120,  # Z 41-50
+    121,
+    130,
+    127,
+    132,
+    133,
+    138,
+    139,
+    140,
+    141,
+    144,  # Z 51-60
+    145,
+    152,
+    153,
+    158,
+    159,
+    164,
+    165,
+    166,
+    169,
+    174,  # Z 61-70
+    175,
+    180,
+    181,
+    184,
+    187,
+    192,
+    193,
+    195,
+    197,
+    202,  # Z 71-80
+    205,
+    208,
+    209,
+    210,
+    210,
+    222,
+    223,
+    226,
+    227,
+    232,  # Z 81-90
+    231,
+    238,  # Z 91-92
 ]
 
 # Projectile definitions: label → (symbol, proj_Z, proj_A)
 PROJECTILES = {
-    "c12":  ("C",   6, 12),
-    "o16":  ("O",   8, 16),
+    "c12": ("C", 6, 12),
+    "o16": ("O", 8, 16),
     "ne20": ("Ne", 10, 20),
     "si28": ("Si", 14, 28),
     "ar40": ("Ar", 18, 40),
     "fe56": ("Fe", 26, 56),
-    "he4":  ("He",  2,  4),
-    "p":    ("H",   1,  1),
+    "he4": ("He", 2, 4),
+    "p": ("H", 1, 1),
     "ca40": ("Ca", 20, 40),
     "ni58": ("Ni", 28, 58),
-    "pb208":("Pb", 82, 208),
-    "xe132":("Xe", 54, 132),
+    "pb208": ("Pb", 82, 208),
+    "xe132": ("Xe", 54, 132),
 }
 
 # Energy grid: 1–1000 MeV/u, 60 log-spaced points (stored as total MeV)
 _N_ENERGIES = 60
-_E_PER_U_MIN = 1.0     # MeV/u
+_E_PER_U_MIN = 1.0  # MeV/u
 _E_PER_U_MAX = 1000.0  # MeV/u
 
 # ---------------------------------------------------------------------------
 # Tripathi (1997) total reaction cross-section formula
 # ---------------------------------------------------------------------------
+
 
 def _radius(a: float) -> float:
     """Nuclear radius in fm, r = 1.29 A^(1/3)."""
@@ -122,8 +287,8 @@ def tripathi_xs(z1: int, a1: int, z2: int, a2: int, e_mev_per_u: float) -> float
 
     rp = _radius(float(a1))
     rt = _radius(float(a2))
-    vp = fourthird * pi * rp ** 3
-    vt = fourthird * pi * rt ** 3
+    vp = fourthird * pi * rp**3
+    vt = fourthird * pi * rt**3
     dens = 0.5 * ((a1 / vp) + (a2 / vt))
 
     const = 1.75 * dens / 8.824728e-2
@@ -150,19 +315,17 @@ def tripathi_xs(z1: int, a1: int, z2: int, a2: int, e_mev_per_u: float) -> float
 
     # Relativistic kinematics
     mp = 938.0  # nucleon mass MeV/c²
-    gcm = (a1 * (1.0 + e / mp) + a2) / math.sqrt(
-        a1 ** 2 + a2 ** 2 + 2.0 * a1 * (e + mp) * a2 / mp
-    )
+    gcm = (a1 * (1.0 + e / mp) + a2) / math.sqrt(a1**2 + a2**2 + 2.0 * a1 * (e + mp) * a2 / mp)
     if gcm <= 1.0:
         return 0.0
 
-    bcm = math.sqrt(1.0 - 1.0 / gcm ** 2)
+    bcm = math.sqrt(1.0 - 1.0 / gcm**2)
     plab = a1 * math.sqrt(2.0 * mp * e + e * e)
     ecmp = gcm * (e + mp) * a1 - bcm * gcm * plab - a1 * mp
     ecmt = gcm * mp * a2 - a2 * mp
     ecm = ecmp + ecmt
 
-    bigr = rp + rt + 1.2 * (a1 ** onethird + a2 ** onethird) / (ecm ** onethird)
+    bigr = rp + rt + 1.2 * (a1**onethird + a2**onethird) / (ecm**onethird)
     bigb = 1.44 * z1 * z2 / bigr
 
     # Special Coulomb-barrier corrections from Tripathi
@@ -248,16 +411,14 @@ def tripathi_xs(z1: int, a1: int, z2: int, a2: int, e_mev_per_u: float) -> float
         if 10 <= z2 <= 20:
             const -= 1.0 / (1.0 + math.exp(expo))
 
-    ce = const * (1.0 - math.exp(-e / t1)) - 0.292 * math.exp(-e / 792.0) * math.cos(
-        0.229 * e ** 0.453
-    )
-    term1 = (a2 * a1) ** onethird / (a2 ** onethird + a1 ** onethird)
+    ce = const * (1.0 - math.exp(-e / t1)) - 0.292 * math.exp(-e / 792.0) * math.cos(0.229 * e**0.453)
+    term1 = (a2 * a1) ** onethird / (a2**onethird + a1**onethird)
     delta = 1.615 * term1 - 0.873 * ce
-    delta += 0.140 * term1 / ecm ** onethird
+    delta += 0.140 * term1 / ecm**onethird
     delta += 0.794 * (a2 - 2.0 * z2) * z1 / (a2 * a1)
     delta = -delta
 
-    twxsec = 10.0 * pi * 1.26 * 1.26 * (0.873 * a1 ** onethird + 0.873 * a2 ** onethird - delta) ** 2
+    twxsec = 10.0 * pi * 1.26 * 1.26 * (0.873 * a1**onethird + 0.873 * a2**onethird - delta) ** 2
     xs = twxsec * (1.0 - bigb / ecm) * xm
     return max(xs, 0.0)
 
@@ -265,6 +426,7 @@ def tripathi_xs(z1: int, a1: int, z2: int, a2: int, e_mev_per_u: float) -> float
 # ---------------------------------------------------------------------------
 # Main generation loop
 # ---------------------------------------------------------------------------
+
 
 def build(data_dir: Path) -> None:
     import numpy as np
@@ -285,23 +447,27 @@ def build(data_dir: Path) -> None:
             for e_mev, e_per_u in zip(energies_MeV, energies_per_u):
                 xs = tripathi_xs(proj_Z, proj_A, target_Z, target_A, float(e_per_u))
                 if xs > 0:
-                    rows.append({
-                        "target_Z":   target_Z,
-                        "target_A":   target_A,
-                        "energy_MeV": float(e_mev),
-                        "xs_mb":      xs,
-                    })
+                    rows.append(
+                        {
+                            "target_Z": target_Z,
+                            "target_A": target_A,
+                            "energy_MeV": float(e_mev),
+                            "xs_mb": xs,
+                        }
+                    )
 
         if not rows:
-            print(f"  No data, skipping")
+            print("  No data, skipping")
             continue
 
-        df = pl.DataFrame({
-            "target_Z":   pl.Series([r["target_Z"]   for r in rows], dtype=pl.Int32),
-            "target_A":   pl.Series([r["target_A"]   for r in rows], dtype=pl.Int32),
-            "energy_MeV": pl.Series([r["energy_MeV"] for r in rows], dtype=pl.Float64),
-            "xs_mb":      pl.Series([r["xs_mb"]      for r in rows], dtype=pl.Float64),
-        }).sort("target_Z", "target_A", "energy_MeV")
+        df = pl.DataFrame(
+            {
+                "target_Z": pl.Series([r["target_Z"] for r in rows], dtype=pl.Int32),
+                "target_A": pl.Series([r["target_A"] for r in rows], dtype=pl.Int32),
+                "energy_MeV": pl.Series([r["energy_MeV"] for r in rows], dtype=pl.Float64),
+                "xs_mb": pl.Series([r["xs_mb"] for r in rows], dtype=pl.Float64),
+            }
+        ).sort("target_Z", "target_A", "energy_MeV")
 
         # Write per-target parquets (matches light-ion layout)
         for target_Z in sorted(df["target_Z"].unique().to_list()):
@@ -341,9 +507,7 @@ def _update_catalog(data_dir: Path) -> None:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Generate HI total reaction XS via Tripathi (1997)"
-    )
+    parser = argparse.ArgumentParser(description="Generate HI total reaction XS via Tripathi (1997)")
     parser.add_argument(
         "--data-dir",
         default=".",

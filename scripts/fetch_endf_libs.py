@@ -27,7 +27,6 @@ import io
 import json
 import logging
 import re
-import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,15 +48,18 @@ COMPRESSION = "zstd"
 # Library registry
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LibraryDef:
     """Definition of an evaluated nuclear data library."""
-    key: str                    # Our short identifier (used in directory names)
-    name: str                   # Display name
-    iaea_path: str              # Path on IAEA mirror
+
+    key: str  # Our short identifier (used in directory names)
+    name: str  # Display name
+    iaea_path: str  # Path on IAEA mirror
     description: str
     source_url: str
     sublibraries: dict[str, str]  # sublibrary code -> IAEA subdirectory name
+
 
 LIBRARIES: dict[str, LibraryDef] = {
     "endfb-8.1": LibraryDef(
@@ -148,20 +150,105 @@ LIBRARIES: dict[str, LibraryDef] = {
 # ---------------------------------------------------------------------------
 
 _ELEMENT_SYMBOLS: dict[int, str] = {
-    1: "H", 2: "He", 3: "Li", 4: "Be", 5: "B", 6: "C", 7: "N", 8: "O",
-    9: "F", 10: "Ne", 11: "Na", 12: "Mg", 13: "Al", 14: "Si", 15: "P",
-    16: "S", 17: "Cl", 18: "Ar", 19: "K", 20: "Ca", 21: "Sc", 22: "Ti",
-    23: "V", 24: "Cr", 25: "Mn", 26: "Fe", 27: "Co", 28: "Ni", 29: "Cu",
-    30: "Zn", 31: "Ga", 32: "Ge", 33: "As", 34: "Se", 35: "Br", 36: "Kr",
-    37: "Rb", 38: "Sr", 39: "Y", 40: "Zr", 41: "Nb", 42: "Mo", 43: "Tc",
-    44: "Ru", 45: "Rh", 46: "Pd", 47: "Ag", 48: "Cd", 49: "In", 50: "Sn",
-    51: "Sb", 52: "Te", 53: "I", 54: "Xe", 55: "Cs", 56: "Ba", 57: "La",
-    58: "Ce", 59: "Pr", 60: "Nd", 61: "Pm", 62: "Sm", 63: "Eu", 64: "Gd",
-    65: "Tb", 66: "Dy", 67: "Ho", 68: "Er", 69: "Tm", 70: "Yb", 71: "Lu",
-    72: "Hf", 73: "Ta", 74: "W", 75: "Re", 76: "Os", 77: "Ir", 78: "Pt",
-    79: "Au", 80: "Hg", 81: "Tl", 82: "Pb", 83: "Bi", 84: "Po", 85: "At",
-    86: "Rn", 87: "Fr", 88: "Ra", 89: "Ac", 90: "Th", 91: "Pa", 92: "U",
-    93: "Np", 94: "Pu", 95: "Am", 96: "Cm", 97: "Bk", 98: "Cf", 99: "Es",
+    1: "H",
+    2: "He",
+    3: "Li",
+    4: "Be",
+    5: "B",
+    6: "C",
+    7: "N",
+    8: "O",
+    9: "F",
+    10: "Ne",
+    11: "Na",
+    12: "Mg",
+    13: "Al",
+    14: "Si",
+    15: "P",
+    16: "S",
+    17: "Cl",
+    18: "Ar",
+    19: "K",
+    20: "Ca",
+    21: "Sc",
+    22: "Ti",
+    23: "V",
+    24: "Cr",
+    25: "Mn",
+    26: "Fe",
+    27: "Co",
+    28: "Ni",
+    29: "Cu",
+    30: "Zn",
+    31: "Ga",
+    32: "Ge",
+    33: "As",
+    34: "Se",
+    35: "Br",
+    36: "Kr",
+    37: "Rb",
+    38: "Sr",
+    39: "Y",
+    40: "Zr",
+    41: "Nb",
+    42: "Mo",
+    43: "Tc",
+    44: "Ru",
+    45: "Rh",
+    46: "Pd",
+    47: "Ag",
+    48: "Cd",
+    49: "In",
+    50: "Sn",
+    51: "Sb",
+    52: "Te",
+    53: "I",
+    54: "Xe",
+    55: "Cs",
+    56: "Ba",
+    57: "La",
+    58: "Ce",
+    59: "Pr",
+    60: "Nd",
+    61: "Pm",
+    62: "Sm",
+    63: "Eu",
+    64: "Gd",
+    65: "Tb",
+    66: "Dy",
+    67: "Ho",
+    68: "Er",
+    69: "Tm",
+    70: "Yb",
+    71: "Lu",
+    72: "Hf",
+    73: "Ta",
+    74: "W",
+    75: "Re",
+    76: "Os",
+    77: "Ir",
+    78: "Pt",
+    79: "Au",
+    80: "Hg",
+    81: "Tl",
+    82: "Pb",
+    83: "Bi",
+    84: "Po",
+    85: "At",
+    86: "Rn",
+    87: "Fr",
+    88: "Ra",
+    89: "Ac",
+    90: "Th",
+    91: "Pa",
+    92: "U",
+    93: "Np",
+    94: "Pu",
+    95: "Am",
+    96: "Cm",
+    97: "Bk",
+    98: "Cf",
+    99: "Es",
 }
 
 # Projectile (Z, A) for mass/charge balance
@@ -186,41 +273,41 @@ PROJECTILE_ZA: dict[str, tuple[int, int]] = {
 
 MT_TO_EMISSION: dict[int, tuple[int, int]] = {
     # (emitted_Z, emitted_A) — what leaves besides the residual
-    2:   (0, 0),     # elastic: nothing emitted, residual = compound
-    4:   (0, 1),     # (x,n') inelastic: 1 neutron
-    16:  (0, 2),     # (x,2n)
-    17:  (0, 3),     # (x,3n)
-    18:  (0, 0),     # fission — skip (no single residual)
-    22:  (2, 5),     # (x,nα): n + α
-    23:  (2, 7),     # (x,n3α): n + 3α — rare
-    24:  (2, 6),     # (x,2nα): 2n + α
-    25:  (0, 4),     # (x,4n) — rare, added for completeness
-    28:  (1, 2),     # (x,np): n + p
-    29:  (2, 8),     # (x,n2α): n + 2α — rare
-    32:  (1, 3),     # (x,nd): n + d
-    33:  (1, 4),     # (x,nt): n + t
-    34:  (2, 4),     # (x,n³He): n + ³He
-    35:  (2, 5),     # (x,nd2α) — skip, too complex
-    36:  (2, 6),     # (x,nt2α) — skip
-    37:  (0, 5),     # (x,5n) — rare, added for completeness
-    41:  (1, 3),     # (x,2np): 2n + p
-    42:  (1, 4),     # (x,3np): 3n + p
-    44:  (2, 6),     # (x,n2p): n + 2p
-    45:  (2, 9),     # (x,npα): n + p + α
-    102: (0, 0),     # (x,γ): capture, no particles emitted
-    103: (1, 1),     # (x,p)
-    104: (1, 2),     # (x,d)
-    105: (1, 3),     # (x,t)
-    106: (2, 3),     # (x,³He)
-    107: (2, 4),     # (x,α)
-    108: (4, 8),     # (x,2α)
-    109: (4, 11),    # (x,3α)
-    111: (1, 2),     # (x,2p)
-    112: (3, 5),     # (x,pα)
-    113: (3, 8),     # (x,t2α)
-    115: (2, 5),     # (x,pd)
-    116: (2, 6),     # (x,pt)
-    117: (3, 7),     # (x,dα)
+    2: (0, 0),  # elastic: nothing emitted, residual = compound
+    4: (0, 1),  # (x,n') inelastic: 1 neutron
+    16: (0, 2),  # (x,2n)
+    17: (0, 3),  # (x,3n)
+    18: (0, 0),  # fission — skip (no single residual)
+    22: (2, 5),  # (x,nα): n + α
+    23: (2, 7),  # (x,n3α): n + 3α — rare
+    24: (2, 6),  # (x,2nα): 2n + α
+    25: (0, 4),  # (x,4n) — rare, added for completeness
+    28: (1, 2),  # (x,np): n + p
+    29: (2, 8),  # (x,n2α): n + 2α — rare
+    32: (1, 3),  # (x,nd): n + d
+    33: (1, 4),  # (x,nt): n + t
+    34: (2, 4),  # (x,n³He): n + ³He
+    35: (2, 5),  # (x,nd2α) — skip, too complex
+    36: (2, 6),  # (x,nt2α) — skip
+    37: (0, 5),  # (x,5n) — rare, added for completeness
+    41: (1, 3),  # (x,2np): 2n + p
+    42: (1, 4),  # (x,3np): 3n + p
+    44: (2, 6),  # (x,n2p): n + 2p
+    45: (2, 9),  # (x,npα): n + p + α
+    102: (0, 0),  # (x,γ): capture, no particles emitted
+    103: (1, 1),  # (x,p)
+    104: (1, 2),  # (x,d)
+    105: (1, 3),  # (x,t)
+    106: (2, 3),  # (x,³He)
+    107: (2, 4),  # (x,α)
+    108: (4, 8),  # (x,2α)
+    109: (4, 11),  # (x,3α)
+    111: (1, 2),  # (x,2p)
+    112: (3, 5),  # (x,pα)
+    113: (3, 8),  # (x,t2α)
+    115: (2, 5),  # (x,pd)
+    116: (2, 6),  # (x,pt)
+    117: (3, 7),  # (x,dα)
 }
 
 # MT ranges for discrete inelastic levels
@@ -233,18 +320,22 @@ MT_TO_EMISSION: dict[int, tuple[int, int]] = {
 # MT 875-891: (x,2n) to specific levels
 
 LEVEL_RANGES: dict[tuple[int, int], tuple[int, int]] = {
-    (51, 91):    (0, 1),    # n emission
-    (600, 649):  (1, 1),    # p emission
-    (650, 699):  (1, 2),    # d emission
-    (700, 749):  (1, 3),    # t emission
-    (750, 799):  (2, 3),    # ³He emission
-    (800, 849):  (2, 4),    # α emission
-    (875, 891):  (0, 2),    # 2n emission
+    (51, 91): (0, 1),  # n emission
+    (600, 649): (1, 1),  # p emission
+    (650, 699): (1, 2),  # d emission
+    (700, 749): (1, 3),  # t emission
+    (750, 799): (2, 3),  # ³He emission
+    (800, 849): (2, 4),  # α emission
+    (875, 891): (0, 2),  # 2n emission
 }
 
 
 def mt_to_residual(
-    mt: int, target_z: int, target_a: int, proj_z: int, proj_a: int,
+    mt: int,
+    target_z: int,
+    target_a: int,
+    proj_z: int,
+    proj_a: int,
 ) -> tuple[int, int] | None:
     """Compute residual (Z, A) from MT number and target+projectile.
 
@@ -278,9 +369,7 @@ def mt_to_residual(
 # ---------------------------------------------------------------------------
 
 # Filename pattern: n_029-Cu-63_2925.zip or similar
-FILENAME_RE = re.compile(
-    r"[a-z]+_(\d{3})-([A-Za-z]+)-(\d+)_(\d+)\.zip"
-)
+FILENAME_RE = re.compile(r"[a-z]+_(\d{3})-([A-Za-z]+)-(\d+)_(\d+)\.zip")
 
 
 def parse_endf_file(
@@ -330,14 +419,16 @@ def parse_endf_file(
                 # xs_b > 1e30 b catches TALYS overflow sentinels (~1.99e35 b ≈ FLT_MAX/1e3)
                 if xs_b <= 0 or xs_b > 1e30:
                     continue
-                rows.append({
-                    "target_A": target_a,
-                    "residual_Z": res_z,
-                    "residual_A": res_a,
-                    "state": "",  # MF=3 doesn't distinguish isomers
-                    "energy_MeV": e_ev * 1e-6,
-                    "xs_mb": xs_b * 1e3,
-                })
+                rows.append(
+                    {
+                        "target_A": target_a,
+                        "residual_Z": res_z,
+                        "residual_A": res_a,
+                        "state": "",  # MF=3 doesn't distinguish isomers
+                        "energy_MeV": e_ev * 1e-6,
+                        "xs_mb": xs_b * 1e3,
+                    }
+                )
         except (AttributeError, TypeError, KeyError) as e:
             logger.debug("  Skipping MF=%d MT=%d: %s", mf, mt, e)
             continue
@@ -368,14 +459,16 @@ def parse_endf_file(
                 for e_ev, xs_b in zip(tab.x, tab.y):
                     if xs_b <= 0 or xs_b > 1e30:  # same sentinel guard as MF=3
                         continue
-                    rows.append({
-                        "target_A": target_a,
-                        "residual_Z": res_z_10,
-                        "residual_A": res_a_10,
-                        "state": state,
-                        "energy_MeV": e_ev * 1e-6,
-                        "xs_mb": xs_b * 1e3,
-                    })
+                    rows.append(
+                        {
+                            "target_A": target_a,
+                            "residual_Z": res_z_10,
+                            "residual_A": res_a_10,
+                            "state": state,
+                            "energy_MeV": e_ev * 1e-6,
+                            "xs_mb": xs_b * 1e3,
+                        }
+                    )
         except (AttributeError, TypeError, KeyError) as e:
             logger.debug("  Skipping MF=10 MT=%d: %s", mt, e)
             continue
@@ -541,7 +634,10 @@ def fetch_library(
 
     logger.info(
         "  Done: %d elements, %d source files, %d total rows → %s/",
-        len(element_rows), total_files, total_rows, lib_key,
+        len(element_rows),
+        total_files,
+        total_rows,
+        lib_key,
     )
 
 
@@ -555,28 +651,35 @@ def main() -> None:
         description="Fetch evaluated nuclear data libraries and convert to Parquet.",
     )
     parser.add_argument(
-        "--library", choices=list(LIBRARIES.keys()),
+        "--library",
+        choices=list(LIBRARIES.keys()),
         help="Library to fetch",
     )
     parser.add_argument(
-        "--sublibrary", default="n",
+        "--sublibrary",
+        default="n",
         choices=["n", "p", "d", "t", "h", "a"],
         help="Sub-library / projectile type (default: n)",
     )
     parser.add_argument(
-        "--all", action="store_true",
+        "--all",
+        action="store_true",
         help="Fetch all libraries for the specified sub-library",
     )
     parser.add_argument(
-        "--all-sublibs", action="store_true",
+        "--all-sublibs",
+        action="store_true",
         help="Fetch all sub-libraries for the specified library(ies)",
     )
     parser.add_argument(
-        "--output", type=Path, default=ROOT,
+        "--output",
+        type=Path,
+        default=ROOT,
         help="Output directory (default: repo root)",
     )
     parser.add_argument(
-        "--list", action="store_true",
+        "--list",
+        action="store_true",
         help="List available libraries and their sub-libraries",
     )
     args = parser.parse_args()

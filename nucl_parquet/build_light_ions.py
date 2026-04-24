@@ -32,9 +32,9 @@ from .download import data_dir as _resolve_data_dir
 # (source_name, base_source, energy_scale_factor)
 # energy_MeV_new = energy_MeV_base × scale
 _LIGHT_IONS: list[tuple[str, str, float]] = [
-    ("dSTAR",   "PSTAR", 2.0),         # deuteron: E_d = E_p × 2
-    ("tSTAR",   "PSTAR", 3.0),         # triton:   E_t = E_p × 3
-    ("He3STAR", "ASTAR", 3.0 / 4.0),   # ³He:      E_He3 = E_α × 3/4
+    ("dSTAR", "PSTAR", 2.0),  # deuteron: E_d = E_p × 2
+    ("tSTAR", "PSTAR", 3.0),  # triton:   E_t = E_p × 3
+    ("He3STAR", "ASTAR", 3.0 / 4.0),  # ³He:      E_He3 = E_α × 3/4
 ]
 
 
@@ -54,10 +54,12 @@ def build(data_dir: Path | None = None) -> None:
             print(f"  {name}: base file {base_path.name} not found — skipped")
             continue
         src_df = pl.read_parquet(base_path)
-        derived = src_df.with_columns([
-            pl.lit(name).alias("source"),
-            (pl.col("energy_MeV") * scale).alias("energy_MeV"),
-        ]).sort("target_Z", "energy_MeV")
+        derived = src_df.with_columns(
+            [
+                pl.lit(name).alias("source"),
+                (pl.col("energy_MeV") * scale).alias("energy_MeV"),
+            ]
+        ).sort("target_Z", "energy_MeV")
         out_path = stopping_dir / f"{name}.parquet"
         derived.write_parquet(out_path, compression="zstd")
         print(f"  {name}: {len(derived):,} rows (scaled from {base_source} × {scale:.4g}) → {out_path.name}")

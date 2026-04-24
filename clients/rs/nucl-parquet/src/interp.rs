@@ -5,11 +5,29 @@ use arrow::array::{Array, ArrayRef, LargeStringArray, StringArray};
 /// Polars writes Utf8 as LargeUtf8 in some cases, so we handle both.
 pub fn as_string_array(col: &ArrayRef) -> Option<Vec<Option<&str>>> {
     if let Some(arr) = col.as_any().downcast_ref::<StringArray>() {
-        Some((0..arr.len()).map(|i| if arr.is_null(i) { None } else { Some(arr.value(i)) }).collect())
-    } else if let Some(arr) = col.as_any().downcast_ref::<LargeStringArray>() {
-        Some((0..arr.len()).map(|i| if arr.is_null(i) { None } else { Some(arr.value(i)) }).collect())
+        Some(
+            (0..arr.len())
+                .map(|i| {
+                    if arr.is_null(i) {
+                        None
+                    } else {
+                        Some(arr.value(i))
+                    }
+                })
+                .collect(),
+        )
     } else {
-        None
+        col.as_any().downcast_ref::<LargeStringArray>().map(|arr| {
+            (0..arr.len())
+                .map(|i| {
+                    if arr.is_null(i) {
+                        None
+                    } else {
+                        Some(arr.value(i))
+                    }
+                })
+                .collect()
+        })
     }
 }
 

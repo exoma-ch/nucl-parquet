@@ -13,8 +13,8 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
-from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 SUPPLIERS_PATH = Path(__file__).parent.parent / "data" / "suppliers.json"
 TIMEOUT = 15  # seconds

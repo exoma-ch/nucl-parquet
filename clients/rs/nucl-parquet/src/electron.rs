@@ -79,13 +79,17 @@ impl ElectronDb {
                     .column_by_name("xs_barns")
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
-                if let (Some(z), Some(e), Some(proc), Some(xs)) = (z_col, e_col, proc_values, xs_col)
+                if let (Some(z), Some(e), Some(proc), Some(xs)) =
+                    (z_col, e_col, proc_values, xs_col)
                 {
                     for i in 0..batch.num_rows() {
                         if z_val.is_none() {
                             z_val = Some(z.value(i) as u8);
                         }
-                        let proc_str = match proc[i] { Some(s) => s, None => continue };
+                        let proc_str = match proc[i] {
+                            Some(s) => s,
+                            None => continue,
+                        };
                         let process = match proc_str {
                             "elastic" => Some(ElectronProcess::Elastic),
                             "bremsstrahlung" => Some(ElectronProcess::Bremsstrahlung),
@@ -106,8 +110,7 @@ impl ElectronDb {
 
             if let Some(z) = z_val {
                 // Subshell ionization rows share the same energy grid; sum them.
-                if let Some((energies, xs_vals)) =
-                    process_data.remove(&ElectronProcess::Ionization)
+                if let Some((energies, xs_vals)) = process_data.remove(&ElectronProcess::Ionization)
                 {
                     let summed = sum_by_energy(&energies, &xs_vals);
                     process_data.insert(ElectronProcess::Ionization, summed);
@@ -163,8 +166,7 @@ impl ElectronDb {
 
     /// Check if data is loaded for element Z.
     pub fn has_element(&self, z: u8) -> bool {
-        self.xs_tables
-            .contains_key(&(z, ElectronProcess::Elastic))
+        self.xs_tables.contains_key(&(z, ElectronProcess::Elastic))
     }
 
     /// Number of elements loaded.
@@ -228,10 +230,7 @@ mod tests {
     fn cu_elastic_xs_positive() {
         let db = ElectronDb::open(meta_dir()).unwrap();
         let xs = db.cross_section(29, 1.0, ElectronProcess::Elastic);
-        assert!(
-            xs.is_finite() && xs > 0.0,
-            "Cu elastic XS at 1 MeV: {xs}"
-        );
+        assert!(xs.is_finite() && xs > 0.0, "Cu elastic XS at 1 MeV: {xs}");
     }
 
     #[test]

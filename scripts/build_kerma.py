@@ -45,16 +45,98 @@ AMU = 931.494
 M_N = 1.008665
 
 ELEMENT_SYMBOLS = [
-    "H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne",
-    "Na", "Mg", "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca",
-    "Sc", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr",
-    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-    "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-    "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg",
-    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-    "Pa", "U",
+    "H",
+    "He",
+    "Li",
+    "Be",
+    "B",
+    "C",
+    "N",
+    "O",
+    "F",
+    "Ne",
+    "Na",
+    "Mg",
+    "Al",
+    "Si",
+    "P",
+    "S",
+    "Cl",
+    "Ar",
+    "K",
+    "Ca",
+    "Sc",
+    "Ti",
+    "V",
+    "Cr",
+    "Mn",
+    "Fe",
+    "Co",
+    "Ni",
+    "Cu",
+    "Zn",
+    "Ga",
+    "Ge",
+    "As",
+    "Se",
+    "Br",
+    "Kr",
+    "Rb",
+    "Sr",
+    "Y",
+    "Zr",
+    "Nb",
+    "Mo",
+    "Tc",
+    "Ru",
+    "Rh",
+    "Pd",
+    "Ag",
+    "Cd",
+    "In",
+    "Sn",
+    "Sb",
+    "Te",
+    "I",
+    "Xe",
+    "Cs",
+    "Ba",
+    "La",
+    "Ce",
+    "Pr",
+    "Nd",
+    "Pm",
+    "Sm",
+    "Eu",
+    "Gd",
+    "Tb",
+    "Dy",
+    "Ho",
+    "Er",
+    "Tm",
+    "Yb",
+    "Lu",
+    "Hf",
+    "Ta",
+    "W",
+    "Re",
+    "Os",
+    "Ir",
+    "Pt",
+    "Au",
+    "Hg",
+    "Tl",
+    "Pb",
+    "Bi",
+    "Po",
+    "At",
+    "Rn",
+    "Fr",
+    "Ra",
+    "Ac",
+    "Th",
+    "Pa",
+    "U",
 ]
 SYMBOL_TO_Z = {sym: z for z, sym in enumerate(ELEMENT_SYMBOLS, start=1)}
 
@@ -130,9 +212,7 @@ def compute_element_kerma(
         iso_df = df.filter(pl.col("target_A") == target_A)
 
         # Get all unique reactions for this isotope
-        reactions = iso_df.select(
-            "residual_Z", "residual_A"
-        ).unique().to_dicts()
+        reactions = iso_df.select("residual_Z", "residual_A").unique().to_dicts()
 
         # Collect energy grids from all reactions, build a common grid
         all_energies = iso_df["energy_MeV"].unique().sort().to_numpy()
@@ -143,9 +223,7 @@ def compute_element_kerma(
             res_Z = rxn["residual_Z"]
             res_A = rxn["residual_A"]
 
-            rxn_df = iso_df.filter(
-                (pl.col("residual_Z") == res_Z) & (pl.col("residual_A") == res_A)
-            ).sort("energy_MeV")
+            rxn_df = iso_df.filter((pl.col("residual_Z") == res_Z) & (pl.col("residual_A") == res_A)).sort("energy_MeV")
 
             E = rxn_df["energy_MeV"].to_numpy()
             xs_mb = rxn_df["xs_mb"].to_numpy()
@@ -174,41 +252,31 @@ def compute_element_kerma(
             elif delta_Z == 1 and delta_A == 1:
                 # (n,p): emits proton
                 Q = _estimate_Q(target_Z, target_A, res_Z, res_A, 1, 1)
-                E_charged = charged_product_energy(
-                    all_energies, target_A, res_A, 1, Q
-                )
+                E_charged = charged_product_energy(all_energies, target_A, res_A, 1, Q)
                 kerma_total += xs_b * E_charged * 1e6
 
             elif delta_Z == 1 and delta_A == 2:
                 # (n,d): emits deuteron
                 Q = _estimate_Q(target_Z, target_A, res_Z, res_A, 1, 2)
-                E_charged = charged_product_energy(
-                    all_energies, target_A, res_A, 2, Q
-                )
+                E_charged = charged_product_energy(all_energies, target_A, res_A, 2, Q)
                 kerma_total += xs_b * E_charged * 1e6
 
             elif delta_Z == 1 and delta_A == 3:
                 # (n,t): emits triton
                 Q = _estimate_Q(target_Z, target_A, res_Z, res_A, 1, 3)
-                E_charged = charged_product_energy(
-                    all_energies, target_A, res_A, 3, Q
-                )
+                E_charged = charged_product_energy(all_energies, target_A, res_A, 3, Q)
                 kerma_total += xs_b * E_charged * 1e6
 
             elif delta_Z == 2 and delta_A == 4:
                 # (n,α): emits alpha
                 Q = _estimate_Q(target_Z, target_A, res_Z, res_A, 2, 4)
-                E_charged = charged_product_energy(
-                    all_energies, target_A, res_A, 4, Q
-                )
+                E_charged = charged_product_energy(all_energies, target_A, res_A, 4, Q)
                 kerma_total += xs_b * E_charged * 1e6
 
             elif delta_Z == 2 and delta_A == 3:
                 # (n,³He): emits helion
                 Q = _estimate_Q(target_Z, target_A, res_Z, res_A, 2, 3)
-                E_charged = charged_product_energy(
-                    all_energies, target_A, res_A, 3, Q
-                )
+                E_charged = charged_product_energy(all_energies, target_A, res_A, 3, Q)
                 kerma_total += xs_b * E_charged * 1e6
 
             elif delta_Z == 0 and delta_A == 2:
@@ -225,12 +293,16 @@ def compute_element_kerma(
             continue
 
         n = int(np.sum(mask))
-        results.append(pl.DataFrame({
-            "Z": pl.Series([target_Z] * n, dtype=pl.Int32),
-            "A": pl.Series([target_A] * n, dtype=pl.Int32),
-            "energy_MeV": pl.Series(all_energies[mask], dtype=pl.Float64),
-            "kerma_eV_barn": pl.Series(kerma_total[mask], dtype=pl.Float64),
-        }))
+        results.append(
+            pl.DataFrame(
+                {
+                    "Z": pl.Series([target_Z] * n, dtype=pl.Int32),
+                    "A": pl.Series([target_A] * n, dtype=pl.Int32),
+                    "energy_MeV": pl.Series(all_energies[mask], dtype=pl.Float64),
+                    "kerma_eV_barn": pl.Series(kerma_total[mask], dtype=pl.Float64),
+                }
+            )
+        )
 
     if not results:
         return None
@@ -239,9 +311,12 @@ def compute_element_kerma(
 
 
 def _estimate_Q(
-    target_Z: int, target_A: int,
-    residual_Z: int, residual_A: int,
-    emitted_Z: int, emitted_A: int,
+    target_Z: int,
+    target_A: int,
+    residual_Z: int,
+    residual_A: int,
+    emitted_Z: int,
+    emitted_A: int,
 ) -> float:
     """Estimate Q-value [MeV] from semi-empirical mass formula.
 
@@ -249,6 +324,7 @@ def _estimate_Q(
 
     Uses the Weizsäcker mass formula for binding energies.
     """
+
     def binding_energy(Z: int, A: int) -> float:
         """Weizsäcker semi-empirical binding energy [MeV]."""
         if A <= 0 or Z < 0:
@@ -261,15 +337,11 @@ def _estimate_Q(
         if A % 2 != 0:
             delta = 0.0
         elif Z % 2 == 0:
-            delta = 12.0 / A ** 0.5
+            delta = 12.0 / A**0.5
         else:
-            delta = -12.0 / A ** 0.5
+            delta = -12.0 / A**0.5
 
-        BE = (a_v * A
-              - a_s * A ** (2.0 / 3.0)
-              - a_c * Z * (Z - 1) / A ** (1.0 / 3.0)
-              - a_a * (N - Z) ** 2 / A
-              + delta)
+        BE = a_v * A - a_s * A ** (2.0 / 3.0) - a_c * Z * (Z - 1) / A ** (1.0 / 3.0) - a_a * (N - Z) ** 2 / A + delta
         return max(BE, 0.0)
 
     # Q = BE(residual) + BE(emitted) - BE(target) - BE(neutron)

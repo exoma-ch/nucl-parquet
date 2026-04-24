@@ -223,9 +223,7 @@ def _validate(df) -> None:
 
     print("\nValidation of known isomeric states:")
     for z, a, state, (t_lo, t_hi), desc in checks:
-        row = df.filter(
-            (pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == state)
-        )
+        row = df.filter((pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == state))
         if len(row) == 0:
             print(f"  MISSING: {desc}")
         else:
