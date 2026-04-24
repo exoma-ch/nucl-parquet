@@ -82,5 +82,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           VERSION=${GITHUB_REF#refs/tags/v}
-          git tag -a "go/nucl-parquet/v${VERSION}" -m "Go v${VERSION}"
-          git push origin "go/nucl-parquet/v${VERSION}"
+          git tag -a "clients/go/nucl-parquet/v${VERSION}" -m "Go v${VERSION}"
+          git push origin "clients/go/nucl-parquet/v${VERSION}"
