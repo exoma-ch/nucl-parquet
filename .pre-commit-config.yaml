@@ -1,0 +1,63 @@
+# Runs with prek (https://github.com/j178/prek) — faster drop-in for pre-commit.
+# Install: `brew install prek` or `cargo install --locked prek`
+# Enable: `prek install` (hooks run on commit) and `prek install --hook-type pre-push`
+#
+# CI runs `prek run --all-files` to enforce even without local install.
+
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.6
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt-nucl-parquet
+        name: cargo fmt (clients/rs/nucl-parquet)
+        entry: cargo fmt --manifest-path clients/rs/nucl-parquet/Cargo.toml --check --
+        language: system
+        types: [rust]
+        files: ^clients/rs/nucl-parquet/
+        pass_filenames: false
+
+      - id: cargo-fmt-nucl-parquet-mcp
+        name: cargo fmt (clients/rs/nucl-parquet-mcp)
+        entry: cargo fmt --manifest-path clients/rs/nucl-parquet-mcp/Cargo.toml --check --
+        language: system
+        types: [rust]
+        files: ^clients/rs/nucl-parquet-mcp/
+        pass_filenames: false
+
+      - id: cargo-clippy-nucl-parquet
+        name: cargo clippy (clients/rs/nucl-parquet)
+        entry: bash -c 'cargo clippy --manifest-path clients/rs/nucl-parquet/Cargo.toml -- -D warnings'
+        language: system
+        types: [rust]
+        files: ^clients/rs/nucl-parquet/
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-clippy-nucl-parquet-mcp
+        name: cargo clippy (clients/rs/nucl-parquet-mcp)
+        entry: bash -c 'cargo clippy --manifest-path clients/rs/nucl-parquet-mcp/Cargo.toml -- -D warnings'
+        language: system
+        types: [rust]
+        files: ^clients/rs/nucl-parquet-mcp/
+        pass_filenames: false
+        stages: [pre-push]

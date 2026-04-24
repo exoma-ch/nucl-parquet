@@ -6,16 +6,23 @@ on:
   pull_request:
 
 jobs:
-  lint:
-    name: Lint & format
+  hooks:
+    name: prek hooks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv python install 3.13
-      - run: uv sync --dev
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            clients/rs/nucl-parquet
+            clients/rs/nucl-parquet-mcp
+      - run: uv tool install prek
+      - run: prek run --all-files --hook-stage pre-commit --show-diff-on-failure
+      - run: prek run --all-files --hook-stage pre-push --show-diff-on-failure
 
   python:
     name: Python tests
@@ -31,7 +38,7 @@ jobs:
       - run: uv run pytest tests/test_loader.py -v
 
   rust:
-    name: Rust crate
+    name: Rust tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,13 +46,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: clients/rs/nucl-parquet
-      - run: cargo fmt -- --check
-      - run: cargo clippy -- -D warnings
       - run: cargo test
 
   typescript:
