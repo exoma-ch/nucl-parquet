@@ -9,6 +9,24 @@ permissions:
   id-token: write
 
 jobs:
+  data-asset:
+    name: Build & upload data tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zstd
+        run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Build tarball
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          tar --zstd -C data -cf "nucl-parquet-data-v${VERSION}.tar.zst" .
+          ls -lh "nucl-parquet-data-v${VERSION}.tar.zst"
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: nucl-parquet-data-v*.tar.zst
+          fail_on_unmatched_files: true
+
   pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
@@ -28,7 +46,7 @@ jobs:
       id-token: write
     defaults:
       run:
-        working-directory: ts/nucl-parquet
+        working-directory: clients/ts/nucl-parquet
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: rs/nucl-parquet
+        working-directory: clients/rs/nucl-parquet
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 // Configuration
 // ---------------------------------------------------------------------------
 
-const BASE_URL: &str = "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/";
+const BASE_URL: &str = "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/";
 
 // ---------------------------------------------------------------------------
 // Embedded catalog

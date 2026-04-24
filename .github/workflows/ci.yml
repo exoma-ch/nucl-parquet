@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: rs/nucl-parquet
+        working-directory: clients/rs/nucl-parquet
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -43,7 +43,7 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rs/nucl-parquet
+          workspaces: clients/rs/nucl-parquet
       - run: cargo fmt -- --check
       - run: cargo clippy -- -D warnings
       - run: cargo test
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ts/nucl-parquet
+        working-directory: clients/ts/nucl-parquet
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: go/nucl-parquet
+        working-directory: clients/go/nucl-parquet
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
