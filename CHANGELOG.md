@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.10.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.9.0...v0.10.0) (2026-04-24)
+
+
+### Features
+
+* adopt prek for pre-commit/pre-push hooks (closes [#42](https://github.com/exoma-ch/nucl-parquet/issues/42)) ([33c9645](https://github.com/exoma-ch/nucl-parquet/commit/33c9645e6b6b6afda18ccae801d3bb85ff062ecd))
+* adopt prek for pre-commit/pre-push hooks (closes [#42](https://github.com/exoma-ch/nucl-parquet/issues/42)) ([3ccc1d7](https://github.com/exoma-ch/nucl-parquet/commit/3ccc1d7518a44c0fa04bb3021614f0d8fc44b189))
+* **ci:** add MCP publish jobs, lockstep MCP versions with core (closes [#39](https://github.com/exoma-ch/nucl-parquet/issues/39)) ([647a251](https://github.com/exoma-ch/nucl-parquet/commit/647a251fb5ec7f09b71352c3e6f728a1b1aeace4))
+* **ci:** MCP publish jobs + lockstep versioning (closes [#39](https://github.com/exoma-ch/nucl-parquet/issues/39)) ([cfb0deb](https://github.com/exoma-ch/nucl-parquet/commit/cfb0deb7d73dd5007fda8711bbb2639f6aa998a0))
+
+
+### Bug Fixes
+
+* **go:** align module path with actual directory (closes [#40](https://github.com/exoma-ch/nucl-parquet/issues/40)) ([bc6f340](https://github.com/exoma-ch/nucl-parquet/commit/bc6f340b522aa16147a24c241c9cda3a96fcd138))
+* **go:** align module path with actual directory (closes [#40](https://github.com/exoma-ch/nucl-parquet/issues/40)) ([ed31931](https://github.com/exoma-ch/nucl-parquet/commit/ed3193125a1f1d03391161b06b8aa245de6512e0))
+* log_log_interp handles zero energies and q=0 form factor queries ([a253fc5](https://github.com/exoma-ch/nucl-parquet/commit/a253fc5f5006aa2f32f56d0221b79f8139767424))
+* repair data delivery pipeline end-to-end (closes [#35](https://github.com/exoma-ch/nucl-parquet/issues/35)) ([12eb037](https://github.com/exoma-ch/nucl-parquet/commit/12eb03788bcbfe9c38e90f16c6f7dcd88205a24a))
+* repair data delivery pipeline end-to-end (closes [#35](https://github.com/exoma-ch/nucl-parquet/issues/35)) ([47c7f43](https://github.com/exoma-ch/nucl-parquet/commit/47c7f438bbb4fa8caac0bfae34fc6b0ccd0dc1b1))
+
+
+### Refactoring
+
+* **rs:** clean up pre-existing clippy warnings (closes [#41](https://github.com/exoma-ch/nucl-parquet/issues/41)) ([05d700a](https://github.com/exoma-ch/nucl-parquet/commit/05d700aa86c384e127fca172b33475e8e38fbc9b))
+* **rs:** clean up pre-existing clippy warnings (closes [#41](https://github.com/exoma-ch/nucl-parquet/issues/41)) ([4abe440](https://github.com/exoma-ch/nucl-parquet/commit/4abe440e6ad87437fd63bc0942fc2fd49f00789b))
+
 ## [0.9.0] — 2026-03-27
 
 ### Added
