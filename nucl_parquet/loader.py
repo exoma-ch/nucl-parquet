@@ -36,18 +36,104 @@ from .download import data_dir as _resolve_data_dir
 
 # Element symbol → Z lookup for dynamic heavy-ion projectile resolution
 _SYMBOL_TO_Z: dict[str, int] = {
-    sym.lower(): z for z, sym in enumerate([
-        "H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne",
-        "Na", "Mg", "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca",
-        "Sc", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-        "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr",
-        "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-        "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-        "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-        "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg",
-        "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-        "Pa", "U",
-    ], start=1)
+    sym.lower(): z
+    for z, sym in enumerate(
+        [
+            "H",
+            "He",
+            "Li",
+            "Be",
+            "B",
+            "C",
+            "N",
+            "O",
+            "F",
+            "Ne",
+            "Na",
+            "Mg",
+            "Al",
+            "Si",
+            "P",
+            "S",
+            "Cl",
+            "Ar",
+            "K",
+            "Ca",
+            "Sc",
+            "Ti",
+            "V",
+            "Cr",
+            "Mn",
+            "Fe",
+            "Co",
+            "Ni",
+            "Cu",
+            "Zn",
+            "Ga",
+            "Ge",
+            "As",
+            "Se",
+            "Br",
+            "Kr",
+            "Rb",
+            "Sr",
+            "Y",
+            "Zr",
+            "Nb",
+            "Mo",
+            "Tc",
+            "Ru",
+            "Rh",
+            "Pd",
+            "Ag",
+            "Cd",
+            "In",
+            "Sn",
+            "Sb",
+            "Te",
+            "I",
+            "Xe",
+            "Cs",
+            "Ba",
+            "La",
+            "Ce",
+            "Pr",
+            "Nd",
+            "Pm",
+            "Sm",
+            "Eu",
+            "Gd",
+            "Tb",
+            "Dy",
+            "Ho",
+            "Er",
+            "Tm",
+            "Yb",
+            "Lu",
+            "Hf",
+            "Ta",
+            "W",
+            "Re",
+            "Os",
+            "Ir",
+            "Pt",
+            "Au",
+            "Hg",
+            "Tl",
+            "Pb",
+            "Bi",
+            "Po",
+            "At",
+            "Rn",
+            "Fr",
+            "Ra",
+            "Ac",
+            "Th",
+            "Pa",
+            "U",
+        ],
+        start=1,
+    )
 }
 
 
@@ -240,7 +326,30 @@ FROM chain
 ORDER BY generation
 """
 
+# ---------------------------------------------------------------------------
+# Gamma-line SQL constants
+#
+# Two flavours per query:
+#   * `*_SQL`     — filter `state = $state` (default ground state). Safe default.
+#   * `*_ALL_SQL` — no state filter; caller must filter downstream if needed.
+#
+# For most callers, prefer the `gamma_lines()` / `identify_gamma()` helper
+# functions below; they mirror the Rust `DecayDb::modes(z, a, state)` API.
+# ---------------------------------------------------------------------------
+
 GAMMA_LINES_SQL = """
+SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
+       r.decay_mode, r.rad_subtype, r.dose_MeV_per_Bq_s,
+       n.half_life_s
+FROM radiation r
+JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
+WHERE r.rad_type = 'gamma'
+  AND r.state = $state
+  AND r.intensity_pct > $min_intensity
+ORDER BY r.intensity_pct DESC
+"""
+
+GAMMA_LINES_ALL_SQL = """
 SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
        r.decay_mode, r.rad_subtype, r.dose_MeV_per_Bq_s,
        n.half_life_s
@@ -258,12 +367,32 @@ SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
 FROM radiation r
 JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
 WHERE r.rad_type = 'gamma'
+  AND r.state = $state
   AND r.energy_keV BETWEEN ($energy - $tolerance) AND ($energy + $tolerance)
   AND r.intensity_pct > 0.1
 ORDER BY delta_keV ASC, r.intensity_pct DESC
 LIMIT 20
 """
 
+IDENTIFY_GAMMA_ALL_SQL = """
+SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
+       r.decay_mode, n.half_life_s,
+       ABS(r.energy_keV - $energy) AS delta_keV
+FROM radiation r
+JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
+WHERE r.rad_type = 'gamma'
+  AND r.energy_keV BETWEEN ($energy - $tolerance) AND ($energy + $tolerance)
+  AND r.intensity_pct > 0.1
+ORDER BY delta_keV ASC, r.intensity_pct DESC
+LIMIT 20
+"""
+
+# NOTE: `coincidences/*.parquet` does not carry a `state` column today, so
+# coincidence pairs are state-agnostic. The `$state` parameter scopes the
+# radiation intensity lookup only (i.e. "show me coincidence pairs for this
+# (Z,A), using intensities from the specified parent state"). For isomers with
+# distinct cascades we need `state` added to the coincidences build — tracked
+# as a follow-up to #36.
 COINCIDENCE_SQL = """
 SELECT DISTINCT
        c.gamma_energy_keV AS E_gamma_1,
@@ -276,18 +405,99 @@ LEFT JOIN (
     SELECT Z, A, state, energy_keV, MAX(intensity_pct) AS intensity_pct
     FROM radiation WHERE rad_type = 'gamma'
     GROUP BY Z, A, state, energy_keV
-) r1 ON c.Z = r1.Z AND c.A = r1.A AND r1.state = ''
+) r1 ON c.Z = r1.Z AND c.A = r1.A AND r1.state = $state
     AND ABS(c.gamma_energy_keV - r1.energy_keV) < 0.5
 LEFT JOIN (
     SELECT Z, A, state, energy_keV, MAX(intensity_pct) AS intensity_pct
     FROM radiation WHERE rad_type = 'gamma'
     GROUP BY Z, A, state, energy_keV
-) r2 ON c.Z = r2.Z AND c.A = r2.A AND r2.state = ''
+) r2 ON c.Z = r2.Z AND c.A = r2.A AND r2.state = $state
     AND ABS(c.coinc_energy_keV - r2.energy_keV) < 0.5
 WHERE c.Z = $z AND c.A = $a
   AND c.gamma_energy_keV < c.coinc_energy_keV  -- avoid symmetric duplicates
 ORDER BY coinc_prob_pct DESC NULLS LAST
 """
+
+
+# ---------------------------------------------------------------------------
+# Gamma-line helper functions — blessed API (mirrors Rust `DecayDb::modes`).
+# ---------------------------------------------------------------------------
+
+
+def gamma_lines(
+    db: duckdb.DuckDBPyConnection,
+    z: int | None = None,
+    a: int | None = None,
+    state: str = "",
+    min_intensity: float = 0.0,
+) -> duckdb.DuckDBPyRelation:
+    """Gamma lines for a parent nuclide, scoped to a single nuclear state.
+
+    Mirrors the Rust `DecayDb::modes(z, a, state)` shape: `state=""` is
+    ground state, `"m"`/`"m2"` are isomeric states. An aged calibration
+    source corresponds to `state=""`; a freshly activated isomer source to
+    `state="m"`.
+
+    Returns a DuckDB relation — call `.pl()` for Polars, `.df()` for Pandas,
+    `.fetchall()` for tuples, `.arrow()` for an Arrow table.
+    """
+    where = ["r.rad_type = 'gamma'", "r.state = ?", "r.intensity_pct > ?"]
+    params: list[object] = [state, float(min_intensity)]
+    if z is not None:
+        where.append("r.Z = ?")
+        params.append(int(z))
+    if a is not None:
+        where.append("r.A = ?")
+        params.append(int(a))
+    sql = f"""
+        SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
+               r.decay_mode, r.rad_subtype, r.dose_MeV_per_Bq_s,
+               n.half_life_s
+        FROM radiation r
+        JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
+        WHERE {" AND ".join(where)}
+        ORDER BY r.intensity_pct DESC
+    """
+    return db.sql(sql, params=params)
+
+
+def identify_gamma(
+    db: duckdb.DuckDBPyConnection,
+    energy: float,
+    tolerance: float = 2.0,
+    state: str = "",
+    min_intensity: float = 0.1,
+) -> duckdb.DuckDBPyRelation:
+    """Candidate nuclides emitting a gamma near `energy` (keV), scoped by state.
+
+    Default `state=""` (ground) is correct for aged calibration sources and
+    most spectroscopy workflows. Pass `state="m"` etc. for isomer lookups.
+    """
+    sql = """
+        SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
+               r.decay_mode, n.half_life_s,
+               ABS(r.energy_keV - ?) AS delta_keV
+        FROM radiation r
+        JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
+        WHERE r.rad_type = 'gamma'
+          AND r.state = ?
+          AND r.energy_keV BETWEEN (? - ?) AND (? + ?)
+          AND r.intensity_pct > ?
+        ORDER BY delta_keV ASC, r.intensity_pct DESC
+        LIMIT 20
+    """
+    return db.sql(
+        sql,
+        params=[
+            float(energy),
+            state,
+            float(energy),
+            float(tolerance),
+            float(energy),
+            float(tolerance),
+            float(min_intensity),
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -297,15 +507,15 @@ ORDER BY coinc_prob_pct DESC NULLS LAST
 # Projectile properties: (A, Z, reference_source)
 # (A, Z, source) for light projectiles covered by NIST tables
 _PROJECTILES: dict[str, tuple[int, int, str]] = {
-    "p":   (1, 1,  "PSTAR"),
-    "d":   (2, 1,  "PSTAR"),
-    "t":   (3, 1,  "PSTAR"),
-    "h":   (3, 2,  "ASTAR"),  # 3He
-    "he3": (3, 2,  "ASTAR"),
-    "a":   (4, 2,  "ASTAR"),
-    "he4": (4, 2,  "ASTAR"),
-    "e":   (0, -1, "ESTAR"),  # electron
-    "e-":  (0, -1, "ESTAR"),
+    "p": (1, 1, "PSTAR"),
+    "d": (2, 1, "PSTAR"),
+    "t": (3, 1, "PSTAR"),
+    "h": (3, 2, "ASTAR"),  # 3He
+    "he3": (3, 2, "ASTAR"),
+    "a": (4, 2, "ASTAR"),
+    "he4": (4, 2, "ASTAR"),
+    "e": (0, -1, "ESTAR"),  # electron
+    "e-": (0, -1, "ESTAR"),
 }
 
 _CATIMA_PATTERN = re.compile(r"^([a-z]+)(\d+)$")
@@ -330,6 +540,7 @@ def _resolve_projectile(name: str) -> tuple[int, int, str]:
             return (a, z, "catima")
 
     raise KeyError(f"Unknown projectile {name!r}. Use 'p','d','t','h','a','e' or e.g. 'c12','pb208'.")
+
 
 # Cache: (source, target_Z) -> (log_E, log_S) arrays
 _stopping_cache: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}

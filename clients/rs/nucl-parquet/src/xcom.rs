@@ -186,7 +186,8 @@ impl XcomDb {
                 .column_by_name("mu_en_rho_cm2_g")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
-            if let (Some(mat), Some(e), Some(mr), Some(men)) = (mat_values, e_col, mr_col, men_col) {
+            if let (Some(mat), Some(e), Some(mr), Some(men)) = (mat_values, e_col, mr_col, men_col)
+            {
                 for i in 0..batch.num_rows() {
                     let name = mat[i].unwrap_or("").to_string();
                     let ev = e.value(i);
@@ -243,10 +244,7 @@ mod tests {
     fn cu_mu_en_rho_positive() {
         let db = XcomDb::open(meta_dir()).unwrap();
         let mu = db.mu_en_rho(29, 0.1);
-        assert!(
-            mu.is_finite() && mu > 0.0,
-            "Cu mu_en/rho at 0.1 MeV: {mu}"
-        );
+        assert!(mu.is_finite() && mu > 0.0, "Cu mu_en/rho at 0.1 MeV: {mu}");
     }
 
     #[test]

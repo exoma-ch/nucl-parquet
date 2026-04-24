@@ -45,6 +45,7 @@ LIBRARY_PATHS: dict[str, str] = {
     "endfb-8.1": "ENDF-B-VIII.1/n",
 }
 
+
 def _list_zip_files(base_url: str, session: requests.Session) -> list[str]:
     """Fetch IAEA directory listing and return .zip filenames."""
     resp = session.get(base_url + "/", timeout=30)
@@ -52,9 +53,13 @@ def _list_zip_files(base_url: str, session: requests.Session) -> list[str]:
     return re.findall(r'href="([^"]+\.zip)"', resp.text)
 
 
-def _parse_total_elastic(endf_text: str) -> tuple[
-    np.ndarray | None, np.ndarray | None,
-    np.ndarray | None, np.ndarray | None,
+def _parse_total_elastic(
+    endf_text: str,
+) -> tuple[
+    np.ndarray | None,
+    np.ndarray | None,
+    np.ndarray | None,
+    np.ndarray | None,
 ]:
     """Parse MF=3 MT=1 (total) and MT=2 (elastic) from ENDF text.
 
@@ -172,13 +177,15 @@ def build(
 
         # Convert units: eV -> MeV, barns -> millibarns
         n = len(E_tot)
-        isotope_df = pl.DataFrame({
-            "Z": pl.Series(np.full(n, target_z, dtype=np.int32), dtype=pl.Int32),
-            "A": pl.Series(np.full(n, target_a, dtype=np.int32), dtype=pl.Int32),
-            "energy_MeV": pl.Series(E_tot * 1e-6, dtype=pl.Float64),
-            "xs_total_mb": pl.Series(xs_tot * 1e3, dtype=pl.Float64),
-            "xs_elastic_mb": pl.Series(xs_el_interp * 1e3, dtype=pl.Float64),
-        })
+        isotope_df = pl.DataFrame(
+            {
+                "Z": pl.Series(np.full(n, target_z, dtype=np.int32), dtype=pl.Int32),
+                "A": pl.Series(np.full(n, target_a, dtype=np.int32), dtype=pl.Int32),
+                "energy_MeV": pl.Series(E_tot * 1e-6, dtype=pl.Float64),
+                "xs_total_mb": pl.Series(xs_tot * 1e3, dtype=pl.Float64),
+                "xs_elastic_mb": pl.Series(xs_el_interp * 1e3, dtype=pl.Float64),
+            }
+        )
 
         element_dfs.setdefault(sym, []).append(isotope_df)
         processed += 1
@@ -198,7 +205,9 @@ def build(
 
     logger.info(
         "Done: %d elements, %d isotopes, %d total rows",
-        len(element_dfs), processed, total_rows,
+        len(element_dfs),
+        processed,
+        total_rows,
     )
 
 

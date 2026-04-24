@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tarfile
 import tempfile
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+
+import zstandard
 
 _GITHUB_REPO = "exoma-ch/nucl-parquet"
-_DEFAULT_TAG = "latest"
 
 
 def data_dir() -> Path:
@@ -26,19 +28,16 @@ def data_dir() -> Path:
     Raises:
         FileNotFoundError: If no data directory is found.
     """
-    # 1. Environment variable
     env = os.environ.get("NUCL_PARQUET_DATA")
     if env:
         p = Path(env)
         if p.is_dir():
             return p
 
-    # 2. Repo root (when installed as editable or running from checkout)
     repo_root = Path(__file__).parent.parent
     if (repo_root / "data" / "catalog.json").exists():
         return repo_root / "data"
 
-    # 3. Home directory
     home = Path.home() / ".nucl-parquet"
     if home.is_dir():
         return home
@@ -49,9 +48,20 @@ def data_dir() -> Path:
     )
 
 
+def _resolve_latest_tag() -> str:
+    url = f"https://api.github.com/repos/{_GITHUB_REPO}/releases/latest"
+    req = Request(url, headers={"Accept": "application/vnd.github+json"})
+    with urlopen(req) as resp:  # noqa: S310
+        payload = json.load(resp)
+    tag = payload.get("tag_name")
+    if not tag:
+        raise RuntimeError(f"Could not resolve latest release tag from {url}")
+    return tag
+
+
 def download(
     dest: Path | str | None = None,
-    tag: str = _DEFAULT_TAG,
+    tag: str = "latest",
 ) -> Path:
     """Download nucl-parquet data from GitHub Releases.
 
@@ -66,21 +76,24 @@ def download(
     dest.mkdir(parents=True, exist_ok=True)
 
     if tag == "latest":
-        url = f"https://github.com/{_GITHUB_REPO}/releases/latest/download/nucl-parquet-data.tar.gz"
-    else:
-        url = f"https://github.com/{_GITHUB_REPO}/releases/download/{tag}/nucl-parquet-data.tar.gz"
+        tag = _resolve_latest_tag()
+    version = tag.removeprefix("v")
+    asset = f"nucl-parquet-data-v{version}.tar.zst"
+    url = f"https://github.com/{_GITHUB_REPO}/releases/download/{tag}/{asset}"
 
     print(f"Downloading nucl-parquet data from {url} ...")
 
-    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".tar.zst", delete=False) as tmp:
         tmp_path = Path(tmp.name)
         with urlopen(url) as resp:  # noqa: S310
             while chunk := resp.read(1 << 20):
                 tmp.write(chunk)
 
     try:
-        with tarfile.open(tmp_path, "r:gz") as tar:
-            tar.extractall(dest, filter="data")  # noqa: S202
+        dctx = zstandard.ZstdDecompressor()
+        with open(tmp_path, "rb") as compressed, dctx.stream_reader(compressed) as reader:
+            with tarfile.open(fileobj=reader, mode="r|") as tar:
+                tar.extractall(dest, filter="data")  # noqa: S202
     finally:
         tmp_path.unlink()
 

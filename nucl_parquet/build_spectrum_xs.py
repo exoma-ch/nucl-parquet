@@ -32,6 +32,7 @@ _SYMBOL_TO_Z: dict[str, int] = {sym.capitalize(): z for sym, z in _SYMBOL_TO_Z_L
 # --- Spectrum definitions ---
 # All energies in MeV.  Each entry: (name, E_lo, E_hi, flux_fn)
 
+
 def _flux_thermal(e: np.ndarray) -> np.ndarray:
     # phi ∝ 1/v ∝ 1/√E: a strict Maxwell-Boltzmann (kT≈0.025 eV) would be
     # numerically zero at the minimum energies stored in evaluated libraries
@@ -50,9 +51,9 @@ def _flux_fast(e: np.ndarray) -> np.ndarray:
 
 
 _SPECTRA: list[tuple[str, float, float, object]] = [
-    ("thermal",    0.0,   0.1,  _flux_thermal),
-    ("epithermal", 5e-7,  1e-4, _flux_epithermal),
-    ("fast",       0.1,   20.0, _flux_fast),
+    ("thermal", 0.0, 0.1, _flux_thermal),
+    ("epithermal", 5e-7, 1e-4, _flux_epithermal),
+    ("fast", 0.1, 20.0, _flux_fast),
 ]
 
 _MIN_POINTS = 3  # minimum energy grid points inside window to emit a row
@@ -115,7 +116,7 @@ def build(data_dir: Path | None = None) -> None:
         for pq_path in neutron_files:
             # Extract target symbol from filename: n_Cu.parquet → Cu
             stem = pq_path.stem  # "n_Cu"
-            symbol = stem[2:]    # "Cu"
+            symbol = stem[2:]  # "Cu"
             target_Z = _SYMBOL_TO_Z.get(symbol)
             if target_Z is None:
                 print(f"    WARNING: unknown symbol '{symbol}' in {pq_path.name}, skipping")
@@ -129,22 +130,24 @@ def build(data_dir: Path | None = None) -> None:
 
                 sub = group_df.sort("energy_MeV")
                 energy = sub["energy_MeV"].to_numpy()
-                xs_mb  = sub["xs_mb"].to_numpy()
+                xs_mb = sub["xs_mb"].to_numpy()
 
                 for spec_name, e_lo, e_hi, flux_fn in _SPECTRA:
                     avg = _spectrum_average(energy, xs_mb, e_lo, e_hi, flux_fn)
                     if avg is None:
                         continue
-                    rows.append({
-                        "target_Z":   target_Z,
-                        "target_A":   target_A,
-                        "residual_Z": residual_Z,
-                        "residual_A": residual_A,
-                        "state":      state if state is not None else "",
-                        "spectrum":   spec_name,
-                        "xs_avg_mb":  avg,
-                        "library":    lib_key,
-                    })
+                    rows.append(
+                        {
+                            "target_Z": target_Z,
+                            "target_A": target_A,
+                            "residual_Z": residual_Z,
+                            "residual_A": residual_A,
+                            "state": state if state is not None else "",
+                            "spectrum": spec_name,
+                            "xs_avg_mb": avg,
+                            "library": lib_key,
+                        }
+                    )
 
     if not rows:
         print("No data produced — check that neutron XS parquet files are present.")
@@ -153,14 +156,14 @@ def build(data_dir: Path | None = None) -> None:
     out_df = pl.DataFrame(
         rows,
         schema={
-            "target_Z":   pl.Int32,
-            "target_A":   pl.Int32,
+            "target_Z": pl.Int32,
+            "target_A": pl.Int32,
             "residual_Z": pl.Int32,
             "residual_A": pl.Int32,
-            "state":      pl.Utf8,
-            "spectrum":   pl.Utf8,
-            "xs_avg_mb":  pl.Float64,
-            "library":    pl.Utf8,
+            "state": pl.Utf8,
+            "spectrum": pl.Utf8,
+            "xs_avg_mb": pl.Float64,
+            "library": pl.Utf8,
         },
     ).sort("library", "target_Z", "target_A", "residual_Z", "residual_A", "spectrum")
 

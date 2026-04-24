@@ -97,8 +97,7 @@ impl SubshellPeDb {
                 names.sort();
 
                 for (idx, name) in names.iter().enumerate() {
-                    let (mut energies, mut xs, edge) =
-                        shell_data.remove(name).expect("key exists");
+                    let (mut energies, mut xs, edge) = shell_data.remove(name).expect("key exists");
                     sort_paired_vecs(&mut energies, &mut xs);
                     let shell_idx = idx as u8;
                     xs_tables.insert((z, shell_idx), (energies, xs));
@@ -140,10 +139,7 @@ impl SubshellPeDb {
 
     /// Number of subshells loaded for element Z.
     pub fn num_shells(&self, z: u8) -> usize {
-        self.shell_names
-            .get(&z)
-            .map(|v| v.len())
-            .unwrap_or(0)
+        self.shell_names.get(&z).map(|v| v.len()).unwrap_or(0)
     }
 
     /// Shell name at the given index (e.g. "K", "L1", "M3").
@@ -201,6 +197,9 @@ mod tests {
     fn cu_binding_energy_positive() {
         let db = SubshellPeDb::open(meta_dir()).unwrap();
         let be = db.binding_energy(29, 0);
-        assert!(be.is_finite() && be > 0.0, "Cu shell 0 binding energy: {be}");
+        assert!(
+            be.is_finite() && be > 0.0,
+            "Cu shell 0 binding energy: {be}"
+        );
     }
 }

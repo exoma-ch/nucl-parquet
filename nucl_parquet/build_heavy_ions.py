@@ -21,8 +21,9 @@ Usage:
 
 from __future__ import annotations
 
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 from .download import data_dir as _resolve_data_dir
 
@@ -41,8 +42,8 @@ def build(data_dir: Path | None = None) -> None:
         data_dir = _resolve_data_dir()
     data_dir = Path(data_dir)
 
-    import pycatima as catima
     import polars as pl
+    import pycatima as catima
 
     n_proj = 92
     n_target = 92
@@ -87,11 +88,11 @@ def build(data_dir: Path | None = None) -> None:
 
     df = pl.DataFrame(
         {
-            "proj_Z":       pl.Series(all_proj_zs,  dtype=pl.Int32),
-            "target_Z":     pl.Series(all_target_zs, dtype=pl.Int32),
-            "energy_MeV_u": pl.Series(all_energies,  dtype=pl.Float64),
-            "dedx":         pl.Series(all_dedxs,     dtype=pl.Float64),
-            "straggling":   pl.Series(all_strag,     dtype=pl.Float64),
+            "proj_Z": pl.Series(all_proj_zs, dtype=pl.Int32),
+            "target_Z": pl.Series(all_target_zs, dtype=pl.Int32),
+            "energy_MeV_u": pl.Series(all_energies, dtype=pl.Float64),
+            "dedx": pl.Series(all_dedxs, dtype=pl.Float64),
+            "straggling": pl.Series(all_strag, dtype=pl.Float64),
         }
     ).sort("proj_Z", "target_Z", "energy_MeV_u")
 

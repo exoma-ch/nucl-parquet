@@ -200,7 +200,11 @@ impl PhotonDb {
                 continue;
             }
             // Skip macOS resource fork files (._*.parquet)
-            if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("._")) {
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("._"))
+            {
                 continue;
             }
 
@@ -240,17 +244,19 @@ impl PhotonDb {
                         column: "energy_MeV (wrong type)".into(),
                     })?;
 
-                let proc_col = batch
-                    .column_by_name("process")
-                    .ok_or_else(|| Error::MissingColumn {
-                        file: path.clone(),
-                        column: "process".into(),
-                    })?;
-                let proc_values = crate::interp::as_string_array(proc_col)
-                    .ok_or_else(|| Error::MissingColumn {
+                let proc_col =
+                    batch
+                        .column_by_name("process")
+                        .ok_or_else(|| Error::MissingColumn {
+                            file: path.clone(),
+                            column: "process".into(),
+                        })?;
+                let proc_values = crate::interp::as_string_array(proc_col).ok_or_else(|| {
+                    Error::MissingColumn {
                         file: path.clone(),
                         column: "process (wrong type)".into(),
-                    })?;
+                    }
+                })?;
 
                 let xs_col = batch
                     .column_by_name("xs_barns")
@@ -270,7 +276,10 @@ impl PhotonDb {
                         z_val = Some(z_col.value(i) as u8);
                     }
 
-                    let proc_str = match proc_values[i] { Some(s) => s, None => continue };
+                    let proc_str = match proc_values[i] {
+                        Some(s) => s,
+                        None => continue,
+                    };
                     if let Some(process) = Process::from_str(proc_str) {
                         let entry = process_data.entry(process).or_default();
                         entry.0.push(e_col.value(i));
@@ -310,7 +319,11 @@ impl PhotonDb {
             if path.extension().and_then(|e| e.to_str()) != Some("parquet") {
                 continue;
             }
-            if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("._")) {
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("._"))
+            {
                 continue;
             }
 

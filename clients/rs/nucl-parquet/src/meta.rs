@@ -7,7 +7,6 @@ use std::path::Path;
 use arrow::array::{Array, Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-
 // ---------------------------------------------------------------------------
 // AbundancesDb
 // ---------------------------------------------------------------------------
@@ -181,7 +180,15 @@ impl DecayDb {
                 Some(ds),
                 Some(br),
             ) = (
-                z_col, a_col, state_values, hl_col, mode_values, dz_col, da_col, ds_values, br_col,
+                z_col,
+                a_col,
+                state_values,
+                hl_col,
+                mode_values,
+                dz_col,
+                da_col,
+                ds_values,
+                br_col,
             ) {
                 for i in 0..batch.num_rows() {
                     let z_val = z.value(i) as u32;
@@ -221,12 +228,7 @@ impl DecayDb {
     pub fn modes(&self, z: u32, a: u32, state: &str) -> Vec<&DecayEntry> {
         self.data
             .get(&(z, a))
-            .map(|entries| {
-                entries
-                    .iter()
-                    .filter(|e| e.state == state)
-                    .collect()
-            })
+            .map(|entries| entries.iter().filter(|e| e.state == state).collect())
             .unwrap_or_default()
     }
 }
@@ -274,7 +276,11 @@ impl DoseDb {
             if let (Some(z), Some(a), Some(state), Some(k)) = (z_col, a_col, state_values, k_col) {
                 for i in 0..batch.num_rows() {
                     data.insert(
-                        (z.value(i) as u32, a.value(i) as u32, state[i].unwrap_or("").to_string()),
+                        (
+                            z.value(i) as u32,
+                            a.value(i) as u32,
+                            state[i].unwrap_or("").to_string(),
+                        ),
                         k.value(i),
                     );
                 }
@@ -310,7 +316,7 @@ mod tests {
     fn abundances_cu_isotopes() {
         let db = AbundancesDb::open(meta_dir()).unwrap();
         let isotopes = db.isotopes(29); // Cu
-        // Cu has 2 stable isotopes: Cu-63 and Cu-65
+                                        // Cu has 2 stable isotopes: Cu-63 and Cu-65
         let stable: Vec<_> = isotopes.iter().filter(|e| e.abundance > 0.0).collect();
         assert_eq!(stable.len(), 2, "Cu stable isotopes: {}", stable.len());
         let total: f64 = stable.iter().map(|e| e.abundance).sum();
@@ -323,9 +329,7 @@ mod tests {
         let db = DecayDb::open(meta_dir()).unwrap();
         let modes = db.modes(29, 64, ""); // Cu-64 ground state
         assert!(!modes.is_empty(), "Cu-64 should have decay modes");
-        let has_beta = modes
-            .iter()
-            .any(|m| m.decay_mode.starts_with("beta"));
+        let has_beta = modes.iter().any(|m| m.decay_mode.starts_with("beta"));
         assert!(has_beta, "Cu-64 should have beta decay");
     }
 

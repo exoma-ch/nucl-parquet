@@ -237,13 +237,17 @@ def build(data_dir: Path | None = None) -> None:
     gs_path = data_dir / "meta" / "ensdf" / "ground_states.parquet"
     backfill_path = nuclides_path if nuclides_path.exists() else gs_path
     if backfill_path.exists():
-        backfill_sql = f"""
+        backfill_sql = (
+            f"""
             SELECT DISTINCT Z, A, state FROM read_parquet('{backfill_path}')
             WHERE half_life_s IS NOT NULL AND half_life_s > 0 AND Z > 0
-        """ if backfill_path == nuclides_path else f"""
+        """
+            if backfill_path == nuclides_path
+            else f"""
             SELECT DISTINCT Z, A, '' AS state FROM read_parquet('{backfill_path}')
             WHERE half_life_s IS NOT NULL AND half_life_s > 0 AND Z > 0
         """
+        )
         gs = db.sql(backfill_sql).fetchnumpy()
         existing = {(z, a, s) for z, a, s in zip(out_Z, out_A, out_state)}
         for z, a, s in zip(gs["Z"], gs["A"], gs["state"]):

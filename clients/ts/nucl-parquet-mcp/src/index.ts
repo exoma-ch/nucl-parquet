@@ -10,7 +10,7 @@ import { z } from "zod";
 
 const BASE_URL =
   process.env.NUCL_PARQUET_BASE_URL ??
-  "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/";
+  "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/";
 
 // ---------------------------------------------------------------------------
 // Embedded catalog (from catalog.json)

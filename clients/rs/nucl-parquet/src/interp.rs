@@ -5,11 +5,29 @@ use arrow::array::{Array, ArrayRef, LargeStringArray, StringArray};
 /// Polars writes Utf8 as LargeUtf8 in some cases, so we handle both.
 pub fn as_string_array(col: &ArrayRef) -> Option<Vec<Option<&str>>> {
     if let Some(arr) = col.as_any().downcast_ref::<StringArray>() {
-        Some((0..arr.len()).map(|i| if arr.is_null(i) { None } else { Some(arr.value(i)) }).collect())
-    } else if let Some(arr) = col.as_any().downcast_ref::<LargeStringArray>() {
-        Some((0..arr.len()).map(|i| if arr.is_null(i) { None } else { Some(arr.value(i)) }).collect())
+        Some(
+            (0..arr.len())
+                .map(|i| {
+                    if arr.is_null(i) {
+                        None
+                    } else {
+                        Some(arr.value(i))
+                    }
+                })
+                .collect(),
+        )
     } else {
-        None
+        col.as_any().downcast_ref::<LargeStringArray>().map(|arr| {
+            (0..arr.len())
+                .map(|i| {
+                    if arr.is_null(i) {
+                        None
+                    } else {
+                        Some(arr.value(i))
+                    }
+                })
+                .collect()
+        })
     }
 }
 
@@ -36,7 +54,7 @@ pub fn log_log_interp(energies: &[f64], values: &[f64], energy: f64) -> f64 {
     debug_assert_eq!(energies.len(), values.len());
 
     let n = energies.len();
-    if n == 0 || energy <= 0.0 {
+    if n == 0 || energy < 0.0 {
         return f64::NAN;
     }
 
@@ -59,10 +77,14 @@ pub fn log_log_interp(energies: &[f64], values: &[f64], energy: f64) -> f64 {
     let v0 = values[idx];
     let v1 = values[idx + 1];
 
-    // Handle zero or negative values (can't take log)
-    if v0 <= 0.0 || v1 <= 0.0 {
+    // Handle zero or negative values/energies (can't take log)
+    if v0 <= 0.0 || v1 <= 0.0 || e0 <= 0.0 || e1 <= 0.0 {
         // Fall back to linear interpolation
-        let t = (energy - e0) / (e1 - e0);
+        let denom = e1 - e0;
+        if denom.abs() < f64::MIN_POSITIVE {
+            return v0;
+        }
+        let t = (energy - e0) / denom;
         return v0 + t * (v1 - v0);
     }
 
@@ -110,5 +132,31 @@ mod tests {
         let e = [1.0, 10.0];
         let v = [100.0, 10.0];
         assert_eq!(log_log_interp(&e, &v, 20.0), 10.0);
+    }
+
+    #[test]
+    fn q_zero_form_factor() {
+        // q=0 is physically valid (forward scattering); must not be rejected.
+        let e = [1.0, 10.0];
+        let v = [100.0, 10.0];
+        assert_eq!(log_log_interp(&e, &v, 0.0), 100.0);
+    }
+
+    #[test]
+    fn zero_first_energy_falls_back_to_linear() {
+        // Table starting at 0 would produce ln(0) = -inf → NaN under pure log-log.
+        // Interval [0, 10] with query at 5 must fall back to linear: 0 + 0.5 * (10 - 0) = 5.
+        let e = [0.0, 10.0];
+        let v = [0.0, 10.0];
+        let result = log_log_interp(&e, &v, 5.0);
+        assert!(result.is_finite());
+        assert!((result - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn negative_energy_returns_nan() {
+        let e = [1.0, 10.0];
+        let v = [100.0, 10.0];
+        assert!(log_log_interp(&e, &v, -1.0).is_nan());
     }
 }

@@ -16,7 +16,7 @@ from mcp.server.fastmcp import FastMCP
 
 BASE_URL = os.environ.get(
     "NUCL_PARQUET_BASE_URL",
-    "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/",
+    "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/",
 )
 
 # ---------------------------------------------------------------------------

@@ -46,7 +46,11 @@ impl StoppingDb {
         let nist = Self::load_nist(dir)?;
         let (catima, catima_strag) = Self::load_catima(dir)?;
 
-        Ok(Self { nist, catima, catima_strag })
+        Ok(Self {
+            nist,
+            catima,
+            catima_strag,
+        })
     }
 
     /// Mass stopping power [MeV cm²/g] for a NIST source (e.g. "PSTAR", "ASTAR", "ESTAR").
@@ -78,7 +82,10 @@ impl StoppingDb {
     /// Returns `f64::NAN` if the (proj_Z, target_Z) pair is not loaded.
     #[inline]
     pub fn catima_straggling(&self, proj_z: u32, target_z: u32) -> f64 {
-        self.catima_strag.get(&(proj_z, target_z)).copied().unwrap_or(f64::NAN)
+        self.catima_strag
+            .get(&(proj_z, target_z))
+            .copied()
+            .unwrap_or(f64::NAN)
     }
 
     // --- Internal loaders ---
@@ -134,7 +141,10 @@ impl StoppingDb {
 
     fn load_catima(
         dir: &Path,
-    ) -> crate::Result<(HashMap<(u32, u32), (Vec<f64>, Vec<f64>)>, HashMap<(u32, u32), f64>)> {
+    ) -> crate::Result<(
+        HashMap<(u32, u32), (Vec<f64>, Vec<f64>)>,
+        HashMap<(u32, u32), f64>,
+    )> {
         let catima_path = dir.join("catima").join("catima.parquet");
         let mut map: HashMap<(u32, u32), (Vec<f64>, Vec<f64>)> = HashMap::new();
         let mut strag_map: HashMap<(u32, u32), f64> = HashMap::new();

@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 // Configuration
 // ---------------------------------------------------------------------------
 
-const BASE_URL: &str = "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/";
+const BASE_URL: &str = "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/";
 
 // ---------------------------------------------------------------------------
 // Embedded catalog
@@ -38,31 +38,154 @@ struct Library {
 fn catalog() -> HashMap<String, Library> {
     let mut m = HashMap::new();
     let libs: &[(&str, &str, &str, &[&str], &str, &str, &str)] = &[
-        ("tendl-2024", "TENDL-2024", "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)", &["p","d","t","h","a"], "cross_sections", "2024", "tendl-2024/xs/"),
-        ("endfb-8.1", "ENDF/B-VIII.1", "US Evaluated Nuclear Data File (NNDC/BNL)", &["n","p","d","t","h","a"], "cross_sections", "VIII.1", "endfb-8.1/xs/"),
-        ("jeff-4.0", "JEFF-4.0", "Joint Evaluated Fission and Fusion File (NEA)", &["n","p"], "cross_sections", "4.0", "jeff-4.0/xs/"),
-        ("jendl-5", "JENDL-5", "Japanese Evaluated Nuclear Data Library (JAEA)", &["n","p","d","a"], "cross_sections", "5", "jendl-5/xs/"),
-        ("tendl-2025", "TENDL-2025", "TALYS Evaluated Nuclear Data Library 2025 (PSI)", &["n","p","d","t","h","a"], "cross_sections", "2025", "tendl-2025/xs/"),
-        ("cendl-3.2", "CENDL-3.2", "Chinese Evaluated Nuclear Data Library (CIAE)", &["n"], "cross_sections", "3.2", "cendl-3.2/xs/"),
-        ("brond-3.1", "BROND-3.1", "Russian Evaluated Nuclear Data Library (IPPE)", &["n"], "cross_sections", "3.1", "brond-3.1/xs/"),
-        ("fendl-3.2", "FENDL-3.2", "Fusion Evaluated Nuclear Data Library (IAEA)", &["n"], "cross_sections", "3.2", "fendl-3.2/xs/"),
-        ("eaf-2010", "EAF-2010", "European Activation File (CCFE)", &["n"], "cross_sections", "2010", "eaf-2010/xs/"),
-        ("irdff-2", "IRDFF-II", "International Reactor Dosimetry and Fusion File (IAEA)", &["n"], "cross_sections", "II", "irdff-2/xs/"),
-        ("iaea-medical", "IAEA-Medical", "Medical isotope production cross-sections (IAEA)", &["p","d","h","a"], "cross_sections", "latest", "iaea-medical/xs/"),
-        ("jendl-ad-2017", "JENDL/AD-2017", "Activation/Dosimetry Library (JAEA)", &["n","p"], "cross_sections", "2017", "jendl-ad-2017/xs/"),
-        ("jendl-deu-2020", "JENDL-DEU-2020", "Dedicated deuteron-induced reaction library (JAEA)", &["d"], "cross_sections", "2020", "jendl-deu-2020/xs/"),
-        ("iaea-pd-2019", "IAEA-PD-2019", "Photonuclear Data Library (IAEA)", &["g"], "cross_sections", "2019", "iaea-pd-2019/xs/"),
-        ("exfor", "EXFOR", "Experimental nuclear reaction data (IAEA NDS)", &["n","p","d","t","h","a"], "experimental_cross_sections", "latest", "exfor/"),
+        (
+            "tendl-2024",
+            "TENDL-2024",
+            "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)",
+            &["p", "d", "t", "h", "a"],
+            "cross_sections",
+            "2024",
+            "tendl-2024/xs/",
+        ),
+        (
+            "endfb-8.1",
+            "ENDF/B-VIII.1",
+            "US Evaluated Nuclear Data File (NNDC/BNL)",
+            &["n", "p", "d", "t", "h", "a"],
+            "cross_sections",
+            "VIII.1",
+            "endfb-8.1/xs/",
+        ),
+        (
+            "jeff-4.0",
+            "JEFF-4.0",
+            "Joint Evaluated Fission and Fusion File (NEA)",
+            &["n", "p"],
+            "cross_sections",
+            "4.0",
+            "jeff-4.0/xs/",
+        ),
+        (
+            "jendl-5",
+            "JENDL-5",
+            "Japanese Evaluated Nuclear Data Library (JAEA)",
+            &["n", "p", "d", "a"],
+            "cross_sections",
+            "5",
+            "jendl-5/xs/",
+        ),
+        (
+            "tendl-2025",
+            "TENDL-2025",
+            "TALYS Evaluated Nuclear Data Library 2025 (PSI)",
+            &["n", "p", "d", "t", "h", "a"],
+            "cross_sections",
+            "2025",
+            "tendl-2025/xs/",
+        ),
+        (
+            "cendl-3.2",
+            "CENDL-3.2",
+            "Chinese Evaluated Nuclear Data Library (CIAE)",
+            &["n"],
+            "cross_sections",
+            "3.2",
+            "cendl-3.2/xs/",
+        ),
+        (
+            "brond-3.1",
+            "BROND-3.1",
+            "Russian Evaluated Nuclear Data Library (IPPE)",
+            &["n"],
+            "cross_sections",
+            "3.1",
+            "brond-3.1/xs/",
+        ),
+        (
+            "fendl-3.2",
+            "FENDL-3.2",
+            "Fusion Evaluated Nuclear Data Library (IAEA)",
+            &["n"],
+            "cross_sections",
+            "3.2",
+            "fendl-3.2/xs/",
+        ),
+        (
+            "eaf-2010",
+            "EAF-2010",
+            "European Activation File (CCFE)",
+            &["n"],
+            "cross_sections",
+            "2010",
+            "eaf-2010/xs/",
+        ),
+        (
+            "irdff-2",
+            "IRDFF-II",
+            "International Reactor Dosimetry and Fusion File (IAEA)",
+            &["n"],
+            "cross_sections",
+            "II",
+            "irdff-2/xs/",
+        ),
+        (
+            "iaea-medical",
+            "IAEA-Medical",
+            "Medical isotope production cross-sections (IAEA)",
+            &["p", "d", "h", "a"],
+            "cross_sections",
+            "latest",
+            "iaea-medical/xs/",
+        ),
+        (
+            "jendl-ad-2017",
+            "JENDL/AD-2017",
+            "Activation/Dosimetry Library (JAEA)",
+            &["n", "p"],
+            "cross_sections",
+            "2017",
+            "jendl-ad-2017/xs/",
+        ),
+        (
+            "jendl-deu-2020",
+            "JENDL-DEU-2020",
+            "Dedicated deuteron-induced reaction library (JAEA)",
+            &["d"],
+            "cross_sections",
+            "2020",
+            "jendl-deu-2020/xs/",
+        ),
+        (
+            "iaea-pd-2019",
+            "IAEA-PD-2019",
+            "Photonuclear Data Library (IAEA)",
+            &["g"],
+            "cross_sections",
+            "2019",
+            "iaea-pd-2019/xs/",
+        ),
+        (
+            "exfor",
+            "EXFOR",
+            "Experimental nuclear reaction data (IAEA NDS)",
+            &["n", "p", "d", "t", "h", "a"],
+            "experimental_cross_sections",
+            "latest",
+            "exfor/",
+        ),
     ];
     for &(id, name, desc, projs, dt, ver, path) in libs {
-        m.insert(id.to_string(), Library {
-            name: name.to_string(),
-            description: desc.to_string(),
-            projectiles: projs.iter().map(|s| s.to_string()).collect(),
-            data_type: dt.to_string(),
-            version: ver.to_string(),
-            path: path.to_string(),
-        });
+        m.insert(
+            id.to_string(),
+            Library {
+                name: name.to_string(),
+                description: desc.to_string(),
+                projectiles: projs.iter().map(|s| s.to_string()).collect(),
+                data_type: dt.to_string(),
+                version: ver.to_string(),
+                path: path.to_string(),
+            },
+        );
     }
     m
 }
@@ -86,9 +209,21 @@ async fn fetch_parquet_rows(
     }
 
     let base = std::env::var("NUCL_PARQUET_BASE_URL").unwrap_or_else(|_| BASE_URL.to_string());
-    let url = format!("{}{}", base.trim_end_matches('/'), if relative_path.starts_with('/') { relative_path.to_string() } else { format!("/{relative_path}") });
+    let url = format!(
+        "{}{}",
+        base.trim_end_matches('/'),
+        if relative_path.starts_with('/') {
+            relative_path.to_string()
+        } else {
+            format!("/{relative_path}")
+        }
+    );
 
-    let resp = client.get(&url).send().await.map_err(|e| format!("HTTP error: {e}"))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {} fetching {url}", resp.status()));
     }
@@ -129,7 +264,9 @@ fn column_value_to_json(col: &dyn Array, idx: usize) -> serde_json::Value {
     }
     if let Some(a) = col.as_any().downcast_ref::<Float64Array>() {
         let v = a.value(idx);
-        serde_json::Value::Number(serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0)))
+        serde_json::Value::Number(
+            serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0)),
+        )
     } else if let Some(a) = col.as_any().downcast_ref::<Int32Array>() {
         serde_json::Value::Number(a.value(idx).into())
     } else if let Some(a) = col.as_any().downcast_ref::<StringArray>() {
@@ -172,10 +309,20 @@ struct JsonRpcError {
 
 impl JsonRpcResponse {
     fn success(id: serde_json::Value, result: serde_json::Value) -> Self {
-        Self { jsonrpc: "2.0".into(), id, result: Some(result), error: None }
+        Self {
+            jsonrpc: "2.0".into(),
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
     fn error(id: serde_json::Value, code: i32, message: String) -> Self {
-        Self { jsonrpc: "2.0".into(), id, result: None, error: Some(JsonRpcError { code, message }) }
+        Self {
+            jsonrpc: "2.0".into(),
+            id,
+            result: None,
+            error: Some(JsonRpcError { code, message }),
+        }
     }
 }
 
@@ -269,46 +416,86 @@ async fn handle_tool_call(
     let cat = catalog();
     match name {
         "list_libraries" => {
-            let libs: Vec<serde_json::Value> = cat.iter().map(|(id, lib)| {
-                serde_json::json!({
-                    "id": id,
-                    "name": lib.name,
-                    "description": lib.description,
-                    "projectiles": lib.projectiles,
-                    "version": lib.version,
-                    "data_type": lib.data_type,
+            let libs: Vec<serde_json::Value> = cat
+                .iter()
+                .map(|(id, lib)| {
+                    serde_json::json!({
+                        "id": id,
+                        "name": lib.name,
+                        "description": lib.description,
+                        "projectiles": lib.projectiles,
+                        "version": lib.version,
+                        "data_type": lib.data_type,
+                    })
                 })
-            }).collect();
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&libs).unwrap() }] }))
+                .collect();
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&libs).unwrap() }] }),
+            )
         }
         "list_isotopes" => {
-            let library = args.get("library").and_then(|v| v.as_str()).ok_or("missing 'library'")?;
-            let projectile = args.get("projectile").and_then(|v| v.as_str()).ok_or("missing 'projectile'")?;
-            let lib = cat.get(library).ok_or_else(|| format!("Unknown library: {library}"))?;
+            let library = args
+                .get("library")
+                .and_then(|v| v.as_str())
+                .ok_or("missing 'library'")?;
+            let projectile = args
+                .get("projectile")
+                .and_then(|v| v.as_str())
+                .ok_or("missing 'projectile'")?;
+            let lib = cat
+                .get(library)
+                .ok_or_else(|| format!("Unknown library: {library}"))?;
             if !lib.projectiles.iter().any(|p| p == projectile) {
                 return Err(format!("Projectile '{projectile}' not in {library}"));
             }
             let manifest_path = lib.path.replace("xs/", "manifest.json");
-            let url = format!("{}{}", std::env::var("NUCL_PARQUET_BASE_URL").unwrap_or_else(|_| BASE_URL.to_string()).trim_end_matches('/'), format!("/{manifest_path}"));
+            let url = format!(
+                "{}{}",
+                std::env::var("NUCL_PARQUET_BASE_URL")
+                    .unwrap_or_else(|_| BASE_URL.to_string())
+                    .trim_end_matches('/'),
+                format!("/{manifest_path}")
+            );
             let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
-            let manifest: serde_json::Value = resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
-            let elements = manifest.get("elements").cloned().unwrap_or(serde_json::json!([]));
+            let manifest: serde_json::Value = resp
+                .json::<serde_json::Value>()
+                .await
+                .map_err(|e| e.to_string())?;
+            let elements = manifest
+                .get("elements")
+                .cloned()
+                .unwrap_or(serde_json::json!([]));
             let result = serde_json::json!({ "library": library, "projectile": projectile, "elements": elements });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         "get_cross_sections" => {
-            let library = args.get("library").and_then(|v| v.as_str()).ok_or("missing 'library'")?;
-            let projectile = args.get("projectile").and_then(|v| v.as_str()).ok_or("missing 'projectile'")?;
-            let element = args.get("element").and_then(|v| v.as_str()).ok_or("missing 'element'")?;
+            let library = args
+                .get("library")
+                .and_then(|v| v.as_str())
+                .ok_or("missing 'library'")?;
+            let projectile = args
+                .get("projectile")
+                .and_then(|v| v.as_str())
+                .ok_or("missing 'projectile'")?;
+            let element = args
+                .get("element")
+                .and_then(|v| v.as_str())
+                .ok_or("missing 'element'")?;
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let lib = cat.get(library).ok_or_else(|| format!("Unknown library: {library}"))?;
+            let lib = cat
+                .get(library)
+                .ok_or_else(|| format!("Unknown library: {library}"))?;
             let path = format!("{}{projectile}_{element}.parquet", lib.path);
             let rows = fetch_parquet_rows(client, cache, &path).await?;
             let total = rows.len();
             let truncated = total > max_rows;
             let display_rows: Vec<_> = rows.into_iter().take(max_rows).collect();
             let result = serde_json::json!({ "library": library, "projectile": projectile, "element": element, "total": total, "truncated": truncated, "rows": display_rows });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         "get_decay_data" => {
             let z = args.get("z").and_then(|v| v.as_i64());
@@ -317,31 +504,65 @@ async fn handle_tool_call(
                 return Err("Provide at least z or a".to_string());
             }
             let rows = fetch_parquet_rows(client, cache, "meta/decay.parquet").await?;
-            let filtered: Vec<_> = rows.into_iter().filter(|row| {
-                if let Some(zv) = z { if row.get("Z").and_then(|v| v.as_i64()) != Some(zv) { return false; } }
-                if let Some(av) = a { if row.get("A").and_then(|v| v.as_i64()) != Some(av) { return false; } }
-                true
-            }).collect();
-            let result = serde_json::json!({ "z": z, "a": a, "count": filtered.len(), "rows": filtered });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|row| {
+                    if let Some(zv) = z {
+                        if row.get("Z").and_then(|v| v.as_i64()) != Some(zv) {
+                            return false;
+                        }
+                    }
+                    if let Some(av) = a {
+                        if row.get("A").and_then(|v| v.as_i64()) != Some(av) {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .collect();
+            let result =
+                serde_json::json!({ "z": z, "a": a, "count": filtered.len(), "rows": filtered });
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         "get_abundances" => {
-            let z = args.get("z").and_then(|v| v.as_i64()).ok_or("missing 'z'")?;
+            let z = args
+                .get("z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'z'")?;
             let rows = fetch_parquet_rows(client, cache, "meta/abundances.parquet").await?;
-            let filtered: Vec<_> = rows.into_iter().filter(|row| row.get("Z").and_then(|v| v.as_i64()) == Some(z)).collect();
-            let result = serde_json::json!({ "z": z, "count": filtered.len(), "isotopes": filtered });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|row| row.get("Z").and_then(|v| v.as_i64()) == Some(z))
+                .collect();
+            let result =
+                serde_json::json!({ "z": z, "count": filtered.len(), "isotopes": filtered });
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         "get_stopping_power" => {
-            let source = args.get("source").and_then(|v| v.as_str()).ok_or("missing 'source'")?;
-            let target_z = args.get("target_z").and_then(|v| v.as_i64()).ok_or("missing 'target_z'")?;
+            let source = args
+                .get("source")
+                .and_then(|v| v.as_str())
+                .ok_or("missing 'source'")?;
+            let target_z = args
+                .get("target_z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'target_z'")?;
             let rows = fetch_parquet_rows(client, cache, "stopping/stopping.parquet").await?;
-            let filtered: Vec<_> = rows.into_iter().filter(|row| {
-                row.get("source").and_then(|v| v.as_str()) == Some(source) &&
-                row.get("target_Z").and_then(|v| v.as_i64()) == Some(target_z)
-            }).collect();
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|row| {
+                    row.get("source").and_then(|v| v.as_str()) == Some(source)
+                        && row.get("target_Z").and_then(|v| v.as_i64()) == Some(target_z)
+                })
+                .collect();
             let result = serde_json::json!({ "source": source, "target_z": target_z, "count": filtered.len(), "rows": filtered });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         _ => Err(format!("Unknown tool: {name}")),
     }
@@ -364,27 +585,36 @@ async fn handle_request(
     }
 
     match req.method.as_str() {
-        "initialize" => {
-            Some(JsonRpcResponse::success(id, serde_json::json!({
+        "initialize" => Some(JsonRpcResponse::success(
+            id,
+            serde_json::json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "nucl-parquet", "version": "0.3.8" }
-            })))
-        }
-        "tools/list" => {
-            Some(JsonRpcResponse::success(id, tool_definitions()))
-        }
+            }),
+        )),
+        "tools/list" => Some(JsonRpcResponse::success(id, tool_definitions())),
         "tools/call" => {
-            let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let args = req.params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+            let name = req
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let args = req
+                .params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
             match handle_tool_call(client, cache, name, &args).await {
                 Ok(result) => Some(JsonRpcResponse::success(id, result)),
                 Err(e) => Some(JsonRpcResponse::error(id, -32000, e)),
             }
         }
-        _ => {
-            Some(JsonRpcResponse::error(id, -32601, format!("Method not found: {}", req.method)))
-        }
+        _ => Some(JsonRpcResponse::error(
+            id,
+            -32601,
+            format!("Method not found: {}", req.method),
+        )),
     }
 }
 
@@ -485,10 +715,8 @@ mod tests {
 
     #[test]
     fn json_rpc_response_serialization() {
-        let resp = JsonRpcResponse::success(
-            serde_json::json!(1),
-            serde_json::json!({"key": "value"}),
-        );
+        let resp =
+            JsonRpcResponse::success(serde_json::json!(1), serde_json::json!({"key": "value"}));
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"key\":\"value\""));
@@ -497,11 +725,7 @@ mod tests {
 
     #[test]
     fn json_rpc_error_serialization() {
-        let resp = JsonRpcResponse::error(
-            serde_json::json!(2),
-            -32601,
-            "Method not found".into(),
-        );
+        let resp = JsonRpcResponse::error(serde_json::json!(2), -32601, "Method not found".into());
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"error\""));
         assert!(json.contains("-32601"));

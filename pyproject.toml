@@ -13,6 +13,7 @@ dependencies = [
     "duckdb>=1.5.0",
     "numpy>=1.24",
     "pycatima>=1.981",
+    "zstandard>=0.22",
 ]
 
 [project.optional-dependencies]

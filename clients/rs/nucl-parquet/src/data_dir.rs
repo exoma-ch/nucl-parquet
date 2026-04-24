@@ -128,16 +128,14 @@ impl DataDir {
 
     #[cfg(feature = "fetch")]
     fn download() -> Result<()> {
-        let url = format!(
-            "{RELEASE_URL}/v{DATA_VERSION}/nucl-parquet-data-v{DATA_VERSION}.tar.zst"
-        );
+        let url =
+            format!("{RELEASE_URL}/v{DATA_VERSION}/nucl-parquet-data-v{DATA_VERSION}.tar.zst");
         let cache = Self::cache_dir();
         std::fs::create_dir_all(&cache)?;
 
         eprintln!("Downloading nucl-parquet data from {url} ...");
 
-        let resp =
-            reqwest::blocking::get(&url).map_err(|e| Error::Download(e.to_string()))?;
+        let resp = reqwest::blocking::get(&url).map_err(|e| Error::Download(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(Error::Download(format!("HTTP {}", resp.status())));
@@ -145,19 +143,26 @@ impl DataDir {
 
         // Stream directly into zstd decoder to avoid buffering the full
         // compressed archive in memory.
-        let decoder = zstd::stream::Decoder::new(resp)
-            .map_err(|e| Error::Download(format!("zstd: {e}")))?;
+        let decoder =
+            zstd::stream::Decoder::new(resp).map_err(|e| Error::Download(format!("zstd: {e}")))?;
 
         let mut archive = tar::Archive::new(decoder);
         // Filter out macOS resource fork files (._*) that may be in the archive
-        for entry in archive.entries().map_err(|e| Error::Download(format!("tar: {e}")))? {
+        for entry in archive
+            .entries()
+            .map_err(|e| Error::Download(format!("tar: {e}")))?
+        {
             let mut entry = entry.map_err(|e| Error::Download(format!("tar: {e}")))?;
-            let path = entry.path().map_err(|e| Error::Download(format!("tar: {e}")))?;
+            let path = entry
+                .path()
+                .map_err(|e| Error::Download(format!("tar: {e}")))?;
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if name.starts_with("._") {
                 continue;
             }
-            entry.unpack_in(&cache).map_err(|e| Error::Download(format!("tar: {e}")))?;
+            entry
+                .unpack_in(&cache)
+                .map_err(|e| Error::Download(format!("tar: {e}")))?;
         }
 
         eprintln!("Data extracted to {}", cache.display());
