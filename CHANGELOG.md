@@ -5,6 +5,10 @@
 
 ### Features
 
+* **radiation:** `gamma_lines(db, z, a, state="", min_intensity=0.0)` and `identify_gamma(db, energy, tolerance=2.0, state="", min_intensity=0.1)` helper functions — ground-state-default, isomer opt-in. Mirrors the Rust `DecayDb::modes(z, a, state)` shape. (closes [#36](https://github.com/exoma-ch/nucl-parquet/issues/36))
+* **radiation:** `GAMMA_LINES_SQL` / `IDENTIFY_GAMMA_SQL` now filter `state = $state` (default ground) — fixes the v0.9.0 "correct-by-default" claim that was aspirational. Previous mixed-state behaviour available as `GAMMA_LINES_ALL_SQL` / `IDENTIFY_GAMMA_ALL_SQL`. **Breaking (pre-1.0):** callers must pass `$state` (or switch to `gamma_lines()`) to preserve ground-only results; callers that want mixed states must switch to the `*_ALL_SQL` variants. (closes [#36](https://github.com/exoma-ch/nucl-parquet/issues/36))
+* **radiation:** `COINCIDENCE_SQL` gains a `$state` parameter scoping the radiation-side intensity lookup. Previous hardcoded `state=''` JOIN silently returned NULL intensities for isomeric parents (Ag-110m, Hf-178m2, Ho-166m, Lu-177m). (closes [#36](https://github.com/exoma-ch/nucl-parquet/issues/36))
+* **build:** `build_radiation_state` warns on orphan `(Z, A)` nuclides and fuzzy parent-level matches beyond 2.0 keV, and asserts uniqueness of isomeric levels at build time. (closes [#36](https://github.com/exoma-ch/nucl-parquet/issues/36))
 * adopt prek for pre-commit/pre-push hooks (closes [#42](https://github.com/exoma-ch/nucl-parquet/issues/42)) ([33c9645](https://github.com/exoma-ch/nucl-parquet/commit/33c9645e6b6b6afda18ccae801d3bb85ff062ecd))
 * adopt prek for pre-commit/pre-push hooks (closes [#42](https://github.com/exoma-ch/nucl-parquet/issues/42)) ([3ccc1d7](https://github.com/exoma-ch/nucl-parquet/commit/3ccc1d7518a44c0fa04bb3021614f0d8fc44b189))
 * **ci:** add MCP publish jobs, lockstep MCP versions with core (closes [#39](https://github.com/exoma-ch/nucl-parquet/issues/39)) ([647a251](https://github.com/exoma-ch/nucl-parquet/commit/647a251fb5ec7f09b71352c3e6f728a1b1aeace4))
@@ -13,6 +17,7 @@
 
 ### Bug Fixes
 
+* **tests:** `test_integrity.py::test_co60_half_life` now filters `state=''` — previous `LIMIT 1` was non-deterministic once Co-60m entries started sharing `(Z, A)` with the ground state. (closes [#36](https://github.com/exoma-ch/nucl-parquet/issues/36))
 * **go:** align module path with actual directory (closes [#40](https://github.com/exoma-ch/nucl-parquet/issues/40)) ([bc6f340](https://github.com/exoma-ch/nucl-parquet/commit/bc6f340b522aa16147a24c241c9cda3a96fcd138))
 * **go:** align module path with actual directory (closes [#40](https://github.com/exoma-ch/nucl-parquet/issues/40)) ([ed31931](https://github.com/exoma-ch/nucl-parquet/commit/ed3193125a1f1d03391161b06b8aa245de6512e0))
 * log_log_interp handles zero energies and q=0 form factor queries ([a253fc5](https://github.com/exoma-ch/nucl-parquet/commit/a253fc5f5006aa2f32f56d0221b79f8139767424))
