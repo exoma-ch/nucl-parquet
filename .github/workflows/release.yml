@@ -72,6 +72,56 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+  pypi-mcp:
+    name: Publish nucl-parquet-mcp to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi-mcp
+    defaults:
+      run:
+        working-directory: clients/py/nucl-parquet-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: clients/py/nucl-parquet-mcp/dist
+
+  npm-mcp:
+    name: Publish @nucl-parquet/mcp to npm
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: clients/ts/nucl-parquet-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  cargo-mcp:
+    name: Publish nucl-parquet-mcp to crates.io
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/rs/nucl-parquet-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
   go-tag:
     name: Mirror Go module tag
     runs-on: ubuntu-latest

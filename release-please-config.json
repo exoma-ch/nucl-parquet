@@ -12,8 +12,23 @@
           "jsonpath": "$.package.version"
         },
         {
+          "type": "toml",
+          "path": "clients/rs/nucl-parquet-mcp/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "clients/py/nucl-parquet-mcp/pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
           "type": "json",
           "path": "clients/ts/nucl-parquet/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "clients/ts/nucl-parquet-mcp/package.json",
           "jsonpath": "$.version"
         }
       ]
