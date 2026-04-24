@@ -115,4 +115,30 @@ mod tests {
         let v = [100.0, 10.0];
         assert_eq!(log_log_interp(&e, &v, 20.0), 10.0);
     }
+
+    #[test]
+    fn q_zero_form_factor() {
+        // q=0 is physically valid (forward scattering); must not be rejected.
+        let e = [1.0, 10.0];
+        let v = [100.0, 10.0];
+        assert_eq!(log_log_interp(&e, &v, 0.0), 100.0);
+    }
+
+    #[test]
+    fn zero_first_energy_falls_back_to_linear() {
+        // Table starting at 0 would produce ln(0) = -inf → NaN under pure log-log.
+        // Interval [0, 10] with query at 5 must fall back to linear: 0 + 0.5 * (10 - 0) = 5.
+        let e = [0.0, 10.0];
+        let v = [0.0, 10.0];
+        let result = log_log_interp(&e, &v, 5.0);
+        assert!(result.is_finite());
+        assert!((result - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn negative_energy_returns_nan() {
+        let e = [1.0, 10.0];
+        let v = [100.0, 10.0];
+        assert!(log_log_interp(&e, &v, -1.0).is_nan());
+    }
 }
