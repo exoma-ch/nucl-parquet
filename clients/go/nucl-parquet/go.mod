@@ -1,4 +1,4 @@
-module github.com/exoma-ch/nucl-parquet/go/nucl-parquet
+module github.com/exoma-ch/nucl-parquet/clients/go/nucl-parquet
 
 go 1.22
 
