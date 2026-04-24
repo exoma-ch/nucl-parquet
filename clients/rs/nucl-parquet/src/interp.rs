@@ -1,5 +1,8 @@
 use arrow::array::{Array, ArrayRef, LargeStringArray, StringArray};
 
+/// Parallel x/y f64 vectors — ubiquitous table shape for interpolation (energy, value).
+pub type XYTable = (Vec<f64>, Vec<f64>);
+
 /// Try to downcast an Arrow array column to StringArray or LargeStringArray.
 ///
 /// Polars writes Utf8 as LargeUtf8 in some cases, so we handle both.

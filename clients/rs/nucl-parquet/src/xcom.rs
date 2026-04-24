@@ -11,7 +11,7 @@ use std::path::Path;
 use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-use crate::interp::{log_log_interp, sort_paired_vecs};
+use crate::interp::{log_log_interp, sort_paired_vecs, XYTable};
 
 /// XCOM mass attenuation coefficient database.
 ///
@@ -19,13 +19,13 @@ use crate::interp::{log_log_interp, sort_paired_vecs};
 #[derive(Clone)]
 pub struct XcomDb {
     /// Z -> (energy_MeV sorted, mu_rho_cm2_g sorted)
-    elem_mu_rho: HashMap<u8, (Vec<f64>, Vec<f64>)>,
+    elem_mu_rho: HashMap<u8, XYTable>,
     /// Z -> (energy_MeV sorted, mu_en_rho_cm2_g sorted)
-    elem_mu_en_rho: HashMap<u8, (Vec<f64>, Vec<f64>)>,
+    elem_mu_en_rho: HashMap<u8, XYTable>,
     /// material name -> (energy_MeV sorted, mu_rho_cm2_g sorted)
-    comp_mu_rho: HashMap<String, (Vec<f64>, Vec<f64>)>,
+    comp_mu_rho: HashMap<String, XYTable>,
     /// material name -> (energy_MeV sorted, mu_en_rho_cm2_g sorted)
-    comp_mu_en_rho: HashMap<String, (Vec<f64>, Vec<f64>)>,
+    comp_mu_en_rho: HashMap<String, XYTable>,
 }
 
 unsafe impl Send for XcomDb {}
@@ -107,14 +107,9 @@ impl XcomDb {
 
     // --- Internal loaders ---
 
-    fn load_elements(
-        path: &Path,
-    ) -> crate::Result<(
-        HashMap<u8, (Vec<f64>, Vec<f64>)>,
-        HashMap<u8, (Vec<f64>, Vec<f64>)>,
-    )> {
-        let mut mu_rho: HashMap<u8, (Vec<f64>, Vec<f64>)> = HashMap::new();
-        let mut mu_en: HashMap<u8, (Vec<f64>, Vec<f64>)> = HashMap::new();
+    fn load_elements(path: &Path) -> crate::Result<(HashMap<u8, XYTable>, HashMap<u8, XYTable>)> {
+        let mut mu_rho: HashMap<u8, XYTable> = HashMap::new();
+        let mut mu_en: HashMap<u8, XYTable> = HashMap::new();
 
         let file = fs::File::open(path)?;
         let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
@@ -136,6 +131,7 @@ impl XcomDb {
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
             if let (Some(z), Some(e), Some(mr), Some(men)) = (z_col, e_col, mr_col, men_col) {
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     let zv = z.value(i) as u8;
                     let ev = e.value(i);
@@ -161,12 +157,9 @@ impl XcomDb {
 
     fn load_compounds(
         path: &Path,
-    ) -> crate::Result<(
-        HashMap<String, (Vec<f64>, Vec<f64>)>,
-        HashMap<String, (Vec<f64>, Vec<f64>)>,
-    )> {
-        let mut mu_rho: HashMap<String, (Vec<f64>, Vec<f64>)> = HashMap::new();
-        let mut mu_en: HashMap<String, (Vec<f64>, Vec<f64>)> = HashMap::new();
+    ) -> crate::Result<(HashMap<String, XYTable>, HashMap<String, XYTable>)> {
+        let mut mu_rho: HashMap<String, XYTable> = HashMap::new();
+        let mut mu_en: HashMap<String, XYTable> = HashMap::new();
 
         let file = fs::File::open(path)?;
         let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
@@ -188,6 +181,7 @@ impl XcomDb {
 
             if let (Some(mat), Some(e), Some(mr), Some(men)) = (mat_values, e_col, mr_col, men_col)
             {
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     let name = mat[i].unwrap_or("").to_string();
                     let ev = e.value(i);

@@ -64,6 +64,7 @@ impl AbundancesDb {
             if let (Some(z), Some(a), Some(sym), Some(ab), Some(mass)) =
                 (z_col, a_col, sym_values, ab_col, mass_col)
             {
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     let entry = AbundanceEntry {
                         z: z.value(i) as u32,
@@ -190,6 +191,7 @@ impl DecayDb {
                 ds_values,
                 br_col,
             ) {
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     let z_val = z.value(i) as u32;
                     let a_val = a.value(i) as u32;
@@ -274,6 +276,7 @@ impl DoseDb {
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
             if let (Some(z), Some(a), Some(state), Some(k)) = (z_col, a_col, state_values, k_col) {
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     data.insert(
                         (

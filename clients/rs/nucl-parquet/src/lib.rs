@@ -1,7 +1,3 @@
-// Pre-existing clippy drift silenced to unblock CI; see follow-up issue for cleanup.
-#![allow(clippy::type_complexity)]
-#![allow(clippy::needless_range_loop)]
-
 //! # nucl-parquet
 //!
 //! Fast, thread-safe access to nuclear interaction data stored as Parquet files.

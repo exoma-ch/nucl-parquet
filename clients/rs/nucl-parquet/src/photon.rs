@@ -271,6 +271,7 @@ impl PhotonDb {
                         column: "xs_barns (wrong type)".into(),
                     })?;
 
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     if z_val.is_none() {
                         z_val = Some(z_col.value(i) as u8);
@@ -350,6 +351,7 @@ impl PhotonDb {
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
                 if let (Some(z), Some(x), Some(y)) = (z_col, x_col, y_col) {
+                    #[allow(clippy::needless_range_loop)]
                     for i in 0..batch.num_rows() {
                         if z_val.is_none() {
                             z_val = Some(z.value(i) as u8);
