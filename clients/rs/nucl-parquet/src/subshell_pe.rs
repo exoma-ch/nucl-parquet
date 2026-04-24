@@ -78,6 +78,7 @@ impl SubshellPeDb {
                 if let (Some(z), Some(e), Some(shell), Some(xs), Some(edge)) =
                     (z_col, e_col, shell_values, xs_col, edge_col)
                 {
+                    #[allow(clippy::needless_range_loop)]
                     for i in 0..batch.num_rows() {
                         if z_val.is_none() {
                             z_val = Some(z.value(i) as u8);

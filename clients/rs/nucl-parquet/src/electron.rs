@@ -82,6 +82,7 @@ impl ElectronDb {
                 if let (Some(z), Some(e), Some(proc), Some(xs)) =
                     (z_col, e_col, proc_values, xs_col)
                 {
+                    #[allow(clippy::needless_range_loop)]
                     for i in 0..batch.num_rows() {
                         if z_val.is_none() {
                             z_val = Some(z.value(i) as u8);

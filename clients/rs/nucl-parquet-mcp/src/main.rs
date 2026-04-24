@@ -1,6 +1,3 @@
-// Pre-existing clippy drift; see #41 follow-up for cleanup.
-#![allow(clippy::type_complexity)]
-
 //! nucl-parquet MCP server — lazy-loads Parquet files from GitHub.
 //!
 //! Implements the MCP (Model Context Protocol) over stdio using plain JSON-RPC 2.0.
@@ -38,9 +35,20 @@ struct Library {
     path: String,
 }
 
+/// Raw catalog seed tuple: (id, name, description, projectiles, data_type, version, path).
+type LibrarySeed = (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static [&'static str],
+    &'static str,
+    &'static str,
+    &'static str,
+);
+
 fn catalog() -> HashMap<String, Library> {
     let mut m = HashMap::new();
-    let libs: &[(&str, &str, &str, &[&str], &str, &str, &str)] = &[
+    let libs: &[LibrarySeed] = &[
         (
             "tendl-2024",
             "TENDL-2024",

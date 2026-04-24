@@ -11,7 +11,7 @@ use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::error::Error;
-use crate::interp::{log_log_interp, sort_paired_vecs};
+use crate::interp::{log_log_interp, sort_paired_vecs, XYTable};
 
 /// A single cross-section data point.
 #[derive(Debug, Clone)]
@@ -30,7 +30,7 @@ pub struct XsEntry {
 #[derive(Clone)]
 pub struct CrossSectionDb {
     /// (target_a, residual_z, residual_a, state) -> (energies MeV, xs mb) sorted by energy
-    reactions: HashMap<(u32, u32, u32, String), (Vec<f64>, Vec<f64>)>,
+    reactions: HashMap<(u32, u32, u32, String), XYTable>,
     target_z: u32,
 }
 
@@ -49,7 +49,7 @@ impl CrossSectionDb {
         let target_z =
             z_from_path(path).ok_or_else(|| Error::DataDirNotFound(path.to_path_buf()))?;
 
-        let mut reactions: HashMap<(u32, u32, u32, String), (Vec<f64>, Vec<f64>)> = HashMap::new();
+        let mut reactions: HashMap<(u32, u32, u32, String), XYTable> = HashMap::new();
 
         let file = fs::File::open(path)?;
         let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
@@ -78,6 +78,7 @@ impl CrossSectionDb {
             if let (Some(ta), Some(rz), Some(ra), Some(st), Some(e), Some(xs)) =
                 (ta_col, rz_col, ra_col, st_values, e_col, xs_col)
             {
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     let key = (
                         ta.value(i) as u32,

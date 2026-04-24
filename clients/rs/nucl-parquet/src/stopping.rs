@@ -11,7 +11,7 @@ use arrow::array::{Float64Array, Int32Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::error::Error;
-use crate::interp::{log_log_interp, sort_paired_vecs};
+use crate::interp::{log_log_interp, sort_paired_vecs, XYTable};
 
 /// Mass stopping power database for NIST tabulated sources (PSTAR, ASTAR, ESTAR, …)
 /// and CatIMA heavy-ion calculations.
@@ -20,9 +20,9 @@ use crate::interp::{log_log_interp, sort_paired_vecs};
 #[derive(Clone)]
 pub struct StoppingDb {
     /// (source, target_Z) -> (energy_MeV sorted, dedx sorted)
-    nist: HashMap<(String, u32), (Vec<f64>, Vec<f64>)>,
+    nist: HashMap<(String, u32), XYTable>,
     /// (proj_Z, target_Z) -> (energy_MeV_u sorted, dedx sorted)
-    catima: HashMap<(u32, u32), (Vec<f64>, Vec<f64>)>,
+    catima: HashMap<(u32, u32), XYTable>,
     /// (proj_Z, target_Z) -> Bohr straggling dΩ²/d(ρx) [MeV² cm²/g] (constant per pair)
     catima_strag: HashMap<(u32, u32), f64>,
 }
@@ -90,8 +90,8 @@ impl StoppingDb {
 
     // --- Internal loaders ---
 
-    fn load_nist(dir: &Path) -> crate::Result<HashMap<(String, u32), (Vec<f64>, Vec<f64>)>> {
-        let mut map: HashMap<(String, u32), (Vec<f64>, Vec<f64>)> = HashMap::new();
+    fn load_nist(dir: &Path) -> crate::Result<HashMap<(String, u32), XYTable>> {
+        let mut map: HashMap<(String, u32), XYTable> = HashMap::new();
 
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -122,6 +122,7 @@ impl StoppingDb {
                     .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
                 if let (Some(src), Some(z), Some(e), Some(s)) = (src_values, z_col, e_col, s_col) {
+                    #[allow(clippy::needless_range_loop)]
                     for i in 0..batch.num_rows() {
                         let key = (src[i].unwrap_or("").to_string(), z.value(i) as u32);
                         let entry = map.entry(key).or_default();
@@ -139,14 +140,12 @@ impl StoppingDb {
         Ok(map)
     }
 
+    #[allow(clippy::type_complexity)] // two parallel maps keyed by (Z, A); splitting into a struct adds noise.
     fn load_catima(
         dir: &Path,
-    ) -> crate::Result<(
-        HashMap<(u32, u32), (Vec<f64>, Vec<f64>)>,
-        HashMap<(u32, u32), f64>,
-    )> {
+    ) -> crate::Result<(HashMap<(u32, u32), XYTable>, HashMap<(u32, u32), f64>)> {
         let catima_path = dir.join("catima").join("catima.parquet");
-        let mut map: HashMap<(u32, u32), (Vec<f64>, Vec<f64>)> = HashMap::new();
+        let mut map: HashMap<(u32, u32), XYTable> = HashMap::new();
         let mut strag_map: HashMap<(u32, u32), f64> = HashMap::new();
 
         if !catima_path.exists() {
@@ -176,6 +175,7 @@ impl StoppingDb {
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
             if let (Some(pz), Some(tz), Some(e), Some(s)) = (pz_col, tz_col, e_col, s_col) {
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
                     let key = (pz.value(i) as u32, tz.value(i) as u32);
                     let entry = map.entry(key).or_default();
