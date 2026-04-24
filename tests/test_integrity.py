@@ -31,8 +31,7 @@ def test_co60_half_life(data_dir_path: Path) -> None:
     db = duckdb.connect()
     path = data_dir_path / "meta" / "decay.parquet"
     result = db.sql(
-        f"SELECT half_life_s FROM read_parquet('{path}') "
-        "WHERE Z=27 AND A=60 AND state='' LIMIT 1"
+        f"SELECT half_life_s FROM read_parquet('{path}') WHERE Z=27 AND A=60 AND state='' LIMIT 1"
     ).fetchone()
     assert result is not None, "Co-60 ground state not found in decay data"
     expected_s = 5.2714 * 365.25 * 24 * 3600  # ~1.663e8 s
