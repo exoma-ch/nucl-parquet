@@ -1,3 +1,6 @@
+// Pre-existing clippy drift; see #41 follow-up for cleanup.
+#![allow(clippy::type_complexity)]
+
 //! nucl-parquet MCP server — lazy-loads Parquet files from GitHub.
 //!
 //! Implements the MCP (Model Context Protocol) over stdio using plain JSON-RPC 2.0.
@@ -449,13 +452,9 @@ async fn handle_tool_call(
                 return Err(format!("Projectile '{projectile}' not in {library}"));
             }
             let manifest_path = lib.path.replace("xs/", "manifest.json");
-            let url = format!(
-                "{}{}",
-                std::env::var("NUCL_PARQUET_BASE_URL")
-                    .unwrap_or_else(|_| BASE_URL.to_string())
-                    .trim_end_matches('/'),
-                format!("/{manifest_path}")
-            );
+            let base =
+                std::env::var("NUCL_PARQUET_BASE_URL").unwrap_or_else(|_| BASE_URL.to_string());
+            let url = format!("{}/{manifest_path}", base.trim_end_matches('/'));
             let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
             let manifest: serde_json::Value = resp
                 .json::<serde_json::Value>()
@@ -580,9 +579,7 @@ async fn handle_request(
     let id = req.id.clone().unwrap_or(serde_json::Value::Null);
 
     // Notifications (no id) don't get responses
-    if req.id.is_none() {
-        return None;
-    }
+    req.id.as_ref()?;
 
     match req.method.as_str() {
         "initialize" => Some(JsonRpcResponse::success(
