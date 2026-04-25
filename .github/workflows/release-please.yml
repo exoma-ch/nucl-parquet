@@ -14,5 +14,9 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
+          # PAT (or GitHub App token) is required so the tag push triggers
+          # release.yml. GITHUB_TOKEN-pushed tags are silently ignored by
+          # workflow triggers — see #35 / #57 for the history.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
