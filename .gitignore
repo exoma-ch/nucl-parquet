@@ -21,10 +21,12 @@ build/
 # Generated artifacts (rebuild with scripts/)
 plots/
 
-# docs/ is generated, but theranostics source files are tracked
+# docs/ is generated, but theranostics source files and ADRs are tracked
 docs/*
 !docs/theranostics/
 docs/theranostics/*
 !docs/theranostics/generate.py
 !docs/theranostics/refs.bib
 !docs/theranostics/.gitignore
+!docs/adr/
+!docs/adr/*.md
