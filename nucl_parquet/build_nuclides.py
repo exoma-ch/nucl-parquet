@@ -234,53 +234,41 @@ def _validate(df) -> None:
 
 
 def get_state_map(data_dir: Path) -> dict[tuple[int, int], list[tuple[str, float]]]:
-    """Return (Z, A) → [(state_label, energy_keV), ...] for radiation state assignment.
+    """Return (Z, A) → [(state_label, level_keV), ...] for radiation state assignment.
 
-    Combines levels data (has energy_keV) with radiation parent_level_keV
-    to build a comprehensive mapping.
+    Sourced exclusively from `nuclides.parquet` — the canonical isomer catalog
+    introduced in v0.9.0. Only isomers with a known `level_keV` are included;
+    isomers with NULL `level_keV` can't be matched against radiation rows on
+    parent level energy and are skipped (empirically none of those have any
+    radiation rows referring to them).
+
+    Why not levels.parquet or radiation.parent_level_keV as fallback? Both
+    over-include: levels.parquet has many short-lived "isomeric" levels that
+    aren't real metastables, and radiation parent_level_keV references any
+    cascade parent — including non-isomeric short-lived levels that ENSDF
+    radiation tables tabulate. Mixing those in fabricates phantom isomer
+    labels (m, m2, ...) absent from the catalog. See #58.
+
+    Build pipeline order: build_nuclides must run before build_radiation_state
+    (the only caller of this function). Raises FileNotFoundError otherwise.
     """
-    from collections import defaultdict
+    nuc_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
+    if not nuc_path.exists():
+        raise FileNotFoundError(
+            f"nuclides.parquet not found at {nuc_path}; run `python -m nucl_parquet.build_nuclides` first."
+        )
 
     db = duckdb.connect()
-    za_levels: dict[tuple[int, int], list[float]] = defaultdict(list)
-
-    # From levels (most precise)
-    levels_dir = data_dir / "meta" / "ensdf" / "levels"
-    if levels_dir.exists() and list(levels_dir.glob("*.parquet")):
-        rows = db.sql(f"""
-            SELECT Z, A, energy_keV
-            FROM read_parquet('{levels_dir}/*.parquet')
-            WHERE energy_keV > 0 AND half_life_s > 0.001
-            ORDER BY Z, A, energy_keV
-        """).fetchall()
-        for z, a, e in rows:
-            za_levels[(int(z), int(a))].append(float(e))
-
-    # From radiation parent_level_keV (covers nuclides not in levels)
-    rad_dir = data_dir / "meta" / "ensdf" / "radiation"
-    if rad_dir.exists():
-        rows = db.sql(f"""
-            SELECT DISTINCT Z, A, ROUND(parent_level_keV, 1) AS level_keV
-            FROM read_parquet('{rad_dir}/*.parquet')
-            WHERE parent_level_keV > 0 AND Z > 0
-            ORDER BY Z, A, level_keV
-        """).fetchall()
-        for z, a, e in rows:
-            key = (int(z), int(a))
-            e = float(e)
-            # Only add if not already covered by levels data (within tolerance)
-            existing = za_levels.get(key, [])
-            if not any(abs(ex - e) < 1.0 for ex in existing):
-                za_levels[key].append(e)
+    rows = db.sql(f"""
+        SELECT Z, A, state, level_keV
+        FROM read_parquet('{nuc_path}')
+        WHERE state != '' AND Z > 0 AND level_keV IS NOT NULL
+        ORDER BY Z, A, state
+    """).fetchall()
 
     result: dict[tuple[int, int], list[tuple[str, float]]] = {}
-    for (z, a), energies in za_levels.items():
-        energies.sort()
-        labels = []
-        for i, e in enumerate(energies):
-            label = "m" if i == 0 else f"m{i + 1}"
-            labels.append((label, e))
-        result[(z, a)] = labels
+    for z, a, state, level_keV in rows:
+        result.setdefault((int(z), int(a)), []).append((state, float(level_keV)))
     return result
 
 
