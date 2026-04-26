@@ -131,42 +131,84 @@ def test_assigner_null_parent_level_is_ground() -> None:
         ]
     )
     orphans: set = set()
-    fuzzy: list = []
-    assert _assign_states(df, state_map={}, orphans=orphans, fuzzy_matches=fuzzy) == ["", ""]
+    unlabeled: list = []
+    assert _assign_states(df, state_map={}, orphans=orphans, unlabeled_excited=unlabeled) == ["", ""]
     assert orphans == set()
-    assert fuzzy == []
+    assert unlabeled == []
 
 
-def test_assigner_orphan_nuclide_records_warning() -> None:
+def test_assigner_orphan_with_parent_level_is_ground() -> None:
+    """Orphan (Z,A) — no entry in state_map — labels '' (ground), not 'm'.
+
+    Regression for #49 Bug 2: previously fabricated 'm' for unknown nuclides,
+    which then failed the nuclides-subset invariant downstream.
+    """
     df = _mk_rad([{"Z": 77, "A": 177, "parent_level_keV": 500.0}])
     orphans: set = set()
-    fuzzy: list = []
-    states = _assign_states(df, state_map={}, orphans=orphans, fuzzy_matches=fuzzy)
-    assert states == ["m"]
+    unlabeled: list = []
+    states = _assign_states(df, state_map={}, orphans=orphans, unlabeled_excited=unlabeled)
+    assert states == [""]
     assert (77, 177) in orphans
+    assert unlabeled == []
 
 
 def test_assigner_near_degenerate_levels_picks_nearest() -> None:
     state_map = {(1, 1): [("m", 45.0), ("m2", 46.0)]}
     df = _mk_rad(
         [
-            {"Z": 1, "A": 1, "parent_level_keV": 45.4},
-            {"Z": 1, "A": 1, "parent_level_keV": 45.6},
+            {"Z": 1, "A": 1, "parent_level_keV": 45.1},
+            {"Z": 1, "A": 1, "parent_level_keV": 45.9},
         ]
     )
-    fuzzy: list = []
-    assert _assign_states(df, state_map=state_map, orphans=set(), fuzzy_matches=fuzzy) == ["m", "m2"]
-    assert fuzzy == []  # both within tolerance
+    unlabeled: list = []
+    assert _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled) == ["m", "m2"]
+    assert unlabeled == []  # both within tolerance
 
 
-def test_assigner_fuzzy_match_beyond_tolerance_warns() -> None:
+def test_assigner_non_isomeric_parent_within_warning_threshold_is_ground() -> None:
+    """Distinct non-isomeric excited parent within the *old* 2.0 keV warning
+    band but beyond the *new* 0.5 keV match threshold is labeled '' (ground)
+    and recorded for diagnostics. Regression for #49 Bug 1: previously these
+    silently inherited the nearest isomer's label.
+
+    Concrete example mirrors Mn-60 (m2 at 271.8) vs the radiation file's
+    distinct 271.2 keV parent level.
+    """
+    state_map = {(25, 60): [("m", 114.0), ("m2", 271.8)]}
+    df = _mk_rad([{"Z": 25, "A": 60, "parent_level_keV": 271.2}])
+    unlabeled: list = []
+    states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
+    assert states == [""]
+    assert len(unlabeled) == 1
+    assert unlabeled[0][0:2] == (25, 60)
+    assert unlabeled[0][3] == "m2"  # nearest isomer recorded for the diagnostic
+
+
+def test_assigner_far_match_is_ground_not_isomer() -> None:
     state_map = {(1, 1): [("m", 45.0)]}
     df = _mk_rad([{"Z": 1, "A": 1, "parent_level_keV": 100.0}])
-    fuzzy: list = []
-    states = _assign_states(df, state_map=state_map, orphans=set(), fuzzy_matches=fuzzy)
-    assert states == ["m"]
-    assert len(fuzzy) == 1
-    assert fuzzy[0][0:2] == (1, 1)
+    unlabeled: list = []
+    states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
+    assert states == [""]
+    assert len(unlabeled) == 1
+    # Tuple shape: (z, a, parent_level_keV, nearest_label, distance_keV)
+    assert unlabeled[0] == (1, 1, 100.0, "m", 55.0)
+
+
+def test_assigner_threshold_boundary_inclusive() -> None:
+    """Boundary at exactly _LEVEL_EXACT_MATCH_KEV is *inclusive* (labelled isomer).
+    Pinned so a future tweak from `>` to `>=` is caught."""
+    state_map = {(1, 1): [("m", 100.0)]}
+    df = _mk_rad(
+        [
+            {"Z": 1, "A": 1, "parent_level_keV": 100.5},  # exactly at threshold → 'm'
+            {"Z": 1, "A": 1, "parent_level_keV": 100.51},  # just past → ''
+        ]
+    )
+    unlabeled: list = []
+    states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
+    assert states == ["m", ""]
+    assert len(unlabeled) == 1
 
 
 def test_assert_unique_levels_rejects_duplicates() -> None:
@@ -185,11 +227,12 @@ def test_assert_unique_levels_accepts_distinct() -> None:
 
 @pytest.mark.data
 @pytest.mark.xfail(
-    reason="Known data inconsistency: build_radiation_state's get_state_map uses "
-    "radiation parent_level_keV to label isomers, but nuclides.parquet only "
-    "includes isomers present in decay.parquet — ~135 orphan (Z,A,state) "
-    "triples. Tracked separately; flips to passing once nuclides.parquet "
-    "covers every isomer labelled in radiation.",
+    reason="Known data inconsistency: get_state_map() fabricates isomeric "
+    "labels from radiation.parent_level_keV values that aren't backed by a "
+    "real isomer in decay.parquet/nuclides.parquet — ~134 orphan (Z,A,state) "
+    "triples (down from 135 after #49 fixed the assigner-side mislabels). "
+    "Flips to passing once get_state_map() sources from nuclides.parquet "
+    "and/or nuclides.parquet covers every isomer that radiation references.",
     strict=False,
 )
 def test_radiation_state_subset_of_nuclides(data_dir_path: Path) -> None:

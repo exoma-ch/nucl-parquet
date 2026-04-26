@@ -19,9 +19,14 @@ from .build_nuclides import get_state_map
 from .download import data_dir as _resolve_data_dir
 
 # Max keV between radiation's parent_level_keV and the nearest known isomeric
-# level before we consider the match suspicious. ENSDF parent levels are
-# usually quoted to better than 1 keV; anything worse warrants a warning.
-_LEVEL_MATCH_TOLERANCE_KEV = 2.0
+# level before we treat the row as a *different* (non-isomeric) excited parent
+# and fall back to ground state. ENSDF level energies typically agree within
+# ~0.5 keV across cross-referenced datasets; differences larger than that are
+# almost always distinct physical levels (Mn-60: 271.2 vs m2 271.8; Nb-95:
+# 234.7 vs m 235.69; Rh-102: 140.7 vs m 140.0; Dy-149: 2661.94 vs m 2661.3).
+# Beyond this threshold we label `""` and record a diagnostic so the data team
+# can verify in ENSDF — better than silently inventing an isomer label.
+_LEVEL_EXACT_MATCH_KEV = 0.5
 
 
 def build(data_dir: Path | None = None) -> None:
@@ -43,7 +48,7 @@ def build(data_dir: Path | None = None) -> None:
     total_rows = 0
     total_iso = 0
     orphans: set[tuple[int, int]] = set()
-    fuzzy_matches: list[tuple[int, int, float, str, float]] = []
+    unlabeled_excited: list[tuple[int, int, float, str, float]] = []
 
     for f in files:
         df = pl.read_parquet(f)
@@ -52,7 +57,7 @@ def build(data_dir: Path | None = None) -> None:
         if "state" in df.columns:
             df = df.drop("state")
 
-        states = _assign_states(df, state_map, orphans, fuzzy_matches)
+        states = _assign_states(df, state_map, orphans, unlabeled_excited)
 
         # Insert state column after A
         state_series = pl.Series("state", states, dtype=pl.Utf8)
@@ -76,15 +81,16 @@ def build(data_dir: Path | None = None) -> None:
     if orphans:
         warnings.warn(
             f"{len(orphans)} (Z,A) nuclides have radiation but no entry in "
-            f"nuclides.parquet; non-zero parent_level_keV rows labelled 'm' by "
-            f"fallback. Examples: {sorted(orphans)[:5]}",
+            f"state_map; non-zero parent_level_keV rows labelled '' (ground) "
+            f"by fallback. Examples: {sorted(orphans)[:5]}",
             stacklevel=2,
         )
-    if fuzzy_matches:
+    if unlabeled_excited:
         warnings.warn(
-            f"{len(fuzzy_matches)} radiation rows matched to an isomeric level "
-            f"further than {_LEVEL_MATCH_TOLERANCE_KEV} keV — possible silent "
-            f"mis-label. Examples: {fuzzy_matches[:3]}",
+            f"{len(unlabeled_excited)} radiation rows had a parent_level_keV "
+            f"farther than {_LEVEL_EXACT_MATCH_KEV} keV from the nearest known "
+            f"isomer — likely non-isomeric short-lived excited parents, "
+            f"labelled '' (ground). Examples: {unlabeled_excited[:3]}",
             stacklevel=2,
         )
 
@@ -95,13 +101,23 @@ def _assign_states(
     df,
     state_map: dict[tuple[int, int], list[tuple[str, float]]],
     orphans: set[tuple[int, int]],
-    fuzzy_matches: list[tuple[int, int, float, str, float]],
+    unlabeled_excited: list[tuple[int, int, float, str, float]],
 ) -> list[str]:
     """Assign a state label ('', 'm', 'm2', ...) to each radiation row.
 
-    NULL or zero parent_level_keV → ground state ('').  Non-zero levels are
-    matched to the nearest known isomeric level from `state_map`.  Accumulates
-    diagnostics into `orphans` and `fuzzy_matches` for the caller to surface.
+    Policy:
+      * NULL or zero parent_level_keV → ground state ('').
+      * Orphan (Z,A) (no entry in state_map) → ground state ('') + diagnostic.
+        Previously labelled 'm', which invented isomers absent from
+        nuclides.parquet (#49 Bug 2).
+      * Non-zero parent levels are matched to the nearest known isomer.
+        Within `_LEVEL_EXACT_MATCH_KEV` keV → assigned that isomer's label.
+        Beyond → ground state ('') + diagnostic. Previously *any* nearest
+        match within 2.0 keV was assigned, silently mislabelling distinct
+        non-isomeric excited parents as the nearest isomer (#49 Bug 1).
+
+    Diagnostics accumulate into `orphans` and `unlabeled_excited` for the
+    caller to surface as warnings.
     """
     states: list[str] = []
     for row in df.iter_rows(named=True):
@@ -116,10 +132,10 @@ def _assign_states(
         labels = state_map.get((z, a))
         if labels is None:
             orphans.add((z, a))
-            states.append("m")
+            states.append("")
             continue
 
-        best_label = "m"
+        best_label = ""
         best_dist = float("inf")
         for label, energy in labels:
             dist = abs(energy - pl_keV)
@@ -127,8 +143,10 @@ def _assign_states(
                 best_dist = dist
                 best_label = label
 
-        if best_dist > _LEVEL_MATCH_TOLERANCE_KEV:
-            fuzzy_matches.append((z, a, pl_keV, best_label, best_dist))
+        if best_dist > _LEVEL_EXACT_MATCH_KEV:
+            unlabeled_excited.append((z, a, pl_keV, best_label, best_dist))
+            states.append("")
+            continue
 
         states.append(best_label)
     return states
