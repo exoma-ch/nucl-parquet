@@ -191,7 +191,24 @@ def test_assigner_far_match_is_ground_not_isomer() -> None:
     states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
     assert states == [""]
     assert len(unlabeled) == 1
-    assert unlabeled[0][0:2] == (1, 1)
+    # Tuple shape: (z, a, parent_level_keV, nearest_label, distance_keV)
+    assert unlabeled[0] == (1, 1, 100.0, "m", 55.0)
+
+
+def test_assigner_threshold_boundary_inclusive() -> None:
+    """Boundary at exactly _LEVEL_EXACT_MATCH_KEV is *inclusive* (labelled isomer).
+    Pinned so a future tweak from `>` to `>=` is caught."""
+    state_map = {(1, 1): [("m", 100.0)]}
+    df = _mk_rad(
+        [
+            {"Z": 1, "A": 1, "parent_level_keV": 100.5},  # exactly at threshold → 'm'
+            {"Z": 1, "A": 1, "parent_level_keV": 100.51},  # just past → ''
+        ]
+    )
+    unlabeled: list = []
+    states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
+    assert states == ["m", ""]
+    assert len(unlabeled) == 1
 
 
 def test_assert_unique_levels_rejects_duplicates() -> None:
