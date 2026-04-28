@@ -23,7 +23,15 @@ import duckdb
 import polars as pl
 import pytest
 
-from nucl_parquet.build_radiation_state import _assert_unique_levels, _assign_states
+from nucl_parquet.build_nuclides import get_state_map
+from nucl_parquet.build_radiation_state import (
+    _ORPHAN_CEILING,
+    _UNLABELED_EXCITED_CEILING,
+    BuildIntegrityError,
+    _assert_unique_levels,
+    _assign_states,
+    _surface_diagnostics,
+)
 from nucl_parquet.loader import gamma_lines, identify_gamma
 
 # ---------------------------------------------------------------------------
@@ -211,6 +219,29 @@ def test_assigner_threshold_boundary_inclusive() -> None:
     assert len(unlabeled) == 1
 
 
+def test_surface_diagnostics_within_ceilings_only_warns() -> None:
+    """Counts at or below the ceiling stay as warnings (build still succeeds)."""
+    orphans = {(99, 199 + i) for i in range(_ORPHAN_CEILING)}
+    unlabeled = [(1, 1, 100.0, "m", 50.0)] * _UNLABELED_EXCITED_CEILING
+    with pytest.warns(UserWarning):
+        _surface_diagnostics(orphans, unlabeled)  # must not raise
+
+
+def test_surface_diagnostics_breach_raises() -> None:
+    """Above the orphan ceiling → BuildIntegrityError so a refresh can't drift silently."""
+    orphans = {(99, 199 + i) for i in range(_ORPHAN_CEILING + 1)}
+    unlabeled: list = []
+    with pytest.raises(BuildIntegrityError, match="orphan"):
+        _surface_diagnostics(orphans, unlabeled)
+
+
+def test_surface_diagnostics_unlabeled_breach_raises() -> None:
+    orphans: set = set()
+    unlabeled = [(1, 1, 100.0, "m", 50.0)] * (_UNLABELED_EXCITED_CEILING + 1)
+    with pytest.raises(BuildIntegrityError, match="unlabeled-excited"):
+        _surface_diagnostics(orphans, unlabeled)
+
+
 def test_assert_unique_levels_rejects_duplicates() -> None:
     with pytest.raises(ValueError, match="Duplicate isomeric level"):
         _assert_unique_levels({(63, 152): [("m", 45.6), ("m2", 45.6)]})
@@ -226,15 +257,29 @@ def test_assert_unique_levels_accepts_distinct() -> None:
 
 
 @pytest.mark.data
-@pytest.mark.xfail(
-    reason="Known data inconsistency: get_state_map() fabricates isomeric "
-    "labels from radiation.parent_level_keV values that aren't backed by a "
-    "real isomer in decay.parquet/nuclides.parquet — ~134 orphan (Z,A,state) "
-    "triples (down from 135 after #49 fixed the assigner-side mislabels). "
-    "Flips to passing once get_state_map() sources from nuclides.parquet "
-    "and/or nuclides.parquet covers every isomer that radiation references.",
-    strict=False,
-)
+def test_state_map_is_subset_of_nuclides(data_dir_path: Path) -> None:
+    """Every (Z, A, state) `get_state_map` returns must also exist in
+    `nuclides.parquet`. Pinned so the function can never silently fall back
+    to the pre-#58 behaviour of fabricating isomers from levels.parquet or
+    radiation parent_level_keV."""
+    state_map = get_state_map(data_dir_path)
+
+    db = duckdb.connect()
+    nuc_path = data_dir_path / "meta" / "ensdf" / "nuclides.parquet"
+    nuclides_set = {
+        (int(z), int(a), state)
+        for z, a, state in db.sql(f"SELECT Z, A, state FROM read_parquet('{nuc_path}') WHERE state != ''").fetchall()
+    }
+
+    bad = []
+    for (z, a), labels in state_map.items():
+        for state, _level in labels:
+            if (z, a, state) not in nuclides_set:
+                bad.append((z, a, state))
+    assert bad == [], f"state_map contains {len(bad)} (Z,A,state) triples absent from nuclides: {bad[:5]}"
+
+
+@pytest.mark.data
 def test_radiation_state_subset_of_nuclides(data_dir_path: Path) -> None:
     """Invariant: for every (Z, A) emitting radiation, every distinct `state`
     value must also exist in `nuclides.parquet` for that (Z, A). Catches

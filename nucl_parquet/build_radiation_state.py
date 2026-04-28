@@ -78,6 +78,34 @@ def build(data_dir: Path | None = None) -> None:
     print(f"  {total_iso} rows assigned to isomeric states")
     print(f"  {total_rows - total_iso} rows assigned to ground state")
 
+    _surface_diagnostics(orphans, unlabeled_excited)
+    _validate(data_dir)
+
+
+# Empirical baselines from the v0.10.0+#58 data: 77 orphan (Z,A) and 2577
+# unlabeled-excited radiation rows. The ceilings allow modest headroom for
+# routine ENSDF refreshes; a refresh that introduces dramatically more
+# orphans/unlabeled rows almost certainly indicates new (Z,A) coverage in
+# radiation that nuclides.parquet hasn't caught up with — surface it loudly
+# rather than silently expanding the "ground" bucket. Bump these only after
+# verifying the new entries are genuine cascade parents (not real isomers
+# missing from nuclides — see #58 Phase 2).
+_ORPHAN_CEILING = 100
+_UNLABELED_EXCITED_CEILING = 3000
+
+
+def _surface_diagnostics(
+    orphans: set[tuple[int, int]],
+    unlabeled_excited: list[tuple[int, int, float, str, float]],
+) -> None:
+    """Loud build-time guard for #58 Phase 3.
+
+    Prints a banner + raises BuildIntegrityError if orphan (Z,A) or unlabeled-
+    excited row counts grow beyond the documented ceilings — catches future
+    ENSDF refresh drift that would otherwise silently expand the "ground"
+    bucket. Counts at-or-below the ceilings emit a `warnings.warn` line each
+    so they remain visible in normal builds.
+    """
     if orphans:
         warnings.warn(
             f"{len(orphans)} (Z,A) nuclides have radiation but no entry in "
@@ -94,7 +122,23 @@ def build(data_dir: Path | None = None) -> None:
             stacklevel=2,
         )
 
-    _validate(data_dir)
+    breached = []
+    if len(orphans) > _ORPHAN_CEILING:
+        breached.append(f"orphan (Z,A) count {len(orphans)} > {_ORPHAN_CEILING}")
+    if len(unlabeled_excited) > _UNLABELED_EXCITED_CEILING:
+        breached.append(f"unlabeled-excited row count {len(unlabeled_excited)} > {_UNLABELED_EXCITED_CEILING}")
+    if breached:
+        msg = (
+            "BUILD INTEGRITY GUARD: " + "; ".join(breached) + ". A recent "
+            "ENSDF refresh may have introduced new (Z,A,level) coverage in "
+            "radiation that nuclides.parquet hasn't caught up with — audit "
+            "before bumping the ceilings (see #58 Phase 2)."
+        )
+        raise BuildIntegrityError(msg)
+
+
+class BuildIntegrityError(RuntimeError):
+    """Raised when a data refresh introduces drift past the documented ceilings."""
 
 
 def _assign_states(
