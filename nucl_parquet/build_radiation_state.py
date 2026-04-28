@@ -29,6 +29,22 @@ from .download import data_dir as _resolve_data_dir
 _LEVEL_EXACT_MATCH_KEV = 0.5
 
 
+class BuildIntegrityError(RuntimeError):
+    """Raised when a data refresh introduces drift past the documented ceilings."""
+
+
+# Empirical baselines from v0.10.1 (#58) data: 77 orphan (Z,A), 2577 unlabeled-
+# excited radiation rows. Ceilings sit ~10% above the floors — tight enough to
+# catch silent drift from a future ENSDF refresh, loose enough to absorb a
+# small batch of new (Z,A) coverage. `>` (strict) is the breach test, so a
+# count exactly equal to the ceiling does *not* raise. Bump only after
+# auditing whether the new entries are genuine cascade parents (correctly
+# labelled '') or real isomers missing from nuclides.parquet (need backfill —
+# see #58 Phase 2).
+_ORPHAN_CEILING = 90
+_UNLABELED_EXCITED_CEILING = 2800
+
+
 def build(data_dir: Path | None = None) -> None:
     """Add state column to all radiation/*.parquet files."""
     if data_dir is None:
@@ -82,18 +98,6 @@ def build(data_dir: Path | None = None) -> None:
     _validate(data_dir)
 
 
-# Empirical baselines from the v0.10.0+#58 data: 77 orphan (Z,A) and 2577
-# unlabeled-excited radiation rows. The ceilings allow modest headroom for
-# routine ENSDF refreshes; a refresh that introduces dramatically more
-# orphans/unlabeled rows almost certainly indicates new (Z,A) coverage in
-# radiation that nuclides.parquet hasn't caught up with — surface it loudly
-# rather than silently expanding the "ground" bucket. Bump these only after
-# verifying the new entries are genuine cascade parents (not real isomers
-# missing from nuclides — see #58 Phase 2).
-_ORPHAN_CEILING = 100
-_UNLABELED_EXCITED_CEILING = 3000
-
-
 def _surface_diagnostics(
     orphans: set[tuple[int, int]],
     unlabeled_excited: list[tuple[int, int, float, str, float]],
@@ -135,10 +139,6 @@ def _surface_diagnostics(
             "before bumping the ceilings (see #58 Phase 2)."
         )
         raise BuildIntegrityError(msg)
-
-
-class BuildIntegrityError(RuntimeError):
-    """Raised when a data refresh introduces drift past the documented ceilings."""
 
 
 def _assign_states(

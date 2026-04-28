@@ -17,6 +17,7 @@ Design notes:
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import duckdb
@@ -205,26 +206,44 @@ def test_assigner_far_match_is_ground_not_isomer() -> None:
 
 def test_assigner_threshold_boundary_inclusive() -> None:
     """Boundary at exactly _LEVEL_EXACT_MATCH_KEV is *inclusive* (labelled isomer).
-    Pinned so a future tweak from `>` to `>=` is caught."""
+    Pinned so a future tweak from `>` to `>=` is caught. Covers below, at,
+    and just-past the threshold."""
     state_map = {(1, 1): [("m", 100.0)]}
     df = _mk_rad(
         [
-            {"Z": 1, "A": 1, "parent_level_keV": 100.5},  # exactly at threshold → 'm'
+            {"Z": 1, "A": 1, "parent_level_keV": 100.49},  # below threshold → 'm'
+            {"Z": 1, "A": 1, "parent_level_keV": 100.5},  # exactly at → 'm'
             {"Z": 1, "A": 1, "parent_level_keV": 100.51},  # just past → ''
         ]
     )
     unlabeled: list = []
     states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
-    assert states == ["m", ""]
+    assert states == ["m", "m", ""]
     assert len(unlabeled) == 1
 
 
 def test_surface_diagnostics_within_ceilings_only_warns() -> None:
-    """Counts at or below the ceiling stay as warnings (build still succeeds)."""
+    """Counts at the ceiling stay as warnings (build still succeeds). Pins
+    that both warnings (orphan + unlabeled) fire and that their messages
+    contain the expected anchor strings — a regression that collapses both
+    into one warning, swaps message text, or drops the example payload
+    would slip past `pytest.warns(UserWarning)` alone."""
     orphans = {(99, 199 + i) for i in range(_ORPHAN_CEILING)}
     unlabeled = [(1, 1, 100.0, "m", 50.0)] * _UNLABELED_EXCITED_CEILING
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning) as rec:
         _surface_diagnostics(orphans, unlabeled)  # must not raise
+    assert len(rec) == 2
+    assert any("no entry in state_map" in str(w.message) for w in rec)
+    assert any("farther than" in str(w.message) for w in rec)
+    assert any("Examples:" in str(w.message) for w in rec)
+
+
+def test_surface_diagnostics_empty_no_warning() -> None:
+    """Empty diagnostics → no warning fires. Catches a regression that
+    would warn unconditionally."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning becomes a test failure
+        _surface_diagnostics(set(), [])
 
 
 def test_surface_diagnostics_breach_raises() -> None:
@@ -252,6 +271,62 @@ def test_assert_unique_levels_accepts_distinct() -> None:
 
 
 # ---------------------------------------------------------------------------
+# get_state_map unit tests — hand-rolled nuclides.parquet so this works
+# without `@pytest.mark.data`. Covers the rewrite from PR #61.
+# ---------------------------------------------------------------------------
+
+
+def _write_synthetic_nuclides(tmp_path: Path, rows: list[dict]) -> Path:
+    """Write a minimal nuclides.parquet under tmp_path with the schema
+    `get_state_map` reads."""
+    nuc_dir = tmp_path / "meta" / "ensdf"
+    nuc_dir.mkdir(parents=True)
+    df = pl.DataFrame(rows, schema={"Z": pl.Int32, "A": pl.Int32, "state": pl.Utf8, "level_keV": pl.Float64})
+    df.write_parquet(nuc_dir / "nuclides.parquet")
+    return tmp_path
+
+
+def test_get_state_map_missing_file_raises(tmp_path: Path) -> None:
+    """Pipeline order: build_nuclides must run before build_radiation_state.
+    A missing nuclides.parquet must raise a clear FileNotFoundError naming
+    the file — never a downstream cryptic DuckDB error."""
+    with pytest.raises(FileNotFoundError, match="nuclides.parquet"):
+        get_state_map(tmp_path)
+
+
+def test_get_state_map_filters_ground_null_and_zero_z(tmp_path: Path) -> None:
+    """Only isomers with non-empty state, non-NULL level_keV, and Z>0 enter
+    the state_map. Pins three filters that the rewrite from PR #61 added —
+    dropping any of them re-introduces the pre-#58 phantom-isomer hazard."""
+    data_dir = _write_synthetic_nuclides(
+        tmp_path,
+        [
+            {"Z": 63, "A": 152, "state": "", "level_keV": 0.0},  # ground — must skip
+            {"Z": 63, "A": 152, "state": "m", "level_keV": 45.6},  # real isomer — keep
+            {"Z": 25, "A": 46, "state": "m", "level_keV": None},  # NULL level — must skip
+            {"Z": 0, "A": 247, "state": "m", "level_keV": 100.0},  # Z=0 SF — must skip
+            {"Z": 43, "A": 99, "state": "m", "level_keV": 142.68},  # real isomer — keep
+        ],
+    )
+    state_map = get_state_map(data_dir)
+    assert state_map == {(63, 152): [("m", 45.6)], (43, 99): [("m", 142.68)]}
+
+
+def test_get_state_map_groups_multiple_isomers_per_za(tmp_path: Path) -> None:
+    """Two isomers for the same (Z,A) collect into one list entry."""
+    data_dir = _write_synthetic_nuclides(
+        tmp_path,
+        [
+            {"Z": 47, "A": 110, "state": "m", "level_keV": 117.6},
+            {"Z": 47, "A": 110, "state": "m2", "level_keV": 1499.0},
+        ],
+    )
+    state_map = get_state_map(data_dir)
+    assert (47, 110) in state_map
+    assert sorted(state_map[(47, 110)]) == [("m", 117.6), ("m2", 1499.0)]
+
+
+# ---------------------------------------------------------------------------
 # Invariants + spot-checks over real data (@pytest.mark.data).
 # ---------------------------------------------------------------------------
 
@@ -263,6 +338,9 @@ def test_state_map_is_subset_of_nuclides(data_dir_path: Path) -> None:
     to the pre-#58 behaviour of fabricating isomers from levels.parquet or
     radiation parent_level_keV."""
     state_map = get_state_map(data_dir_path)
+    # An empty state_map would trivially pass the subset check below — guard
+    # against a regression that returns {} (wrong path, wrong column filter).
+    assert state_map, "state_map is empty — get_state_map regressed silently"
 
     db = duckdb.connect()
     nuc_path = data_dir_path / "meta" / "ensdf" / "nuclides.parquet"
