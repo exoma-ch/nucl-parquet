@@ -350,3 +350,81 @@ def test_tc99m_isomer_labelled(data_dir_path: Path) -> None:
               AND rad_type='gamma' AND ABS(energy_keV - 140.5) < 0.2"""
     ).fetchone()[0]
     assert n >= 1
+
+
+@pytest.mark.data
+@pytest.mark.parametrize(
+    "z,a,expected_t_half_s,expected_level_keV,desc",
+    [
+        (63, 152, 5760.0, 147.8111, "Eu-152m2 (96 min, 147.81 keV)"),
+        (73, 182, 950.4, 519.58725, "Ta-182m2 (15.84 min, 519.59 keV)"),
+        (47, 95, 0.04, 2531.4119, "Ag-95m2 (40 ms, 2531.41 keV)"),
+        (49, 109, 0.209, 2101.8711, "In-109m2 (209 ms, 2101.87 keV)"),
+        (29, 70, 6.6, 242.65, "Cu-70m2 (6.6 s, 242.65 keV)"),
+    ],
+)
+def test_rescued_it_orphan_isomers_present(
+    data_dir_path: Path,
+    z: int,
+    a: int,
+    expected_t_half_s: float,
+    expected_level_keV: float,
+    desc: str,
+) -> None:
+    """The IAEA-fetcher's IT-from-ground-state state-label loss (#63) is
+    repaired by the build_nuclides rescue pass. Each of these (Z,A) had its
+    m2 isomer's `state` field dropped in the original Parquet; the rescue
+    re-derives the level energy from radiation.parent_level_keV."""
+    db = duckdb.connect()
+    nuc_path = data_dir_path / "meta" / "ensdf" / "nuclides.parquet"
+    rows = db.sql(
+        f"SELECT half_life_s, level_keV FROM read_parquet('{nuc_path}') WHERE Z={z} AND A={a} AND state='m2'"
+    ).fetchall()
+    assert len(rows) == 1, f"Expected exactly 1 m2 entry for {desc}, got {len(rows)}"
+    hl, level = rows[0]
+    assert hl == pytest.approx(expected_t_half_s, rel=1e-3), f"{desc}: half_life mismatch"
+    assert level == pytest.approx(expected_level_keV, abs=0.5), f"{desc}: level_keV mismatch"
+
+
+@pytest.mark.data
+def test_decay_it_orphans_all_have_rescued_isomer(data_dir_path: Path) -> None:
+    """For every (Z,A) where decay.parquet has a broken `state='' AND
+    decay_mode='IT'` row, nuclides.parquet must now contain a non-empty-state
+    entry whose half_life_s matches that row. Pins the rescue's contract
+    without false-positive-failing on unrelated upstream fetcher artifacts
+    (e.g. Hf-183 ground in ground_states.parquet has decay_1='IT' as well —
+    a separate issue not addressed by the decay.parquet rescue pass)."""
+    db = duckdb.connect()
+    decay_path = data_dir_path / "meta" / "decay.parquet"
+    nuc_path = data_dir_path / "meta" / "ensdf" / "nuclides.parquet"
+
+    broken = db.sql(
+        f"""SELECT Z, A, half_life_s FROM read_parquet('{decay_path}')
+            WHERE state='' AND decay_mode='IT' AND Z>0"""
+    ).fetchall()
+    assert len(broken) >= 30, f"Expected ~49 IT-from-ground rows in decay.parquet, found {len(broken)}"
+
+    missing = []
+    for z, a, hl in broken:
+        rows = db.sql(
+            f"""SELECT half_life_s FROM read_parquet('{nuc_path}')
+                WHERE Z={z} AND A={a} AND state != '' AND ABS(half_life_s - {hl}) < 1e-3"""
+        ).fetchall()
+        if not rows:
+            missing.append((z, a, hl))
+    assert missing == [], f"{len(missing)} broken IT decays unrescued (rescue regression): {missing[:5]}"
+
+
+@pytest.mark.data
+def test_eu152m2_cascade_rows_correctly_labelled(data_dir_path: Path) -> None:
+    """The 35 Eu-152 radiation rows with parent_level_keV ≈ 147.81 keV — the
+    Eu-152m2 cascade — must be labelled `state='m2'`. Regression for the
+    PR #61 acknowledged side-effect that this PR closes."""
+    db = duckdb.connect()
+    rad_glob = data_dir_path / "meta" / "ensdf" / "radiation" / "*.parquet"
+    n = db.sql(
+        f"""SELECT COUNT(*) FROM read_parquet('{rad_glob}')
+            WHERE Z=63 AND A=152 AND state='m2'
+              AND ABS(parent_level_keV - 147.8111) < 0.1"""
+    ).fetchone()[0]
+    assert n >= 30, f"Eu-152m2 cascade rows undercount: {n} (expected ~35)"
