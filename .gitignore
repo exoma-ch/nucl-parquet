@@ -24,10 +24,12 @@ plots/
 # Upstream data caches — fetched on demand by scripts/fetch_*.py
 data/g4_raw/
 
-# docs/ is generated, but theranostics source files are tracked
+# docs/ is generated, but theranostics source files and ADRs are tracked
 docs/*
 !docs/theranostics/
 docs/theranostics/*
 !docs/theranostics/generate.py
 !docs/theranostics/refs.bib
 !docs/theranostics/.gitignore
+!docs/adr/
+!docs/adr/*.md
