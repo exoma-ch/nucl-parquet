@@ -26,17 +26,43 @@ The migration must pick a target schema for the rebuilt `nuclides.parquet` / `de
 
 ## Decision
 
-**Adopt option (a): preserve nucl-parquet's current schema, transform on import.**
+**Adopt option (a): preserve nucl-parquet's current schema, transform on import. Dual-carry the strata-native encoding alongside the legacy schema so a future v1.0 cleanup is a removal, not a re-introduction.**
 
 The G4-derived input files (strata's parquet) are read by build-time converter scripts (#69–#72), which compute:
 
 - `level_keV` ← `excitation_kev` (rename only, identical Float64 keV semantics)
-- `half_life_s` ← `mean_life_ns × ln(2) × 1e-9` (G4 ENSDFSTATE row stores mean lifetime in ns; convert via half-life formula)
-- `jp` ← `encode(spin_x2, parity)` producing strings like "3-", "1/2+" with parenthesisation for uncertain values dropped (G4 strips ENSDF parens at parse time)
+- `half_life_s` ← `convert_mean_life(mean_life_ns)` (see Transform spec below)
+- `jp` ← `encode_jp(spin_x2, parity)` (see Transform spec below) — kept for v0.10 compat
+- **Dual-carry**: `spin_x2` (Int16) and `parity` (Int8) shipped *alongside* `jp` for structured access and lossless round-trip — recommended path forward for new consumers, mandatory for any v1.0 cleanup
 - `(Z, A, state)` ← derived per-(Z,A) from ascending `level_keV` of long-lived isomers, mirroring the v0.9.0+ state convention
 - AME2020 / IUPAC auxiliary tables (already shipped on `feat/g4-data-migration` per commit `0abef28`) are LEFT-JOINed into `ground_states.parquet` for mass-excess and isotopic-abundance columns
 
 **Bonus columns are added additively, not substituted**: `magnetic_moment_jt`, `multipolarity`, `mixing_ratio`, `icc_total` get new optional columns in the existing tables. Nullable. Documented but not required.
+
+### Transform spec (binding for #69–#72)
+
+**Half-life conversion** (`mean_life_ns` → `half_life_s`):
+
+| G4 input | Output `half_life_s` | Meaning |
+|---|---|---|
+| `> 0` (finite) | `mean_life_ns × ln(2) × 1e-9` | Standard mean-life → half-life |
+| `-1` (G4 stable sentinel) | `NULL` | Stable nuclide; consistent with v0.10.x ground_states.parquet handling for stable isotopes |
+| `0` (G4 prompt sentinel) | `0.0` | Prompt; same semantic as v0.10.x |
+| missing / parser failure | `NULL` | Unknown |
+
+**Crucial**: the converter must explicitly check for `-1` *before* multiplying — naively applying the formula yields `≈ -6.93e-10 s`, a negative half-life that would silently corrupt downstream queries. Test required at boundary.
+
+**Spin/parity encoding** (`spin_x2`, `parity` → `jp`):
+
+| G4 input | Output `jp` | Notes |
+|---|---|---|
+| `spin_x2=12, parity=-1` | `"6-"` | integer-spin case |
+| `spin_x2=3, parity=+1` | `"3/2+"` | half-integer-spin case |
+| `spin_x2=0, parity=+1` | `"0+"` | zero-spin |
+| `spin_x2=99` (G4 unknown sentinel) | `NULL` | preserves "unknown" — *also* `spin_x2_raw=NULL` and `parity_raw=NULL` in the dual-carry columns |
+| `parity=0` (G4 unmeasured) | spin string with no sign suffix, e.g. `"3"` | `parity_raw=NULL`, `spin_x2_raw=N` for analytics |
+
+The dual-carry `spin_x2` / `parity` columns preserve the unknown/unmeasured distinction that the legacy `jp` string can't express. This addresses the v0.10.x `jp=""` fetcher artifact (570 rows) by construction — strata's clean G4 input never produces empty strings; G4 uses explicit sentinels which we now decode.
 
 ## Alternatives considered
 
@@ -44,14 +70,16 @@ The G4-derived input files (strata's parquet) are read by build-time converter s
 
 Write `excitation_kev` / `mean_life_ns` / `spin_x2` / `parity` etc. directly into nucl-parquet's output, dropping the v0.10.x column names.
 
-**Rejected** — every downstream consumer breaks in lockstep with the migration:
+**Rejected** — most downstream consumers break in lockstep with the migration:
 
-- The Rust crate at `clients/rs/nucl-parquet/src/meta.rs` (`DecayDb::modes`, `NuclidesDb::lookup`) reads `level_keV`/`half_life_s`/`jp`. Re-deriving per-shell decoders would mean a coordinated nucl-parquet + crate release.
-- The TypeScript SDK `clients/ts/core/{decayColumns,nuclidesColumns}` types match the current parquet schema.
-- The MCP server queries against the Python loader's view definitions (`GAMMA_LINES_SQL`, `IDENTIFY_GAMMA_SQL`).
-- External consumers of v0.10.x (fd5, smelt, theranostics docs) implicitly depend on the existing column set.
+- The Rust crate at `clients/rs/nucl-parquet/src/meta.rs` (`DecayDb::modes`, `NuclidesDb::lookup`) reads parquet *files directly* via `parquet`/`arrow-rs` and projects fixed column names. **No mitigation possible without a coordinated release.** This is the binding constraint.
+- The TypeScript SDK `clients/ts/core/{decayColumns,nuclidesColumns}` types — partially mitigable via DuckDB/Polars view aliasing on the loader side, but the SDK's static typings would still mismatch.
+- The MCP server queries against the Python loader's view definitions (`GAMMA_LINES_SQL`, `IDENTIFY_GAMMA_SQL`) — fully mitigable via `CREATE VIEW nuclides AS SELECT excitation_kev AS level_keV, ... FROM read_parquet(...)`. Loader could ship a back-compat view.
+- External consumers of v0.10.x (fd5, smelt, theranostics docs) reading parquet directly: same as Rust — no aliasing path.
 
-A coordinated breaking-change release is appropriate at v1.0; not at v0.11. The v0.10 → v0.11 transition's *primary* value is data-quality (eliminating the IAEA-fetcher bug class — see ADR-0001 / PRs #57, #61, #62, #64). Bundling an API break dilutes that value and complicates user upgrades.
+So option (b)'s lockstep claim holds for **Rust + external Python/Polars/DuckDB consumers** (the heavy users); MCP and TS could be partially mitigated with view aliases. Even with the partial mitigation, the Rust ecosystem alone justifies rejection: a coordinated nucl-parquet + crate + downstream-Cargo-bump release is the kind of thing that warrants v1.0 framing, not a v0.11 data-quality release.
+
+The dual-carry strategy in option (a) gives v1.0 a clean cutover path: drop `level_keV`/`half_life_s`/`jp` in v1.0, leaving the already-shipped `spin_x2`/`parity` (and any future strata-native columns) as the canonical encoding. Users get *one* breaking change (column removal), not *two* (introduction + reintroduction).
 
 ### C. Dual-publish (both schemas as separate tables) (rejected)
 
