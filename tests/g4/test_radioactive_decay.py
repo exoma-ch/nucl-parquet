@@ -504,10 +504,25 @@ class TestRealDataAcceptance:
         assert tc["branching"].item() == pytest.approx(0.99996, abs=1e-4)
 
     def test_no_IT_on_ground_anywhere(self, decay: pl.DataFrame) -> None:
-        # The v0.10.x bug-class canary. Must be zero.
-        offenders = decay.filter((pl.col("state") == "") & (pl.col("decay_mode") == "IT"))
+        # The v0.10.x bug-class canary. Must be zero. Case-insensitive
+        # to future-proof against a downstream lower-caser.
+        offenders = decay.filter((pl.col("state") == "") & (pl.col("decay_mode").str.to_uppercase() == "IT"))
         assert offenders.height == 0, (
             f"IT-on-ground regression — {offenders.height} rows: {offenders.select('Z', 'A').to_dicts()[:5]}"
+        )
+
+    def test_no_IT_on_ground_in_detailed_table(self, detailed: pl.DataFrame) -> None:
+        """Same canary as ``test_no_IT_on_ground_anywhere`` but applied to the
+        per-transition detail table. PR #83 review (#71) flagged that the
+        original test only scanned the summary table; an IT-on-ground row
+        could in principle land in detail without showing up in summary.
+        Pin both tables together so the bug class can't shape-shift."""
+        offenders = detailed.filter(
+            (pl.col("parent_ex_kev") == 0.0) & (pl.col("decay_mode").str.to_uppercase() == "IT")
+        )
+        assert offenders.height == 0, (
+            f"IT-on-ground regression in decay_detailed — {offenders.height} rows: "
+            f"{offenders.select('parent_z', 'parent_a').to_dicts()[:5]}"
         )
 
     def test_branching_sums_within_tolerance(self, decay: pl.DataFrame) -> None:
