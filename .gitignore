@@ -21,6 +21,9 @@ build/
 # Generated artifacts (rebuild with scripts/)
 plots/
 
+# Upstream data caches — fetched on demand by scripts/fetch_*.py
+data/g4_raw/
+
 # docs/ is generated, but theranostics source files are tracked
 docs/*
 !docs/theranostics/
