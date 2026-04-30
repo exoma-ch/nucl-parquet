@@ -66,10 +66,12 @@ def _read_pinned_revision() -> str:
 
     The pin lives in catalog.json so that downstream consumers (Rust crate,
     docs, audit trail) can introspect 'which strata revision did this build
-    use' without parsing Python source. Single source of truth.
+    use' without parsing Python source. Single source of truth. Path is
+    resolved from this script's location, so the working directory doesn't
+    matter.
     """
     if not CATALOG_PATH.exists():
-        raise FileNotFoundError(f"catalog.json not found at {CATALOG_PATH}; run from the nucl-parquet repo root.")
+        raise FileNotFoundError(f"catalog.json not found at {CATALOG_PATH} — repo layout changed unexpectedly.")
     catalog = json.loads(CATALOG_PATH.read_text())
     entry = catalog.get("libraries", {}).get(CATALOG_KEY)
     if not entry:
@@ -83,30 +85,69 @@ def _read_pinned_revision() -> str:
     return revision
 
 
+def _atomic_copy(src: Path, dest: Path) -> None:
+    """Copy with rename-on-finish so a disk-full mid-copy can't leave a
+    half-written file at `dest` that the next run silently treats as cached."""
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    shutil.copy2(src, tmp)
+    tmp.replace(dest)
+
+
+def _all_dests_present() -> bool:
+    """True iff every expected output file already exists in DEST_DIR."""
+    return all((DEST_DIR / Path(p).name).exists() for p in FILES)
+
+
 def fetch_from_hf(revision: str, force: bool = False) -> list[Path]:
     """Download the four files from HF, pinned to the given revision SHA.
 
     Uses huggingface_hub's local cache (HF_HOME or ~/.cache/huggingface/) so
     repeat runs are free; copies into DEST_DIR for visibility (the cache uses
     blob hashes, not filenames).
-    """
-    from huggingface_hub import hf_hub_download
 
+    Short-circuits the HF round-trips when DEST_DIR is already populated and
+    --force isn't set, so re-runs work fully offline once primed.
+    """
     DEST_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not force and _all_dests_present():
+        logger.info("All %d files already present in %s (use --force to re-fetch).", len(FILES), DEST_DIR)
+        return [DEST_DIR / Path(p).name for p in FILES]
+
+    try:
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.errors import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
+    except ImportError as e:
+        raise ImportError(
+            "huggingface_hub not installed. Run `uv sync` (or use `--from-local <path>` for offline development)."
+        ) from e
+
     written: list[Path] = []
     for hf_path in FILES:
-        cached = Path(
-            hf_hub_download(
-                repo_id=HF_REPO_ID,
-                filename=hf_path,
-                repo_type="dataset",
-                revision=revision,
-                force_download=force,
+        try:
+            cached = Path(
+                hf_hub_download(
+                    repo_id=HF_REPO_ID,
+                    filename=hf_path,
+                    repo_type="dataset",
+                    revision=revision,
+                    force_download=force,
+                )
             )
-        )
+        except RevisionNotFoundError as e:
+            raise RuntimeError(
+                f"Revision {revision!r} not found in {HF_REPO_ID}. "
+                "Check data/catalog.json or pass --revision <sha> with a valid SHA."
+            ) from e
+        except (EntryNotFoundError, RepositoryNotFoundError) as e:
+            raise RuntimeError(
+                f"Couldn't fetch {hf_path} from {HF_REPO_ID}@{revision[:8]}: {e}. "
+                "If you're offline, copy files locally and use --from-local <strata-data/nuclear path>."
+            ) from e
+
         dest = DEST_DIR / Path(hf_path).name
         if not dest.exists() or dest.stat().st_size != cached.stat().st_size or force:
-            shutil.copy2(cached, dest)
+            _atomic_copy(cached, dest)
         written.append(dest)
         logger.info("  %s: %d KB", dest.name, dest.stat().st_size // 1024)
     return written
@@ -116,11 +157,21 @@ def fetch_from_local(local_dir: Path) -> list[Path]:
     """Copy the four files from a local strata-data/nuclear directory.
 
     Useful for offline development on a machine that already has strata
-    cloned. Skips network, no revision check — caller is on the hook for
-    keeping the local clone in sync with the catalog pin.
+    cloned. Skips network and revision verification — caller is on the
+    hook for keeping the local clone in sync with the catalog pin.
     """
     if not local_dir.is_dir():
         raise NotADirectoryError(f"--from-local path is not a directory: {local_dir}")
+
+    pinned = None
+    try:
+        pinned = _read_pinned_revision()
+    except (FileNotFoundError, KeyError, ValueError):
+        pass  # catalog.json not readable; warn-and-continue is fine for --from-local
+    logger.warning(
+        "--from-local skips revision verification; ensure your local clone matches catalog pin %s",
+        (pinned[:8] + "...") if pinned else "(unknown)",
+    )
 
     DEST_DIR.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
@@ -132,7 +183,7 @@ def fetch_from_local(local_dir: Path) -> list[Path]:
                 "Pass the strata-data/nuclear directory, not the dataset root."
             )
         dest = DEST_DIR / src.name
-        shutil.copy2(src, dest)
+        _atomic_copy(src, dest)
         written.append(dest)
         logger.info("  %s: %d KB (from local)", dest.name, dest.stat().st_size // 1024)
     return written

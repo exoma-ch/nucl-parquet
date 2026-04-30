@@ -38,7 +38,10 @@ include = ["nucl_parquet*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["data: requires parquet data files"]
+markers = [
+    "data: requires parquet data files",
+    "network: requires network access (e.g., HuggingFace download)",
+]
 
 [tool.ruff]
 target-version = "py311"
