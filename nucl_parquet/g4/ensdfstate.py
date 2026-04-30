@@ -76,6 +76,25 @@ _OUT_GROUND_STATES = Path("meta/ensdf/ground_states.parquet")
 # ---------------------------------------------------------------------------
 
 
+def _half_life_expr(col: str = "mean_life_ns") -> pl.Expr:
+    """Polars expression mirror of ``convert_mean_life`` for batch transforms.
+
+    Single source of truth — both the Python primitive (used in unit tests)
+    and the production batch path (``_build_states_frame``) consume the
+    same logic; a future optimization on either branch is forced to update
+    the other or break the round-trip test in ``tests/test_g4_ensdfstate``.
+    """
+    return (
+        pl.when(pl.col(col).is_null())
+        .then(None)
+        .when(pl.col(col) == G4_STABLE_MEAN_LIFE_NS)
+        .then(pl.lit(math.inf))
+        .when(pl.col(col) == 0.0)
+        .then(pl.lit(0.0))
+        .otherwise(pl.col(col) * LN2 * 1e-9)
+    )
+
+
 def convert_mean_life(mean_life_ns: float | None) -> float | None:
     """G4 ``mean_life_ns`` -> ``half_life_s`` per ADR-0002.
 
@@ -194,21 +213,21 @@ def _build_states_frame(strata: pl.DataFrame, elements: pl.DataFrame) -> pl.Data
     converted = strata.rename({"z": "Z", "a": "A", "excitation_kev": "level_keV"}).with_columns(
         Z=pl.col("Z").cast(pl.Int32),
         A=pl.col("A").cast(pl.Int32),
-        # Pure-Polars half-life conversion mirroring `convert_mean_life`. We
-        # preserve NULL by checking is_not_null() first.
-        half_life_s=pl.when(pl.col("mean_life_ns").is_null())
-        .then(None)
-        .when(pl.col("mean_life_ns") == G4_STABLE_MEAN_LIFE_NS)
-        .then(pl.lit(math.inf))
-        .when(pl.col("mean_life_ns") == 0.0)
-        .then(pl.lit(0.0))
-        .otherwise(pl.col("mean_life_ns") * LN2 * 1e-9),
+        # Half-life conversion via the shared expression — same logic the
+        # convert_mean_life Python primitive (unit-tested) implements.
+        half_life_s=_half_life_expr("mean_life_ns"),
         # jp encoding via map_elements — the per-row branching is awkward in
         # pure-Polars and the row count (28 k) is small enough.
         jp=pl.struct(["spin_x2", "floating_level_flag"]).map_elements(
             lambda s: encode_jp(s["spin_x2"], s["floating_level_flag"]),
             return_dtype=pl.String,
         ),
+        # Dual-carry parity column per ADR-0002. G4ENSDFSTATE doesn't expose
+        # parity (column 4 is floating_level_flag, not parity), so we ship
+        # all-NULL here. PhotonEvaporation (#70) populates parity from jpi's
+        # sign for level rows. Keeping the column ensures schema stability:
+        # v1.0 cleanup is a column drop, not a column re-introduction.
+        parity=pl.lit(None, dtype=pl.Int8),
     )
     return converted.join(elements.select(["Z", "symbol"]), on="Z", how="left")
 
@@ -233,8 +252,11 @@ def build_nuclides(strata: pl.DataFrame, elements: pl.DataFrame) -> pl.DataFrame
         pl.lit(None, dtype=pl.Float64).alias("decay_1_pct"),
         pl.lit(None, dtype=pl.String).alias("decay_2"),
         pl.lit(None, dtype=pl.Float64).alias("decay_2_pct"),
-        # Dual-carry per ADR-0002.
+        # Dual-carry per ADR-0002. parity is all-NULL on this branch
+        # (G4ENSDFSTATE doesn't expose parity; PhotonEvaporation #70 will
+        # populate it from jpi-sign for level rows).
         pl.col("spin_x2").cast(pl.Int16),
+        pl.col("parity").cast(pl.Int8),
         pl.col("floating_level_flag").cast(pl.String),
         # Bonus.
         pl.col("magnetic_moment_jt").cast(pl.Float64),
@@ -300,8 +322,11 @@ def build_ground_states(
         pl.col("atomic_mass_microu").cast(pl.Float64),
         pl.col("atomic_mass_unc_microu").cast(pl.Float64),
         pl.col("ame_is_estimated").cast(pl.Boolean),
-        # Dual-carry per ADR-0002.
+        # Dual-carry per ADR-0002. parity is all-NULL on this branch
+        # (G4ENSDFSTATE doesn't expose parity; PhotonEvaporation #70 will
+        # populate it from jpi-sign for level rows).
         pl.col("spin_x2").cast(pl.Int16),
+        pl.col("parity").cast(pl.Int8),
         pl.col("floating_level_flag").cast(pl.String),
         # Bonus.
         pl.col("magnetic_moment_jt").cast(pl.Float64),
