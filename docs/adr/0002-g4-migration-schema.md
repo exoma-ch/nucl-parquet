@@ -46,11 +46,15 @@ The G4-derived input files (strata's parquet) are read by build-time converter s
 | G4 input | Output `half_life_s` | Meaning |
 |---|---|---|
 | `> 0` (finite) | `mean_life_ns × ln(2) × 1e-9` | Standard mean-life → half-life |
-| `-1` (G4 stable sentinel) | `NULL` | Stable nuclide; consistent with v0.10.x ground_states.parquet handling for stable isotopes |
-| `0` (G4 prompt sentinel) | `0.0` | Prompt; same semantic as v0.10.x |
-| missing / parser failure | `NULL` | Unknown |
+| `-1` (G4 stable sentinel) | `+inf` (IEEE-754 positive infinity) | **Stable by physical observation** — distinct from unknown |
+| `0` (G4 prompt sentinel; filtered upstream by G4) | `0.0` | Prompt |
+| missing / parser failure | `NULL` | **Genuinely unknown** — half-life not measured |
 
-**Crucial**: the converter must explicitly check for `-1` *before* multiplying — naively applying the formula yields `≈ -6.93e-10 s`, a negative half-life that would silently corrupt downstream queries. Test required at boundary.
+**Why `+inf` and not `NULL` for stable**: G4's `-1` is a deliberate marker meaning "this nuclide is stable per ENSDF/NUBASE observation" (e.g. H-1, He-4, Fe-56, Pb-208). Collapsing it to `NULL` would conflate two physically distinct states with our existing "unknown" encoding, repeating the v0.10.x DQ flaw where consumers can't query *"which nuclides are stable?"* vs *"which haven't been measured?"*. `+inf` is the mathematically correct half-life of a stable nuclide and is round-trip-clean across Float64/Polars/DuckDB/Arrow/Rust f64 without information loss.
+
+**Crucial converter requirement**: must intercept `-1` *before* applying the multiplication. Naively computing `-1 × ln(2) × 1e-9 ≈ -6.93e-10 s` yields a negative half-life that would silently corrupt downstream queries. Boundary test mandatory.
+
+**v0.10.x compatibility note**: existing nucl-parquet `ground_states.parquet` consumers reading `half_life_s` as Float64 will encounter `+inf` for stable nuclides under v0.11. Code paths doing `if half_life_s is None` (Python) or `IS NULL` (SQL) will need to also accept `+inf` (or the converse: `is_finite()` check). Document in CHANGELOG migration notes.
 
 **Spin/parity encoding** (`spin_x2`, `parity` → `jp`):
 
