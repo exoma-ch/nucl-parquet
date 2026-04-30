@@ -14,10 +14,16 @@ import pytest
 
 @pytest.mark.data
 def test_catalog_paths_exist(data_dir_path: Path) -> None:
-    """All catalog library paths should exist (or be optional)."""
+    """All catalog library paths should exist (or be optional).
+
+    Skips entries without a `path` (build-time provenance records like
+    strata-data-nuclear that point to HF instead of a local directory).
+    """
     catalog = json.loads((data_dir_path / "catalog.json").read_text())
     missing = []
     for lib_key, lib_info in catalog["libraries"].items():
+        if "path" not in lib_info:
+            continue
         lib_dir = data_dir_path / lib_info["path"]
         if not lib_dir.exists():
             missing.append(lib_key)
@@ -80,6 +86,8 @@ def test_manifest_counts(data_dir_path: Path) -> None:
     catalog = json.loads((data_dir_path / "catalog.json").read_text())
     checked = 0
     for lib_key, lib_info in catalog["libraries"].items():
+        if "path" not in lib_info:
+            continue
         lib_dir = data_dir_path / lib_info["path"]
         manifest_path = lib_dir.parent / "manifest.json"
         if not manifest_path.exists():
