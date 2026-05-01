@@ -26,6 +26,10 @@ Modules
 - :mod:`nucl_parquet.g4.coincidences` — derive
   ``meta/ensdf/coincidences/{Symbol}.parquet`` (gamma cascade pairs) by
   self-join on ``photon_evap_gammas`` shared intermediate levels (#73).
+- :mod:`nucl_parquet.g4.xray_auger` — synthesize ``rad_type ∈ {'xray', 'auger'}``
+  rows from G4EMLOW EADL × per-shell EC fractions (#71) × ``icc_total`` per
+  gamma (#72). Output goes to ``meta/ensdf/radiation_atomic/{Symbol}.parquet``;
+  merged into the canonical ``radiation/`` files by the validation harness (#75).
 """
 
 from __future__ import annotations
