@@ -14,13 +14,14 @@ Live document tracking progress on the v0.10.x → v0.11.0 migration from IAEA-f
 | B | #68 | (direct) | f841cab, 94b2a04 | HF fetcher (`scripts/fetch_strata_nuclear.py`), 12 tests, catalog pin SHA `9a74e823…`, `huggingface-hub` dev dep |
 | Aux | n/a | (direct) | 0abef28 | AME2020 + IUPAC fetchers + parquet outputs in `data/auxiliary/` |
 | Loader fix | (n/a) | (direct) | 8b905e5 | catalog `path` regression introduced by #68; affects #69/#70/#71 sub-PRs until rebased |
-| C | #69 | #81 | 4160b4d, d6dbc4a, b150a2a | ensdfstate → nuclides + ground_states; AME/IUPAC LEFT JOIN; review fixes (DRY half-life expr, parity dual-carry) |
-| D | #70 | #82 | cbfe76b, 734a2cb, 17dae0d, cc9064e (rebased to b3975c0) | photon_evap_levels → 117 per-element parquet files; `n.parquet` → `N.parquet` case-FS edge fix |
-| E | #71 | #83 | 5dffe9c, 2d6f005, e1deba7, 2cb37ec (rebased to 458cacd) | radioactive_decay → decay + decay_detailed; per-shell EC preserved (NOT collapsed); IT-on-ground canary extended to detailed table |
+| C | #69 | #81 ✅ merged 2026-05-01 | ensdfstate → nuclides + ground_states; AME/IUPAC LEFT JOIN; review fixes (DRY half-life expr, parity dual-carry) |
+| D | #70 | #82 ✅ merged 2026-05-01 | photon_evap_levels → 117 per-element parquet files; `n.parquet` → `N.parquet` case-FS edge fix |
+| E | #71 | #83 ✅ merged 2026-05-01 | radioactive_decay → decay + decay_detailed; per-shell EC preserved (NOT collapsed); IT-on-ground canary extended to detailed table |
 
-### 🟡 In flight
+### 🟡 In flight (loop tick 1, 2026-05-01 ~07:00 UTC)
 
-- **PR #82 / #83** — rebased onto integration branch post-`8b905e5`, CI UNSTABLE (re-running). Merge as soon as green.
+- **#72 (gammas → radiation)** — /land agent `a87c4287…` running on `fix/issue-72-photon-evap-gammas`
+- **#74 (X-ray + Auger synthesis)** — /land agent `ab13f63d…` running on `fix/issue-74-xray-auger-synthesis`. Heaviest physics task; will deposit a design memo first.
 
 ### ⏳ Blocked / pending
 
