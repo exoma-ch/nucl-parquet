@@ -21,11 +21,11 @@ Live document tracking progress on the v0.10.x → v0.11.0 migration from IAEA-f
 | G | #73 | #86 ✅ merged 2026-05-01 | photon_evap cascades → 104 per-element coincidences/{Symbol}.parquet (600k pairs); ADR-0002 additive schema preservation (v0.10.x compat columns Z/A/dataset/gamma_energy_keV/coinc_energy_keV alongside G4 bonus); worked DuckDB normalization snippet |
 | H | #74 | #87 ✅ merged 2026-05-01 | xray_auger synthesis from G4EMLOW × per-shell EC/IC → radiation_atomic/{Symbol}.parquet (92 element files); domain review fixes (sweep budget ≤2% NaN-filter, merge contract documented, v0.12 #88 filed for high-Z gaps); spot checks vs ICRP-107 within ~10% (Co-57, Tc-99m, I-125, Ba-137m) |
 
-### 🟡 In flight (loop tick 9, 2026-05-01 ~08:30 UTC)
+### 🟡 In flight (loop tick 10, 2026-05-01 ~11:05 UTC)
 
-- **#75 (validation diff harness + radiation merge)** — sub-agent /land blocked by quota reset (resets 10:40 local). Continuing in-conversation across cron ticks. Worktree pending; will build_all orchestrator + canonical-isotope assertions + radiation/radiation_atomic union merge (per #74 design memo) + diff report against v0.10.1 baseline.
+- **#75 / PR #89 (validation diff harness + radiation merge)** — written in-conversation (sub-agent quota out). build_all.py orchestrator + 23-test diff harness + test_state.py updates + 100+ regenerated parquet files. **198 passed, 0 failed.** Eu-152m2 (147.86 keV / 96 min), Hf-178m2 (2446 keV / 31 yr), all 8 canonical isomers correct. Stable isotopes ship +inf. v0.10.x bug classes (corrupted parent_level_keV, IT-on-ground, phantom isomers, NULL stable, missing m2, fabricated states) all gone. Awaiting CI + human review before merge.
 
-### 📅 Next up (when #75 merges)
+### 📅 Next up (when #89 merges)
 
 - **#76 (cleanup + v0.11.0 release)** — delete `_rescue_it_orphan_isomers`, `BuildIntegrityError`, `_ORPHAN_CEILING`, `_UNLABELED_EXCITED_CEILING`, `_LEVEL_EXACT_MATCH_KEV` (all obsolete with G4 inputs). Update ADR-0001 with v0.11 postscript. CHANGELOG migration notes (per-shell EC, +inf stable sentinel, Eu-152m2 reattributed, intensity_pct semantics). Open final PR `feat/g4-data-migration` → `main`.
 
