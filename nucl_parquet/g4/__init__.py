@@ -23,6 +23,9 @@ Modules
   transitions → ``meta/ensdf/radiation/{Symbol}.parquet`` rows with
   ``rad_type='gamma'``. Per-element partition; carries multipolarity,
   mixing_ratio, icc_total, daughter_level_keV as bonus columns (#72).
+- :mod:`nucl_parquet.g4.coincidences` — derive
+  ``meta/ensdf/coincidences/{Symbol}.parquet`` (gamma cascade pairs) by
+  self-join on ``photon_evap_gammas`` shared intermediate levels (#73).
 """
 
 from __future__ import annotations
