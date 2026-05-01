@@ -18,11 +18,11 @@ Live document tracking progress on the v0.10.x → v0.11.0 migration from IAEA-f
 | D | #70 | #82 ✅ merged 2026-05-01 | photon_evap_levels → 117 per-element parquet files; `n.parquet` → `N.parquet` case-FS edge fix |
 | E | #71 | #83 ✅ merged 2026-05-01 | radioactive_decay → decay + decay_detailed; per-shell EC preserved (NOT collapsed); IT-on-ground canary extended to detailed table |
 | F | #72 | #85 ✅ merged 2026-05-01 | photon_evap_gammas → 107 per-element radiation/{Symbol}.parquet (296599 gamma rows); fresh-agent review fixes (sweep invariants, intensity ≥ 0 + non-NaN, parent ≥ daughter, energy ≥ 0 with 2-row warning); clinical-line attribution docstring |
+| G | #73 | #86 ✅ merged 2026-05-01 | photon_evap cascades → 104 per-element coincidences/{Symbol}.parquet (600k pairs); ADR-0002 additive schema preservation (v0.10.x compat columns Z/A/dataset/gamma_energy_keV/coinc_energy_keV alongside G4 bonus); worked DuckDB normalization snippet |
 
-### 🟡 In flight (loop tick 5, 2026-05-01 ~07:38 UTC)
+### 🟡 In flight (loop tick 7, 2026-05-01 ~07:58 UTC)
 
-- **#73 / PR #86 (coincidences)** — fresh-agent review caught ADR-0002 schema-additivity violation; fixed in commit eb6d2aa (preserve v0.10.x columns Z/A/dataset/gamma_energy_keV/coinc_energy_keV alongside the G4-bonus columns). Worked normalization snippet added. CI re-running. Merge on next tick if green.
-- **#74 (X-ray + Auger synthesis)** — agent `ab13f63d…` 3 commits, working dir dirty (HANDOFF.md edit, decay.parquet regen, xray_auger.py edit, new decay_detailed.parquet, new radiation_atomic/). Still active.
+- **#74 / PR #87 (X-ray + Auger synthesis)** — domain review caught 3 priority concerns; addressed in commit eb49beb (sweep budget tightened from <25 absolute to ≤2% of parents with NaN-filter; radiation/radiation_atomic merge contract documented; high-Z gaps logged as v0.12 #88). CI re-running. Spot checks vs ICRP-107 / IAEA pass within ~10%. Output ships to `radiation_atomic/{Symbol}.parquet`; #75 will merge per documented contract.
 
 
 ### ⏳ Blocked / pending
