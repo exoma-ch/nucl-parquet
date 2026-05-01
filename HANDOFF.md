@@ -19,14 +19,14 @@ Live document tracking progress on the v0.10.x → v0.11.0 migration from IAEA-f
 | E | #71 | #83 ✅ merged 2026-05-01 | radioactive_decay → decay + decay_detailed; per-shell EC preserved (NOT collapsed); IT-on-ground canary extended to detailed table |
 | F | #72 | #85 ✅ merged 2026-05-01 | photon_evap_gammas → 107 per-element radiation/{Symbol}.parquet (296599 gamma rows); fresh-agent review fixes (sweep invariants, intensity ≥ 0 + non-NaN, parent ≥ daughter, energy ≥ 0 with 2-row warning); clinical-line attribution docstring |
 | G | #73 | #86 ✅ merged 2026-05-01 | photon_evap cascades → 104 per-element coincidences/{Symbol}.parquet (600k pairs); ADR-0002 additive schema preservation (v0.10.x compat columns Z/A/dataset/gamma_energy_keV/coinc_energy_keV alongside G4 bonus); worked DuckDB normalization snippet |
+| H | #74 | #87 ✅ merged 2026-05-01 | xray_auger synthesis from G4EMLOW × per-shell EC/IC → radiation_atomic/{Symbol}.parquet (92 element files); domain review fixes (sweep budget ≤2% NaN-filter, merge contract documented, v0.12 #88 filed for high-Z gaps); spot checks vs ICRP-107 within ~10% (Co-57, Tc-99m, I-125, Ba-137m) |
 
-### 🟡 In flight (loop tick 8, 2026-05-01 ~08:13 UTC)
+### 🟡 In flight (loop tick 9, 2026-05-01 ~08:30 UTC)
 
-- **#74 / PR #87 (X-ray + Auger synthesis)** — rebased onto integration tip after `__init__.py` conflict (commit 6f6d9a7 force-pushed). CI re-running. Once green this is the last converter to merge. Domain review fixes already applied (sweep budget ≤2% with NaN-filter, radiation/radiation_atomic merge contract documented in design memo, v0.12 #88 filed for high-Z gaps).
+- **#75 (validation diff harness + radiation merge)** — sub-agent /land blocked by quota reset (resets 10:40 local). Continuing in-conversation across cron ticks. Worktree pending; will build_all orchestrator + canonical-isotope assertions + radiation/radiation_atomic union merge (per #74 design memo) + diff report against v0.10.1 baseline.
 
-### 📅 Next up (when #87 merges)
+### 📅 Next up (when #75 merges)
 
-- **#75 (validation diff harness)** — spawn /land agent. Reads all 6 converters' outputs, runs them end-to-end against strata's pinned data, diffs canonical isotopes (Tc-99m, Sc-44m, Eu-152m + m2, Ba-137m, Hf-178m2, Co-60, Cs-137, Rh-114, Mn-60, Nb-95) against the current v0.10.1 baseline. Also performs the documented `radiation/`+`radiation_atomic/` union merge per #74 design memo. Fails CI on any unexpected diff outside the documented bug-fix list.
 - **#76 (cleanup + v0.11.0 release)** — delete `_rescue_it_orphan_isomers`, `BuildIntegrityError`, `_ORPHAN_CEILING`, `_UNLABELED_EXCITED_CEILING`, `_LEVEL_EXACT_MATCH_KEV` (all obsolete with G4 inputs). Update ADR-0001 with v0.11 postscript. CHANGELOG migration notes (per-shell EC, +inf stable sentinel, Eu-152m2 reattributed, intensity_pct semantics). Open final PR `feat/g4-data-migration` → `main`.
 
 
