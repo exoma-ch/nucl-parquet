@@ -164,6 +164,12 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     lib_views: list[str] = []
 
     for lib_key, lib_info in catalog.get("libraries", {}).items():
+        # Some catalog entries (e.g. strata-data-nuclear) are build-time
+        # provenance records, not queryable cross-section directories — they
+        # have no `path`. Skip them here; the loader's job is to mount
+        # queryable libraries, not enumerate every catalog entry.
+        if "path" not in lib_info:
+            continue
         lib_dir = data_dir / lib_info["path"]
         if not lib_dir.exists() or not list(lib_dir.glob("*.parquet")):
             continue

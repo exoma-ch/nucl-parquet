@@ -232,6 +232,25 @@
       "data_type": "total_reaction_cross_sections",
       "version": "tripathi-1997",
       "path": "hi-xs/xs/"
+    },
+    "strata-data-nuclear": {
+      "name": "Geant4-derived nuclear structure (via strata-data)",
+      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project. Source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward — replaces the v0.10.x IAEA-LiveChart pipeline. See ADR-0002.",
+      "source_url": "https://huggingface.co/datasets/gerchowl/strata-data",
+      "revision": "9a74e8236b7ba69a0c36cc8e2010b797fc0fbd98",
+      "fetcher": "scripts/fetch_strata_nuclear.py",
+      "data_type": "nuclear_structure",
+      "files": [
+        "nuclear/ensdfstate.parquet",
+        "nuclear/photon_evap_levels.parquet",
+        "nuclear/photon_evap_gammas.parquet",
+        "nuclear/radioactive_decay.parquet"
+      ],
+      "upstream_g4_versions": {
+        "G4ENSDFSTATE": "3.0",
+        "PhotonEvaporation": "6.1.2",
+        "RadioactiveDecay": "6.1.2"
+      }
     }
   },
   "shared": {
