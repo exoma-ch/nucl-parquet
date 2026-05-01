@@ -317,6 +317,7 @@ class TestTransform:
             "intensity_pct",
             "decay_mode",
             "rad_subtype",
+            "dose_MeV_per_Bq_s",
             "parent_level_keV",
             "daughter_level_keV",
             "multipolarity",
@@ -577,6 +578,9 @@ def test_data_schema_compat_existing_consumers(built_radiation_dir: Path) -> Non
     assert schema["energy_keV"] == pl.Float64
     assert schema["intensity_pct"] == pl.Float64
     assert schema["parent_level_keV"] == pl.Float64
+    # v0.10.x loader projects dose_MeV_per_Bq_s; we ship the column as
+    # all-NULL Float64 for back-compat (G4 doesn't carry dosimetry data).
+    assert schema["dose_MeV_per_Bq_s"] == pl.Float64
     # Bonus columns must exist (additive per ADR-0002).
     assert "multipolarity" in schema
     assert "mixing_ratio" in schema

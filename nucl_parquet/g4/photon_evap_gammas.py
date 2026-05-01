@@ -22,6 +22,9 @@ DuckDB views) are preserved; bonus columns are appended as nullable.
     Z Int64, A Int64, state Utf8, rad_type Utf8 (constant 'gamma'),
     energy_keV Float64, intensity_pct Float64,
     decay_mode Utf8 (NULL — populated by #71), rad_subtype Utf8 (NULL),
+    dose_MeV_per_Bq_s Float64 (NULL on this branch — v0.10.x dosimetry slot
+    that the loader's GAMMA_LINES_SQL projects; PhotonEvaporation doesn't
+    ship dose data, leave NULL),
     parent_level_keV Float64, daughter_level_keV Float64,
     multipolarity Int32, mixing_ratio Float32, icc_total Float32
 
@@ -244,6 +247,10 @@ def transform(
         pl.col("intensity").cast(pl.Float64).alias("intensity_pct"),
         pl.lit(None, dtype=pl.String).alias("decay_mode"),
         pl.lit(None, dtype=pl.String).alias("rad_subtype"),
+        # v0.10.x loader (GAMMA_LINES_SQL) projects dose_MeV_per_Bq_s. G4
+        # PhotonEvaporation doesn't ship dose data; leave NULL — consumers
+        # already handle NULL via DuckDB's lenient projection.
+        pl.lit(None, dtype=pl.Float64).alias("dose_MeV_per_Bq_s"),
         pl.col("parent_level_keV").cast(pl.Float64),
         pl.col("daughter_level_keV").cast(pl.Float64),
         pl.col("multipolarity").cast(pl.Int32),
