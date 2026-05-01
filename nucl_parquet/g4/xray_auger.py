@@ -202,25 +202,35 @@ def assign_state(
     Returns:
         - ``""`` if ``parent_ex_kev`` is 0
         - ``"m"`` / ``"m2"`` / … if a catalog isomer matches within ±1 keV
+        - The single m-isomer's label if the catalog has an m-row with
+          ``level_keV`` NULL and ``parent_ex_kev > 0`` (Ba-137m fallback —
+          nuclides.parquet from G4ENSDFSTATE doesn't always carry the
+          m-state energy for IT-only isomers)
         - ``None`` if excited but no catalog match (skip such parents)
     """
     if parent_ex_kev == 0.0:
         return ""
-    candidates = nuclides.filter(
-        (pl.col("Z") == z)
-        & (pl.col("A") == a)
-        & (pl.col("state") != "")
-        & ((pl.col("level_keV") - parent_ex_kev).abs() <= _STATE_KEV_TOL)
-    )
-    if candidates.is_empty():
+    za_isomers = nuclides.filter((pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") != ""))
+    if za_isomers.is_empty():
         return None
-    # Closest match wins (matches radioactive_decay.py convention).
-    closest = (
-        candidates.with_columns((pl.col("level_keV") - parent_ex_kev).abs().alias("__delta"))
-        .sort("__delta")
-        .row(0, named=True)
+    candidates = za_isomers.filter(
+        pl.col("level_keV").is_not_null() & ((pl.col("level_keV") - parent_ex_kev).abs() <= _STATE_KEV_TOL)
     )
-    return closest["state"]
+    if not candidates.is_empty():
+        # Closest match wins (matches radioactive_decay.py convention).
+        closest = (
+            candidates.with_columns((pl.col("level_keV") - parent_ex_kev).abs().alias("__delta"))
+            .sort("__delta")
+            .row(0, named=True)
+        )
+        return closest["state"]
+    # Fallback for catalog-known isomers with missing level_keV: if there
+    # is exactly one m-row and its level_keV is NULL, accept any positive
+    # excitation as that isomer. (Ba-137m is the canonical case.)
+    null_iso = za_isomers.filter(pl.col("level_keV").is_null())
+    if null_iso.height == 1:
+        return null_iso.row(0, named=True)["state"]
+    return None
 
 
 # -----------------------------------------------------------------------------
@@ -596,6 +606,11 @@ def attach_states(
         - parent_ex_kev = 0  → state = ""
         - parent_ex_kev > 0 within ±1 keV of a catalog isomer → state = that isomer's label
         - parent_ex_kev > 0 with no catalog match → drop (not representable in v0.10.x state enum)
+
+    The NULL-level isomer fallback (Ba-137m case) is restricted to only
+    the *lowest-excitation* parent for each (Z, A) when multiple candidate
+    excitations exist — this prevents short-lived non-isomeric excited
+    states from being mislabelled as "m".
     """
     if emissions.is_empty():
         return emissions.with_columns(
@@ -603,27 +618,60 @@ def attach_states(
             pl.lit(None, dtype=pl.Float64).alias("parent_level_keV"),
         ).select(_OUTPUT_COLUMNS)
 
-    # Group by (Z, A) and resolve states in Python — matrix is small enough.
+    # Determine the lowest excitation per (Z, A) where the catalog has a
+    # NULL-level isomer (i.e. fallback territory). Other excitations under
+    # the same (Z, A) won't be granted the fallback "m".
+    null_level_pairs = set(
+        nuclides.filter((pl.col("state") != "") & pl.col("level_keV").is_null())
+        .group_by(["Z", "A"])
+        .agg(pl.len().alias("n"))
+        .filter(pl.col("n") == 1)
+        .select(["Z", "A"])
+        .iter_rows()
+    )
+    # For each (Z, A) in the fallback set, find the lowest parent_ex_kev
+    # appearing in the emissions table.
+    fallback_lowest: dict[tuple[int, int], float] = {}
+    for rec in (
+        emissions.filter(pl.col("parent_ex_kev") > 0)
+        .group_by(["Z", "A"])
+        .agg(pl.col("parent_ex_kev").min().alias("min_ex"))
+        .iter_rows(named=True)
+    ):
+        key = (int(rec["Z"]), int(rec["A"]))
+        if key in null_level_pairs:
+            fallback_lowest[key] = float(rec["min_ex"])
+
     out_rows: list[dict] = []
     cache: dict[tuple[int, int, float], str | None] = {}
 
     for rec in emissions.iter_rows(named=True):
-        key = (int(rec["Z"]), int(rec["A"]), float(rec["parent_ex_kev"]))
+        z = int(rec["Z"])
+        a = int(rec["A"])
+        ex = float(rec["parent_ex_kev"])
+        key = (z, a, ex)
         if key not in cache:
-            cache[key] = assign_state(*key, nuclides)
+            state = assign_state(z, a, ex, nuclides)
+            # Restrict the NULL-level fallback to the lowest-ex parent.
+            if state is not None and ex > 0 and (z, a) in fallback_lowest:
+                if abs(ex - fallback_lowest[(z, a)]) > _STATE_KEV_TOL:
+                    # This is a higher-excitation parent in a (Z,A) where
+                    # the fallback was activated — refuse to label it.
+                    state = None
+            cache[key] = state
         state = cache[key]
         if state is None:
             continue
         out_rows.append(
             {
-                "Z": int(rec["Z"]),
-                "A": int(rec["A"]),
+                "Z": z,
+                "A": a,
                 "state": state,
                 "rad_type": rec["rad_type"],
                 "energy_keV": float(rec["energy_keV"]),
                 "intensity_pct": float(rec["intensity_pct"]),
                 "decay_mode": rec["decay_mode"],
-                "parent_level_keV": float(rec["parent_ex_kev"]),
+                "parent_level_keV": ex,
                 "rad_subtype": rec["rad_subtype"],
             }
         )
@@ -695,8 +743,31 @@ def synthesize_xray_auger(
     ec_vacancies = compute_ec_vacancy_rates(decay_detailed)
     logger.info("EC vacancy rows: %d", ec_vacancies.height)
 
-    # Step 2: build the parent-state list for IC lookup.
-    parent_states = decay_detailed.select(["Z", "A", "parent_ex_kev"]).unique()
+    # Step 2: build the parent-state list for IC lookup. Sourced from BOTH
+    # decay_detailed (covers EC isomers) AND photon_evap_levels (covers
+    # IT-only isomers like Ba-137m where strata's radioactive_decay only
+    # ships a summary row, not detail, so the level isn't in
+    # decay_detailed). Ba-137m is the canonical case: Cs-137 → Ba-137m →
+    # Ba-137 via 661.66 keV M4 IC; without level-sourced parent states the
+    # synthesizer would emit no rows for it.
+    #
+    # Half-life threshold is 100 ns: captures all classical metastable
+    # isomers (Tc-99m at 6h, Ba-137m at 153s, In-115m at 4.5h, …) while
+    # excluding short-lived excited states that have positive half-life
+    # but aren't independently treated as parents (Ba-137 levels at 2349
+    # keV and 2623 keV with t½ ~ 30 ns — these are cascade-transit levels,
+    # not metastable parents).
+    detail_parents = decay_detailed.select(["Z", "A", "parent_ex_kev"]).unique()
+    isomer_levels_seed = (
+        photon_evap_levels.filter((pl.col("excitation_kev") > 0) & (pl.col("half_life_s") >= 1e-7))
+        .select(
+            pl.col("z").cast(pl.Int32).alias("Z"),
+            pl.col("a").cast(pl.Int32).alias("A"),
+            pl.col("excitation_kev").alias("parent_ex_kev"),
+        )
+        .unique()
+    )
+    parent_states = pl.concat([detail_parents, isomer_levels_seed], how="vertical_relaxed").unique()
     ic_vacancies = compute_ic_vacancy_rates(photon_evap_gammas, photon_evap_levels, parent_states, k_edges=k_edges)
     logger.info("IC vacancy rows: %d", ic_vacancies.height)
 

@@ -529,6 +529,27 @@ class TestSpotChecks:
         # Sum of KLL intensities should be a few percent at minimum.
         assert kll["intensity_pct"].sum() > 1.0
 
+    def test_ba137m_kalpha_present(self, emissions: pl.DataFrame) -> None:
+        """Ba-137m IT (661.66 keV M4) produces Ba Kα at ~32.2 keV.
+
+        Ba-137m is the canonical IT-only isomer (Cs-137 daughter). It has
+        no detail rows in strata's radioactive_decay (only is_summary), so
+        the parent state must be seeded from photon_evap_levels and the
+        nuclides catalog has level_keV=NULL — exercises the NULL-fallback
+        path in `assign_state`."""
+        ba = emissions.filter(
+            (pl.col("Z") == 56)
+            & (pl.col("A") == 137)
+            & (pl.col("state") == "m")
+            & (pl.col("rad_subtype") == "Kα1")
+            & (pl.col("rad_type") == "xray")
+        )
+        assert ba.height == 1, f"expected 1 Ba-137m Kα1 row, got {ba.height}"
+        assert 31.5 <= ba["energy_keV"][0] <= 32.5
+        # Canonical Ba-137m K-vacancy yield is ~9 %; Kα1 is the dominant
+        # X-ray line (≈ 4–6 % per decay).
+        assert 3.0 <= ba["intensity_pct"][0] <= 8.0
+
     def test_co57_energy_conservation_K_shell(self, emissions: pl.DataFrame) -> None:
         """Σ(K X-rays + K Augers) ≈ K-vacancy rate × 100 within 5%."""
         co = emissions.filter((pl.col("Z") == 27) & (pl.col("A") == 57) & (pl.col("state") == ""))
