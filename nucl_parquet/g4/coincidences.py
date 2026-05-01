@@ -23,8 +23,20 @@ longer chains by transitive closure on this table if needed (#73 pitfall).
 
 Schema (output, per element ``meta/ensdf/coincidences/{Symbol}.parquet``)
 ------------------------------------------------------------------------
-- ``Z``                       Int32
-- ``A``                       Int32
+
+Per ADR-0002 the v0.10.x columns are preserved verbatim so existing consumers
+(Rust crate / TS SDK / parquet-direct external readers) keep working
+unchanged. The richer G4-derived columns are added alongside as nullable.
+
+v0.10.x compat columns (preserved):
+- ``Z``                       Int64
+- ``A``                       Int64
+- ``dataset``                 Int64 — ENSDF-source identifier in v0.10.x; G4
+  PhotonEvaporation has a single source per nuclide so we ship constant 1.
+- ``gamma_energy_keV``        Float64 — alias of ``gamma1_energy_keV``
+- ``coinc_energy_keV``        Float64 — alias of ``gamma2_energy_keV``
+
+G4-derived bonus columns (additive per ADR-0002):
 - ``gamma1_energy_keV``       Float64 — energy of γ₁ (parent → intermediate)
 - ``gamma1_intensity``        Float32 — relative per-cascade intensity (G4 raw, max ~9000)
 - ``gamma2_energy_keV``       Float64 — energy of γ₂ (intermediate → final)
@@ -32,15 +44,41 @@ Schema (output, per element ``meta/ensdf/coincidences/{Symbol}.parquet``)
 - ``parent_level_keV``        Float64 — energy of the level γ₁ originates from
 - ``intermediate_level_keV``  Float64 — energy of the level γ₁ ends at / γ₂ starts from
 - ``final_level_keV``         Float64 — energy of the level γ₂ lands at (often 0 = ground)
-- ``pair_intensity``          Float32 — joint emission probability per parent decay,
-  conservatively ``intensity1 × intensity2 / 100``. **Relative scale only**:
-  G4 PhotonEvaporation intensities are normalized per cascade level (with
-  values up to ~9000 observed empirically), not capped at 100. Consumers
-  needing absolute coincidence probabilities must renormalize per
-  ``(Z, A, parent_level_keV)``. Documented; we do not fake-normalize here.
-- ``gamma1_icc_total``        Float32 — bonus, for pure-γ pair correction
+- ``pair_intensity``          Float32 — see "Normalization" below
+- ``gamma1_icc_total``        Float32 — for pure-γ pair correction
   ``(1 + icc1)⁻¹ × (1 + icc2)⁻¹`` in dose calc downstream.
 - ``gamma2_icc_total``        Float32
+
+Normalization
+-------------
+
+``pair_intensity`` ships as ``intensity1 × intensity2 / 100`` — a *relative*
+quantity, not an absolute coincidence probability per parent decay. G4
+PhotonEvaporation intensities are normalized per cascade level (max observed
+~9000), not as percentages. Consumers needing absolute probabilities must
+renormalize per ``(Z, A, parent_level_keV)``. Worked example in DuckDB:
+
+::
+
+    -- For each parent level, normalize gamma1 to unity and compute
+    -- pair_intensity_norm as i1_norm × i2_norm.
+    WITH normalized AS (
+      SELECT *,
+        gamma1_intensity / SUM(gamma1_intensity) OVER (
+          PARTITION BY Z, A, parent_level_keV
+        ) AS i1_norm,
+        gamma2_intensity / SUM(gamma2_intensity) OVER (
+          PARTITION BY Z, A, intermediate_level_keV
+        ) AS i2_norm
+      FROM coincidences
+    )
+    SELECT Z, A, gamma1_energy_keV, gamma2_energy_keV,
+           i1_norm * i2_norm AS pair_intensity_per_parent_decay
+    FROM normalized
+    WHERE Z = 28 AND A = 60 -- Co-60 → Ni-60 cascade
+
+For pure-γ pair correction (excluding internal-conversion losses), multiply
+by ``1 / ((1 + gamma1_icc_total) × (1 + gamma2_icc_total))``.
 
 Pitfalls
 --------
@@ -175,8 +213,19 @@ def build_pairs(gammas: pl.DataFrame, levels: pl.DataFrame) -> pl.DataFrame:
     )
 
     return pairs.select(
-        "Z",
-        "A",
+        # v0.10.x-compat columns — preserved verbatim per ADR-0002 so the Rust
+        # crate / TS SDK / parquet-direct consumers keep working unchanged.
+        # (gamma_energy_keV ↔ gamma1_energy_keV, coinc_energy_keV ↔ gamma2_energy_keV.
+        # `dataset` was an ENSDF-source identifier in v0.10.x; G4
+        # PhotonEvaporation has a single source per nuclide so we ship 1.)
+        pl.col("Z").cast(pl.Int64),
+        pl.col("A").cast(pl.Int64),
+        pl.lit(1, dtype=pl.Int64).alias("dataset"),
+        pl.col("gamma1_energy_keV").alias("gamma_energy_keV"),
+        pl.col("gamma2_energy_keV").alias("coinc_energy_keV"),
+        # Bonus columns from G4 (additive per ADR-0002): cascade-level
+        # provenance, individual intensities, internal-conversion coefficients,
+        # and the joint-intensity scaling helper.
         "gamma1_energy_keV",
         "gamma1_intensity",
         "gamma2_energy_keV",

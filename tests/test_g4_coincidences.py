@@ -190,7 +190,9 @@ class TestBuildPairs:
         assert pairs["pair_intensity"].item() == pytest.approx(40.0)
 
     def test_output_schema(self) -> None:
-        # Schema must match issue #73 contract exactly.
+        # Schema must match the v0.10.x compat columns + ADR-0002 bonus
+        # additions. PR #86 review caught a regression where the original
+        # schema dropped v0.10.x columns; this test pins the additive spec.
         levels = _make_levels([(28, 60, 0, 0.0), (28, 60, 1, 100.0), (28, 60, 2, 500.0)])
         gammas = _make_gammas(
             [
@@ -200,8 +202,13 @@ class TestBuildPairs:
         )
         pairs = build_pairs(gammas, levels)
         assert pairs.columns == [
+            # v0.10.x compat (Int64 Z/A, dataset, gamma_energy_keV/coinc_energy_keV)
             "Z",
             "A",
+            "dataset",
+            "gamma_energy_keV",
+            "coinc_energy_keV",
+            # G4-derived bonus columns
             "gamma1_energy_keV",
             "gamma1_intensity",
             "gamma2_energy_keV",
@@ -213,12 +220,22 @@ class TestBuildPairs:
             "gamma1_icc_total",
             "gamma2_icc_total",
         ]
-        assert pairs.schema["Z"] == pl.Int32
-        assert pairs.schema["A"] == pl.Int32
+        # v0.10.x dtypes pinned
+        assert pairs.schema["Z"] == pl.Int64
+        assert pairs.schema["A"] == pl.Int64
+        assert pairs.schema["dataset"] == pl.Int64
+        assert pairs.schema["gamma_energy_keV"] == pl.Float64
+        assert pairs.schema["coinc_energy_keV"] == pl.Float64
+        # Bonus columns pinned
         assert pairs.schema["gamma1_energy_keV"] == pl.Float64
         assert pairs.schema["gamma1_intensity"] == pl.Float32
         assert pairs.schema["pair_intensity"] == pl.Float32
         assert pairs.schema["gamma1_icc_total"] == pl.Float32
+        # Aliases mirror the bonus columns by row
+        assert pairs["gamma_energy_keV"].equals(pairs["gamma1_energy_keV"])
+        assert pairs["coinc_energy_keV"].equals(pairs["gamma2_energy_keV"])
+        # dataset is a constant 1 (ENSDF source identifier; G4 has only one)
+        assert (pairs["dataset"] == 1).all()
 
 
 class TestWritePerElement:
