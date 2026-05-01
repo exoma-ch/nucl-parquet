@@ -103,6 +103,17 @@ The 5 % slack absorbs:
 
 5. **Daughter-level state inheritance** — IT decay from `(Z, A, m)` produces a daughter at the parent's lower levels (same Z), whose subsequent gammas may be IC-converted. We handle this by reading `photon_evap_gammas` for `(Z, A)` and selecting transitions whose origin level is ≤ the parent isomer's `parent_ex_kev` — for Tc-99m → Tc-99 (level 1, 140.5 keV), this captures the M1 transition correctly.
 
+## Integration contract — `radiation_atomic/` → `radiation/` merge (#75)
+
+The v0.11 X-ray + Auger synthesis ships to `data/meta/ensdf/radiation_atomic/{Symbol}.parquet` rather than directly into the canonical `data/meta/ensdf/radiation/{Symbol}.parquet`. The validation harness (#75) must merge them into the canonical layout before v0.11.0 ships. Contract:
+
+- **Union by row, not column**: `radiation_atomic/{Symbol}.parquet` rows have `rad_type IN ('xray', 'auger')`; `radiation/{Symbol}.parquet` rows from #72 have `rad_type = 'gamma'`. The merge concatenates by row across both sources, preserving `rad_type` as the discriminator.
+- **Schema reconciliation**: `radiation_atomic` columns include `parent_level_keV` and `rad_subtype` (e.g. `"K-L3"`, `"KLL"`); `radiation` already carries those columns post-#72. Bonus columns specific to one source (`multipolarity`, `mixing_ratio`, `icc_total`, `daughter_level_keV` from #72; `vacancy_shell` from this PR) get NULL on the other source's rows.
+- **Uniqueness**: the union must not produce duplicate `(Z, A, state, rad_type, energy_keV, rad_subtype)` rows — assert this in #75. Identical `(Z, A, state)` may appear on both sources but must differ in `rad_type`.
+- **State assignment**: both sources derive `state` from the nuclides catalog (#69). #75 should re-derive consistently from the post-merge catalog if any drift is observed.
+
+After #75 merges, `data/meta/ensdf/radiation_atomic/` is removed (per `git rm`) and the canonical `data/meta/ensdf/radiation/{Symbol}.parquet` carries every emission row from any source.
+
 ## Acceptance spot-checks (issue #74) — observed values vs canonical
 
 | Test | Observed | Canonical (literature) | Source |

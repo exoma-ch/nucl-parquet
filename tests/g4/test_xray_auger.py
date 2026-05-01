@@ -590,14 +590,22 @@ class TestEnergyConservationSweep:
         )
 
         # ---- EC invariant ----
+        # Tightened from <25 absolute to ≤2% of parents (PR #87 review).
+        # NaN rows (no emissions or no vacancies — degenerate cases, not
+        # actual conservation violations) are filtered out before counting.
+        # Prints offenders so a regression surfaces specific (Z,A) for audit.
         ec_vac = compute_ec_vacancy_rates(decay_detailed).join(
             emitted_parents, on=["Z", "A", "parent_ex_kev"], how="inner"
         )
         ec_em = emissions.filter(pl.col("decay_mode") == "EC")
         ec_violations = check_energy_conservation(ec_em, ec_vac, slack_pct=5.0)
-        ec_material = ec_violations.filter(pl.col("expected_pct") >= 1.0)
-        assert ec_material.height < 25, (
-            f"too many EC energy-conservation violations ({ec_material.height}):\n{ec_material.head(15)}"
+        ec_material = ec_violations.filter((pl.col("expected_pct") >= 1.0) & ~pl.col("delta_pct").is_nan())
+        ec_population = ec_vac.height
+        ec_budget = max(2, int(0.02 * ec_population))
+        assert ec_material.height <= ec_budget, (
+            f"EC energy-conservation violations exceed 2% budget "
+            f"({ec_material.height} > {ec_budget} of {ec_population} parents):\n"
+            f"{ec_material.head(20).to_dicts()}"
         )
 
         # ---- IC invariant ----
@@ -608,7 +616,11 @@ class TestEnergyConservationSweep:
         )
         ic_em = emissions.filter(pl.col("decay_mode") == "IT")
         ic_violations = check_energy_conservation(ic_em, ic_vac, slack_pct=5.0)
-        ic_material = ic_violations.filter(pl.col("expected_pct") >= 1.0)
-        assert ic_material.height < 25, (
-            f"too many IC energy-conservation violations ({ic_material.height}):\n{ic_material.head(15)}"
+        ic_material = ic_violations.filter((pl.col("expected_pct") >= 1.0) & ~pl.col("delta_pct").is_nan())
+        ic_population = ic_vac.height
+        ic_budget = max(2, int(0.02 * ic_population))
+        assert ic_material.height <= ic_budget, (
+            f"IC energy-conservation violations exceed 2% budget "
+            f"({ic_material.height} > {ic_budget} of {ic_population} parents):\n"
+            f"{ic_material.head(20).to_dicts()}"
         )
