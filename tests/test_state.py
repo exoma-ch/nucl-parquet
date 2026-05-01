@@ -1,6 +1,5 @@
-"""Tests for the state/isomer feature — `state` column on `radiation`, the
-`gamma_lines()` / `identify_gamma()` helpers, and the `build_radiation_state`
-assigner.
+"""Tests for the state/isomer feature — `state` column on `radiation` and the
+`gamma_lines()` / `identify_gamma()` helpers.
 
 Two layers:
   * Synthetic unit tests using an in-memory DuckDB over a hand-rolled
@@ -11,8 +10,11 @@ Two layers:
 Design notes:
   - We assert *structural* facts (row with a given state exists) rather than
     intensities — ENSDF republishes intensities between releases.
-  - Row-count floors are intentionally absent; they pass for a build that
-    assigns every isomer to `state=''` (the exact bug v0.9.0 fixed).
+  - The legacy IAEA-fetcher rescue tests (`_assign_states` threshold,
+    `_surface_diagnostics` ceilings, `state_map` fabrication guards) were
+    removed in v0.11.0 when the G4 migration eliminated the bug classes
+    those tests pinned. The new v0.11 acceptance gate lives in
+    ``tests/test_g4_diff_harness.py``.
 """
 
 from __future__ import annotations
@@ -20,18 +22,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import duckdb
-import polars as pl
 import pytest
 
-from nucl_parquet.build_nuclides import get_state_map
-from nucl_parquet.build_radiation_state import (
-    _ORPHAN_CEILING,
-    _UNLABELED_EXCITED_CEILING,
-    BuildIntegrityError,
-    _assert_unique_levels,
-    _assign_states,
-    _surface_diagnostics,
-)
 from nucl_parquet.loader import gamma_lines, identify_gamma
 
 # ---------------------------------------------------------------------------
@@ -122,161 +114,8 @@ def test_identify_gamma_isomer_finds_line(iso_db: duckdb.DuckDBPyConnection) -> 
 
 
 # ---------------------------------------------------------------------------
-# Assigner unit tests — _assign_states is pure given a state_map.
-# ---------------------------------------------------------------------------
-
-
-def _mk_rad(rows: list[dict]) -> pl.DataFrame:
-    """Minimal DataFrame shape expected by `_assign_states`."""
-    return pl.DataFrame(rows)
-
-
-def test_assigner_null_parent_level_is_ground() -> None:
-    df = _mk_rad(
-        [
-            {"Z": 50, "A": 120, "parent_level_keV": None},
-            {"Z": 50, "A": 120, "parent_level_keV": 0.0},
-        ]
-    )
-    orphans: set = set()
-    unlabeled: list = []
-    assert _assign_states(df, state_map={}, orphans=orphans, unlabeled_excited=unlabeled) == ["", ""]
-    assert orphans == set()
-    assert unlabeled == []
-
-
-def test_assigner_orphan_with_parent_level_is_ground() -> None:
-    """Orphan (Z,A) — no entry in state_map — labels '' (ground), not 'm'.
-
-    Regression for #49 Bug 2: previously fabricated 'm' for unknown nuclides,
-    which then failed the nuclides-subset invariant downstream.
-    """
-    df = _mk_rad([{"Z": 77, "A": 177, "parent_level_keV": 500.0}])
-    orphans: set = set()
-    unlabeled: list = []
-    states = _assign_states(df, state_map={}, orphans=orphans, unlabeled_excited=unlabeled)
-    assert states == [""]
-    assert (77, 177) in orphans
-    assert unlabeled == []
-
-
-def test_assigner_near_degenerate_levels_picks_nearest() -> None:
-    state_map = {(1, 1): [("m", 45.0), ("m2", 46.0)]}
-    df = _mk_rad(
-        [
-            {"Z": 1, "A": 1, "parent_level_keV": 45.1},
-            {"Z": 1, "A": 1, "parent_level_keV": 45.9},
-        ]
-    )
-    unlabeled: list = []
-    assert _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled) == ["m", "m2"]
-    assert unlabeled == []  # both within tolerance
-
-
-def test_assigner_non_isomeric_parent_within_warning_threshold_is_ground() -> None:
-    """Distinct non-isomeric excited parent within the *old* 2.0 keV warning
-    band but beyond the *new* 0.5 keV match threshold is labeled '' (ground)
-    and recorded for diagnostics. Regression for #49 Bug 1: previously these
-    silently inherited the nearest isomer's label.
-
-    Concrete example mirrors Mn-60 (m2 at 271.8) vs the radiation file's
-    distinct 271.2 keV parent level.
-    """
-    state_map = {(25, 60): [("m", 114.0), ("m2", 271.8)]}
-    df = _mk_rad([{"Z": 25, "A": 60, "parent_level_keV": 271.2}])
-    unlabeled: list = []
-    states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
-    assert states == [""]
-    assert len(unlabeled) == 1
-    assert unlabeled[0][0:2] == (25, 60)
-    assert unlabeled[0][3] == "m2"  # nearest isomer recorded for the diagnostic
-
-
-def test_assigner_far_match_is_ground_not_isomer() -> None:
-    state_map = {(1, 1): [("m", 45.0)]}
-    df = _mk_rad([{"Z": 1, "A": 1, "parent_level_keV": 100.0}])
-    unlabeled: list = []
-    states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
-    assert states == [""]
-    assert len(unlabeled) == 1
-    # Tuple shape: (z, a, parent_level_keV, nearest_label, distance_keV)
-    assert unlabeled[0] == (1, 1, 100.0, "m", 55.0)
-
-
-def test_assigner_threshold_boundary_inclusive() -> None:
-    """Boundary at exactly _LEVEL_EXACT_MATCH_KEV is *inclusive* (labelled isomer).
-    Pinned so a future tweak from `>` to `>=` is caught."""
-    state_map = {(1, 1): [("m", 100.0)]}
-    df = _mk_rad(
-        [
-            {"Z": 1, "A": 1, "parent_level_keV": 100.5},  # exactly at threshold → 'm'
-            {"Z": 1, "A": 1, "parent_level_keV": 100.51},  # just past → ''
-        ]
-    )
-    unlabeled: list = []
-    states = _assign_states(df, state_map=state_map, orphans=set(), unlabeled_excited=unlabeled)
-    assert states == ["m", ""]
-    assert len(unlabeled) == 1
-
-
-def test_surface_diagnostics_within_ceilings_only_warns() -> None:
-    """Counts at or below the ceiling stay as warnings (build still succeeds)."""
-    orphans = {(99, 199 + i) for i in range(_ORPHAN_CEILING)}
-    unlabeled = [(1, 1, 100.0, "m", 50.0)] * _UNLABELED_EXCITED_CEILING
-    with pytest.warns(UserWarning):
-        _surface_diagnostics(orphans, unlabeled)  # must not raise
-
-
-def test_surface_diagnostics_breach_raises() -> None:
-    """Above the orphan ceiling → BuildIntegrityError so a refresh can't drift silently."""
-    orphans = {(99, 199 + i) for i in range(_ORPHAN_CEILING + 1)}
-    unlabeled: list = []
-    with pytest.raises(BuildIntegrityError, match="orphan"):
-        _surface_diagnostics(orphans, unlabeled)
-
-
-def test_surface_diagnostics_unlabeled_breach_raises() -> None:
-    orphans: set = set()
-    unlabeled = [(1, 1, 100.0, "m", 50.0)] * (_UNLABELED_EXCITED_CEILING + 1)
-    with pytest.raises(BuildIntegrityError, match="unlabeled-excited"):
-        _surface_diagnostics(orphans, unlabeled)
-
-
-def test_assert_unique_levels_rejects_duplicates() -> None:
-    with pytest.raises(ValueError, match="Duplicate isomeric level"):
-        _assert_unique_levels({(63, 152): [("m", 45.6), ("m2", 45.6)]})
-
-
-def test_assert_unique_levels_accepts_distinct() -> None:
-    _assert_unique_levels({(63, 152): [("m", 45.6), ("m2", 147.9)]})
-
-
-# ---------------------------------------------------------------------------
 # Invariants + spot-checks over real data (@pytest.mark.data).
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.data
-def test_state_map_is_subset_of_nuclides(data_dir_path: Path) -> None:
-    """Every (Z, A, state) `get_state_map` returns must also exist in
-    `nuclides.parquet`. Pinned so the function can never silently fall back
-    to the pre-#58 behaviour of fabricating isomers from levels.parquet or
-    radiation parent_level_keV."""
-    state_map = get_state_map(data_dir_path)
-
-    db = duckdb.connect()
-    nuc_path = data_dir_path / "meta" / "ensdf" / "nuclides.parquet"
-    nuclides_set = {
-        (int(z), int(a), state)
-        for z, a, state in db.sql(f"SELECT Z, A, state FROM read_parquet('{nuc_path}') WHERE state != ''").fetchall()
-    }
-
-    bad = []
-    for (z, a), labels in state_map.items():
-        for state, _level in labels:
-            if (z, a, state) not in nuclides_set:
-                bad.append((z, a, state))
-    assert bad == [], f"state_map contains {len(bad)} (Z,A,state) triples absent from nuclides: {bad[:5]}"
 
 
 @pytest.mark.data

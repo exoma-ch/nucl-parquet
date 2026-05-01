@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted |
+| **Status** | Implemented (v0.11.0, 2026-05-01) |
 | **Date** | 2026-04-30 |
 | **Affected versions** | v0.10.x → v0.11.0 |
 | **Related** | #66 (epic), #67 (this decision), #68–#79 (sub-tasks), ADR-0001 (state API) |
@@ -125,3 +125,28 @@ This ADR unblocks issues #69–#76. Each converter PR explicitly references this
 - Strata published dataset: https://huggingface.co/datasets/gerchowl/strata-data
 - AME2020: https://www-nds.iaea.org/amdc/ame2020/
 - IUPAC/CIAAW (NIST mirror): https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl
+
+## Implementation outcome (v0.11.0, 2026-05-01)
+
+Status: **Implemented**.
+
+All eight phases shipped through sub-PRs into the integration branch and squash-merged for v0.11.0:
+
+| Phase | Issue | PR | Status |
+|---|---|---|---|
+| A — schema decision | #67 | (this ADR) | ✅ |
+| B — HF fetcher + revision pin | #68 | direct on integration | ✅ |
+| C — ensdfstate → nuclides + ground_states | #69 | #81 | ✅ merged |
+| D — photon_evap_levels → levels/ | #70 | #82 | ✅ merged |
+| E — radioactive_decay → decay + decay_detailed | #71 | #83 | ✅ merged |
+| F — photon_evap_gammas → radiation/ | #72 | #85 | ✅ merged |
+| G — coincidences | #73 | #86 | ✅ merged |
+| H — xray_auger synthesis | #74 | #87 | ✅ merged |
+| I — validation diff harness + radiation merge | #75 | #89 | ✅ merged |
+| J — cleanup + v0.11.0 release | #76 | (this PR) | in-flight |
+
+The acceptance gate (`tests/test_g4_diff_harness.py`, 23 tests) confirms every v0.10.x bug class enumerated above is eliminated: phantom isomers, corrupted `parent_level_keV`, IT-on-ground in decay, NULL stable-sentinel conflation, missing Eu-152m2. Schema additivity preserved across all 6 converters per the binding decision; downstream Rust/TS/MCP consumers required zero changes.
+
+The dual-carry columns (`spin_x2`, `parity`, `floating_level_flag`, `magnetic_moment_jt`, `jpi`, `multipolarity`, `mixing_ratio`, `icc_total`, `daughter_level_keV`, `vacancy_shell`) are populated where the source supplies them, NULL elsewhere — providing the v1.0 cleanup path documented above.
+
+Three deferred-follow-up issues track post-v0.11 enrichment: #80 (per-file SHA-256), #84 (No-253-class renormalization audit), #88 (high-Z X-ray/Auger accuracy — Coster-Kronig + per-shell IC + daughter-IC cascades).
