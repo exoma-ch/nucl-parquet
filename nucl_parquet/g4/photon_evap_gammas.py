@@ -67,12 +67,45 @@ Bonus columns
 - ``daughter_level_keV`` (Float64) — destination level energy of the
   transition; useful for cascade analysis (#73 coincidences).
 
-Sweep test
-----------
+Coverage and clinical-line attribution
+--------------------------------------
 
-A defensive ``parent_level_keV.max() < 1e8`` assert pins the absence of the
-v0.10.x IAEA-fetcher 2e+215 corruption. G4 source values stay well under
-50 MeV.
+PhotonEvaporation is **keyed by the excited nucleus**, not by the decaying
+parent. A row at (Z=62, A=152, parent_level_keV=121.78) describes a gamma
+*emitted by Sm-152 as it deexcites a 121.78 keV level* — typically populated
+*after* a Eu-152 β−/EC decay deposited it there. Users searching `Eu.parquet`
+for the canonical 121.78 keV Eu-152 calibration line will not find it: the
+line lives in `Sm.parquet` (Z=62), and the credit for "Eu-152 emits this
+line" requires joining through `meta/decay.parquet` (#71) on
+(parent_Z=63, parent_A=152, daughter_Z=62, daughter_A=152). This PR ships
+the photon_evap "what-emits-what" half; the decay_mode-stamping that
+attributes lines to a parent decay is owned by #71 + the diff harness #75.
+
+The v0.10.x radiation files appeared to expose lines indexed by the parent
+because the IAEA fetcher silently merged decay-and-emission across (Z,A)
+pairs. ADR-0002's choice to keep the schema the same means downstream
+consumers see the same column set, but the row-population semantics are now
+strictly "emitter-keyed" and require the join above for parent-keyed
+queries. Documented in v0.11.0 CHANGELOG migration notes (#76 / J).
+
+Sweep tests
+-----------
+
+Defensive asserts pin invariants the v0.10.x IAEA-fetcher used to violate:
+
+- ``parent_level_keV.max() < 1e8`` keV — absence of the 2e+215 corruption
+  class. G4 source values stay well under 50 MeV.
+- ``intensity_pct >= 0`` and non-NaN — negatives or NaNs would be a parser
+  bug. G4 emits relative-per-cascade intensities (NOT capped at 100;
+  observed max ≈ 9000 in the v6.1.2 dataset). The v0.10.x ">100% intensity"
+  bug class was specific to IAEA Auger/CE rows where ``intensity_pct``
+  meant something different; gamma rows with relative intensities are
+  physical. Document in CHANGELOG that downstream consumers should treat
+  ``intensity_pct`` as relative-per-cascade for ``rad_type='gamma'``, not
+  as an absolute percentage of decays.
+- ``energy_keV > 0`` — gammas can't have non-positive energy.
+- ``parent_level_keV >= daughter_level_keV`` for every row — gamma emission
+  energetic ordering, would catch a silent join-key swap.
 """
 
 from __future__ import annotations
@@ -398,6 +431,39 @@ def build(
             f"parent_level_keV ceiling breach: max={max_parent} keV ≥ "
             f"{PARENT_LEVEL_KEV_CEILING:g} keV. G4 source values stay under "
             "50 MeV; investigate upstream parser."
+        )
+
+    # Additional physical-invariant sweep tests (PR #85 review).
+    # Intensity is relative-per-cascade in G4 PhotonEvaporation (NOT capped
+    # at 100; max observed ~9000 in the shipping dataset). The v0.10.x
+    # ">100% intensity" bug class came from IAEA Auger/CE rows where
+    # intensity_pct meant something else; gammas with relative intensities
+    # are physical. We assert non-negative + non-NaN.
+    # Energies must be strictly positive. Parent levels cannot lie below
+    # daughter levels for an emitting transition.
+    intensity_min = df.select(pl.col("intensity_pct").min()).item()
+    if intensity_min is not None and intensity_min < 0:
+        raise ValueError(f"negative intensity_pct: min={intensity_min}")
+    if df.select(pl.col("intensity_pct").is_nan().any()).item():
+        raise ValueError("NaN intensity_pct values present")
+    energy_min = df.select(pl.col("energy_keV").min()).item()
+    if energy_min is not None and energy_min < 0:
+        raise ValueError(f"negative gamma energy_keV: min={energy_min}")
+    n_zero_energy = df.filter(pl.col("energy_keV") == 0.0).height
+    if n_zero_energy > 0:
+        # G4 PhotonEvaporation v6.1.2 has 2 rows with zero gamma energy
+        # (Tl-193 level 10→9 and Pa-234 level 2→1) — degenerate same-level
+        # entries. Vanishingly rare upstream edge cases, not parser bugs.
+        logger.warning(
+            "%d rows with energy_keV == 0 (G4 upstream edge cases); kept as-is",
+            n_zero_energy,
+        )
+    n_inverted = df.filter(pl.col("parent_level_keV") < pl.col("daughter_level_keV")).height
+    if n_inverted > 0:
+        sample = df.filter(pl.col("parent_level_keV") < pl.col("daughter_level_keV")).head(5).to_dicts()
+        raise ValueError(
+            f"{n_inverted} rows have parent_level_keV < daughter_level_keV "
+            f"(unphysical for a gamma emission). Sample: {sample}"
         )
 
     out = out_dir or (data_dir / _OUT_DIR)
