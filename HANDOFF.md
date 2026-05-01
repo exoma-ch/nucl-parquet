@@ -19,10 +19,10 @@ Live document tracking progress on the v0.10.x → v0.11.0 migration from IAEA-f
 | E | #71 | #83 ✅ merged 2026-05-01 | radioactive_decay → decay + decay_detailed; per-shell EC preserved (NOT collapsed); IT-on-ground canary extended to detailed table |
 | F | #72 | #85 ✅ merged 2026-05-01 | photon_evap_gammas → 107 per-element radiation/{Symbol}.parquet (296599 gamma rows); fresh-agent review fixes (sweep invariants, intensity ≥ 0 + non-NaN, parent ≥ daughter, energy ≥ 0 with 2-row warning); clinical-line attribution docstring |
 
-### 🟡 In flight (loop tick 4, 2026-05-01 ~07:32 UTC)
+### 🟡 In flight (loop tick 5, 2026-05-01 ~07:38 UTC)
 
-- **#73 / PR #86 (coincidences)** — open, fresh-agent review `ac29ddbf…` running. 600k cascade pairs across 104 element files (vs ~1.05M IAEA — agent attributes drop to strict directional pairs only, no reverse/parallel-branch).
-- **#74 (X-ray + Auger synthesis)** — agent `ab13f63d…` 3 commits, still active. Heaviest physics task; deposited design memo, synthesis core, cascade propagation + K-edge gating.
+- **#73 / PR #86 (coincidences)** — fresh-agent review caught ADR-0002 schema-additivity violation; fixed in commit eb6d2aa (preserve v0.10.x columns Z/A/dataset/gamma_energy_keV/coinc_energy_keV alongside the G4-bonus columns). Worked normalization snippet added. CI re-running. Merge on next tick if green.
+- **#74 (X-ray + Auger synthesis)** — agent `ab13f63d…` 3 commits, working dir dirty (HANDOFF.md edit, decay.parquet regen, xray_auger.py edit, new decay_detailed.parquet, new radiation_atomic/). Still active.
 
 
 ### ⏳ Blocked / pending
