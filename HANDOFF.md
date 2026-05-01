@@ -18,10 +18,11 @@ Live document tracking progress on the v0.10.x → v0.11.0 migration from IAEA-f
 | D | #70 | #82 ✅ merged 2026-05-01 | photon_evap_levels → 117 per-element parquet files; `n.parquet` → `N.parquet` case-FS edge fix |
 | E | #71 | #83 ✅ merged 2026-05-01 | radioactive_decay → decay + decay_detailed; per-shell EC preserved (NOT collapsed); IT-on-ground canary extended to detailed table |
 
-### 🟡 In flight (loop tick 1, 2026-05-01 ~07:00 UTC)
+### 🟡 In flight (loop tick 2, 2026-05-01 ~09:30 UTC)
 
-- **#72 (gammas → radiation)** — /land agent `a87c4287…` running on `fix/issue-72-photon-evap-gammas`
-- **#74 (X-ray + Auger synthesis)** — /land agent `ab13f63d…` running on `fix/issue-74-xray-auger-synthesis`. Heaviest physics task; will deposit a design memo first.
+- **#72 (gammas → radiation) — PR #85** — agent done. Self-review + fresh-agent review both completed; review fixes applied (commits a60ec3c, 2b7f57b, 65b74a6, 2053584). CI re-running on the fix commit. Merge as soon as green.
+- **#73 (coincidences) — agent `a862fe9a…`** — just spawned (loop tick 2). Self-join on photon_evap_gammas cascade pairs.
+- **#74 (X-ray + Auger synthesis) — agent `ab13f63d…`** — running since loop tick 1. Heaviest physics task; design memo expected first.
 
 ### ⏳ Blocked / pending
 
