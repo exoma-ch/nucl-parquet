@@ -44,18 +44,24 @@ The sum is over all daughter excited levels. Note: G4 does not split L into L1/L
 
 ### Step 2 — IC vacancy rate per shell (daughter Z' = Z, same atom)
 
-For each gamma transition from a level populated downstream of `(Z, A, state)` decay, we currently approximate:
+The IC computation operates on isomer parents only (`parent_ex_kev > 0`, IT-decaying); ground-state EC parents whose daughters subsequently emit IC-converted gammas are a v0.12 follow-up (item 4 below).
 
-```
-v_IC(K, this gamma) ≈ icc_total × intensity / (1 + icc_total)
-v_IC(other shells)  ≈ 0  (K-shell-only approximation)
-```
+For each isomer parent we:
 
-**Why K-shell only:** strata's `photon_evap_gammas.parquet` only ships `icc_total`, not the per-shell partial coefficients α_K / α_L1 / α_L2 / …. The raw G4 PhotonEvaporation files contain the partials but they have not been carried through to the strata export at the pinned revision (catalog SHA `9a74e823…`). For low-Z parents (Z < 30) K-shell IC dominates (α_K / α_T > 0.85 typically); for medium-Z (30 ≤ Z < 60) it remains the largest single contributor; for high-Z (Z ≥ 60) L-shell IC can rival or exceed K. The approximation therefore degrades with Z.
+1. **Resolve the isomer's level_idx** from `photon_evap_levels` by ±1 keV match against `parent_ex_kev`.
+2. **Propagate cascade populations** down through the level scheme starting at `population[isomer_idx] = 1`. At each step the source level's population is split across daughter levels weighted by the *transition* branch fraction (i.e. `intensity × (1 + icc_total)` renormalized within the source level — using transitions, not just emitted gammas, since IC and gamma are alternatives drawing from the same pool).
+3. **Sum K-vacancies per transition**, gating to gammas whose energy exceeds the daughter K-edge:
+   ```
+   v_K = Σ_g (E_g ≥ E_K) × pop[source(g)] × transition_frac(g) × icc_total(g) / (1 + icc_total(g))
+   ```
+
+This is the canonical Tc-99m physics: the depopulating 2.17 keV gamma of the isomer is *below* the Tc K-edge (21 keV) so it creates no K-vacancies on its own; instead, that gamma populates level 1 (140.5 keV), and the *level-1 → ground* transition (140.5 keV gamma, α_T = 0.113) is what drives K-vacancy production. Without cascade propagation the synthesizer underestimates Tc-99m K-vacancy yield by ~10× (drops from canonical 10% to ~0.9%).
+
+**Why K-shell only:** strata's `photon_evap_gammas.parquet` only ships `icc_total`, not the per-shell partials α_K / α_L1 / α_L2 / …. The raw G4 PhotonEvaporation files contain the partials but they have not been carried through to the strata export at the pinned revision (catalog SHA `9a74e823…`). For low-Z parents (Z < 30) K-shell IC dominates (α_K / α_T > 0.85 typically); for medium-Z (30 ≤ Z < 60) it remains the largest single contributor; for high-Z (Z ≥ 60) L-shell IC can rival or exceed K. The approximation therefore degrades with Z.
 
 **Mitigation in v0.11.x:** documented as a known-gap follow-up (filed as a sub-issue of #74). v0.11.0 ships the K-only approximation; a future PR enriches strata to carry the partials and revisits this module.
 
-The `(1 + icc_total)` denominator converts gamma intensity (per-100 emitted photons) into total transition rate, so the IC fraction is `icc / (1 + icc)`. We currently compute IC vacancies *per gamma* without yet routing through "which gammas are reachable from `(Z, A, state)` decay." For v0.11.0 we attribute IC vacancies to the *parent's own state* if `parent_level_idx > 0` (i.e. an isomer, IT-decaying) — Tc-99m's 140 keV gamma is the canonical case. EC-then-IC chains in the daughter are *not* yet folded in for v0.11; that's a phase-2 enrichment.
+**Vacancy cap:** `vacancy_rate` is clipped at 1.0 (one K-vacancy per parent decay is the physical maximum). Numerical / branching-renormalization noise can push slightly above unity for some entries; the clip ensures downstream consumers never see > 100% intensity from a single shell.
 
 ### Step 3 — Look up EADL transitions for each vacancy
 
@@ -97,16 +103,18 @@ The 5 % slack absorbs:
 
 5. **Daughter-level state inheritance** — IT decay from `(Z, A, m)` produces a daughter at the parent's lower levels (same Z), whose subsequent gammas may be IC-converted. We handle this by reading `photon_evap_gammas` for `(Z, A)` and selecting transitions whose origin level is ≤ the parent isomer's `parent_ex_kev` — for Tc-99m → Tc-99 (level 1, 140.5 keV), this captures the M1 transition correctly.
 
-## Acceptance spot-checks (issue #74)
+## Acceptance spot-checks (issue #74) — observed values vs canonical
 
-| Test | Expected | Source |
-|---|---|---|
-| Tc-99m Kα1 (Tc daughter from IC) | ~18.33 keV | EADL Tc, K→L3 |
-| Tc-99m Kα2 | ~18.21 keV | EADL Tc, K→L2 |
-| Tc-99m Kβ1 | ~20.59 keV | EADL Tc, K→M3 |
-| Co-57 EC → Fe Kα1 | ~6.40 keV | EADL Fe, K→L3 (Mössbauer line) |
-| I-125 EC → Te Kα1 | ~27.47 keV | EADL Te, K→L3 |
-| I-125 KLL Auger group | present, energy ≈ 22–24 keV | EADL Te, K-vacancy auger rows |
+| Test | Observed | Canonical (literature) | Source |
+|---|---|---|---|
+| Tc-99m Kα1 (Tc daughter from IC) | 18.33 keV @ 4.69 % | 18.37 keV @ 4.36 % | EADL Tc, K→L3 |
+| Tc-99m Kα2 | 18.21 keV @ 2.47 % | 18.25 keV @ 2.34 % | EADL Tc, K→L2 |
+| Tc-99m Kβ1 | 20.59 keV @ 0.75 % | 20.62 keV @ 0.85 % | EADL Tc, K→M3 |
+| Co-57 EC → Fe Kα1 | 6.36 keV @ 17.6 % | 6.40 keV @ ~16.5 % | EADL Fe, K→L3 (Mössbauer line) |
+| I-125 EC → Te Kα1 | 27.47 keV @ 37.6 % | 27.47 keV @ ~38 % | EADL Te, K→L3 |
+| I-125 KLL Auger sum | 9.42 % | ~9.5 % | EADL Te, K-vacancy auger rows |
+| Co-57 Σ(K X-ray + K Auger) | 88.77 % | 88.77 % (= K-EC fraction × 1.0) | Energy-conservation invariant |
+| Tc-99m Σ(K X-ray + K Auger) | 10.93 % | ~10.5 % | Energy-conservation invariant (cascade) |
 
 ## References
 

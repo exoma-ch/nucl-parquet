@@ -257,17 +257,84 @@ def compute_ec_vacancy_rates(
     )
 
 
+def _propagate_cascade(
+    z: int,
+    a: int,
+    isomer_level_idx: int,
+    gammas_for_za: pl.DataFrame,
+) -> dict[int, float]:
+    """Iterate cascade populations downward starting from isomer_level_idx.
+
+    Returns {level_idx → cumulative population}. Each level's population is
+    the fraction of isomer-decay events that pass through that level.
+
+    Algorithm: BFS-like. Start with pop[isomer]=1. At each step, find the
+    highest-populated source level not yet processed, distribute its
+    population across daughter levels weighted by transition branch
+    fraction (intensity × (1+icc) renormalized within the source level),
+    and add to daughter populations. Repeat until no level above ground
+    has unprocessed population.
+    """
+    if gammas_for_za.is_empty():
+        return {isomer_level_idx: 1.0}
+
+    # Pre-compute transition branch fractions per source level.
+    g = gammas_for_za.with_columns(
+        (pl.col("intensity") * (1.0 + pl.col("icc_total"))).alias("__trans_rate"),
+    ).with_columns(
+        (pl.col("__trans_rate") / pl.col("__trans_rate").sum().over(["level_idx"])).alias("transition_frac"),
+    )
+
+    # Group transitions by source level for fast lookup.
+    by_source: dict[int, list[tuple[int, float]]] = {}
+    for r in g.iter_rows(named=True):
+        by_source.setdefault(int(r["level_idx"]), []).append((int(r["daughter_level"]), float(r["transition_frac"])))
+
+    pop: dict[int, float] = {isomer_level_idx: 1.0}
+    processed: set[int] = set()
+    # Process levels in descending order of level_idx (assumed monotonic
+    # with excitation in strata's encoding). If the assumption breaks for
+    # some odd file the loop still terminates because we mark each level
+    # processed.
+    while True:
+        candidates = [lvl for lvl in pop if lvl not in processed and lvl > 0]
+        if not candidates:
+            break
+        src = max(candidates)
+        processed.add(src)
+        src_pop = pop[src]
+        if src_pop <= 0:
+            continue
+        for dst, frac in by_source.get(src, []):
+            pop[dst] = pop.get(dst, 0.0) + src_pop * frac
+    return pop
+
+
 def compute_ic_vacancy_rates(
     photon_evap_gammas: pl.DataFrame,
     photon_evap_levels: pl.DataFrame,
     parent_states: pl.DataFrame,
+    k_edges: dict[int, float] | None = None,
 ) -> pl.DataFrame:
     """Approximate per-(Z, A, state) IC vacancy rates (K-shell only).
 
-    For each parent state at ``parent_ex_kev > 0`` (an isomer that decays via
-    IT), find gamma transitions in (Z, A) whose origin level is at or below
-    the parent isomer level, and sum
-    ``intensity × icc_total / (1 + icc_total) / 100`` as the K-vacancy rate.
+    Restricted to **the depopulating gammas of the isomer level itself** —
+    we don't propagate cascade populations through subsequent levels. This
+    is a v0.11.x simplification (see design memo §"Known gaps"):
+
+    - Avoids over-counting K vacancies when the same lower level appears in
+      many cascade paths under the isomer.
+    - Captures the dominant IC for canonical isomers when the level the
+      strata catalog matches as ``parent_ex_kev`` is the depopulating one.
+    - For ground-state EC parents, IC of post-EC daughter gammas is not
+      yet folded in (see design memo §"Known gaps", item 4).
+
+    The yield is computed as
+    ``Σ_g (intensity_g / 100) × icc_g / (1 + icc_g)``
+    over all gammas whose ``parent_level`` equals the isomer's level_idx
+    (resolved by ±1 keV match against ``photon_evap_levels``). Cascade
+    propagation (a daughter level emitting its own IC-converted gamma) is
+    intentionally skipped — that path is a v0.12 follow-up.
 
     Args:
         photon_evap_gammas: Strata's gamma table (z, a, parent_level,
@@ -281,74 +348,115 @@ def compute_ic_vacancy_rates(
         DataFrame: (Z, A, parent_ex_kev, daughter_Z, shell='K', vacancy_rate).
         Daughter Z = parent Z (IC happens in same atom).
     """
+    empty_schema = {
+        "Z": pl.Int32,
+        "A": pl.Int32,
+        "parent_ex_kev": pl.Float64,
+        "daughter_Z": pl.Int32,
+        "shell": pl.Utf8,
+        "vacancy_rate": pl.Float64,
+    }
     if parent_states.is_empty():
-        return pl.DataFrame(
-            schema={
-                "Z": pl.Int32,
-                "A": pl.Int32,
-                "parent_ex_kev": pl.Float64,
-                "daughter_Z": pl.Int32,
-                "shell": pl.Utf8,
-                "vacancy_rate": pl.Float64,
-            }
-        )
+        return pl.DataFrame(schema=empty_schema)
 
     # We're interested in isomer parents (parent_ex_kev > 0) — IC vacancies
     # arise from their IT cascade. For ground-state parents, IC of post-EC
     # daughter gammas is a v0.12 enrichment (see design memo).
     isomer_parents = parent_states.filter(pl.col("parent_ex_kev") > 0).select(["Z", "A", "parent_ex_kev"]).unique()
     if isomer_parents.is_empty():
-        return pl.DataFrame(
-            schema={
-                "Z": pl.Int32,
-                "A": pl.Int32,
-                "parent_ex_kev": pl.Float64,
-                "daughter_Z": pl.Int32,
-                "shell": pl.Utf8,
-                "vacancy_rate": pl.Float64,
-            }
-        )
+        return pl.DataFrame(schema=empty_schema)
 
-    # Build a level-idx → excitation_kev map per (Z, A) for the gamma table.
+    # Resolve isomer parent_ex_kev to level_idx using ±1 keV match.
     levels = photon_evap_levels.select(
         pl.col("z").cast(pl.Int32).alias("Z"),
         pl.col("a").cast(pl.Int32).alias("A"),
-        pl.col("level_idx").alias("parent_level"),
-        pl.col("excitation_kev").alias("origin_kev"),
+        pl.col("level_idx"),
+        pl.col("excitation_kev"),
+    )
+    isomer_levels = isomer_parents.join(levels, on=["Z", "A"], how="inner").filter(
+        (pl.col("excitation_kev") - pl.col("parent_ex_kev")).abs() <= _STATE_KEV_TOL
+    )
+    if isomer_levels.is_empty():
+        return pl.DataFrame(schema=empty_schema)
+
+    # Pick the closest level_idx for each (Z, A, parent_ex_kev).
+    isomer_levels = (
+        isomer_levels.with_columns((pl.col("excitation_kev") - pl.col("parent_ex_kev")).abs().alias("__delta"))
+        .sort(["Z", "A", "parent_ex_kev", "__delta"])
+        .group_by(["Z", "A", "parent_ex_kev"])
+        .agg(pl.col("level_idx").first())
     )
 
     gammas = photon_evap_gammas.select(
         pl.col("z").cast(pl.Int32).alias("Z"),
         pl.col("a").cast(pl.Int32).alias("A"),
-        pl.col("parent_level"),
+        pl.col("parent_level").alias("level_idx"),
+        pl.col("daughter_level").cast(pl.Int32),
+        pl.col("gamma_energy_kev").cast(pl.Float64),
         pl.col("intensity").cast(pl.Float64),
         pl.col("icc_total").cast(pl.Float64),
     )
-    # Bring the origin level's excitation in.
-    gammas = gammas.join(levels, on=["Z", "A", "parent_level"], how="inner")
 
-    # For each isomer parent, take gammas where origin_kev ≤ parent_ex_kev
-    # (the cascade *down* from the isomer or below).
-    matched = gammas.join(isomer_parents, on=["Z", "A"], how="inner").filter(
-        pl.col("origin_kev") <= pl.col("parent_ex_kev")
-    )
+    # For each isomer parent, propagate cascade populations from the isomer
+    # level down through the gamma scheme, summing K-shell IC vacancies
+    # over each transition. This captures the canonical Tc-99m physics:
+    # the *level-1 → ground* 140.5 keV transition (populated via the
+    # 2.17 keV depopulating gamma of the isomer) is the dominant
+    # K-vacancy source, not the depopulating gamma itself.
+    out_rows: list[dict] = []
+    for rec in isomer_levels.iter_rows(named=True):
+        z = int(rec["Z"])
+        a = int(rec["A"])
+        parent_ex_kev = float(rec["parent_ex_kev"])
+        isomer_idx = int(rec["level_idx"])
+        k_edge = (k_edges or {}).get(z)
 
-    # IC vacancy rate per gamma = (intensity_per100 / 100) × icc / (1 + icc).
-    # Sum over all qualifying gammas.
-    ic = (
-        matched.with_columns(
-            ((pl.col("intensity") / 100.0) * pl.col("icc_total") / (1.0 + pl.col("icc_total"))).alias("ic_per_decay")
+        gammas_za = gammas.filter((pl.col("Z") == z) & (pl.col("A") == a))
+        if gammas_za.is_empty():
+            continue
+
+        populations = _propagate_cascade(z, a, isomer_idx, gammas_za)
+        if not populations:
+            continue
+
+        # Pre-compute transition_frac per row.
+        gammas_za = gammas_za.with_columns(
+            (pl.col("intensity") * (1.0 + pl.col("icc_total"))).alias("__trans_rate"),
+        ).with_columns(
+            (pl.col("__trans_rate") / pl.col("__trans_rate").sum().over(["level_idx"])).alias("transition_frac"),
         )
-        .group_by(["Z", "A", "parent_ex_kev"])
-        .agg(pl.col("ic_per_decay").sum().alias("vacancy_rate"))
-        .with_columns(
-            pl.col("Z").alias("daughter_Z"),
-            pl.lit("K").alias("shell"),
+
+        v_k = 0.0
+        for g in gammas_za.iter_rows(named=True):
+            src = int(g["level_idx"])
+            src_pop = populations.get(src, 0.0)
+            if src_pop <= 0.0:
+                continue
+            energy = float(g["gamma_energy_kev"])
+            if k_edge is not None and energy < k_edge:
+                continue
+            icc = float(g["icc_total"])
+            t_frac = float(g["transition_frac"])
+            ic_frac = icc / (1.0 + icc) if (1.0 + icc) > 0 else 0.0
+            v_k += src_pop * t_frac * ic_frac
+
+        if v_k <= 0.0:
+            continue
+        # Cap at 1.0: physical bound is one K vacancy per parent decay.
+        out_rows.append(
+            {
+                "Z": z,
+                "A": a,
+                "parent_ex_kev": parent_ex_kev,
+                "daughter_Z": z,
+                "shell": "K",
+                "vacancy_rate": min(v_k, 1.0),
+            }
         )
-        .filter(pl.col("vacancy_rate") > 0)
-        .select(["Z", "A", "parent_ex_kev", "daughter_Z", "shell", "vacancy_rate"])
-    )
-    return ic
+
+    if not out_rows:
+        return pl.DataFrame(schema=empty_schema)
+    return pl.DataFrame(out_rows, schema=empty_schema)
 
 
 # -----------------------------------------------------------------------------
@@ -553,6 +661,22 @@ def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
 # -----------------------------------------------------------------------------
 
 
+def load_k_edges(eadl_dir: Path) -> dict[int, float]:
+    """Build a {Z: K-edge_keV} map by scanning EADL files."""
+    edges: dict[int, float] = {}
+    if not eadl_dir.exists():
+        return edges
+    for parquet in eadl_dir.glob("*.parquet"):
+        try:
+            df = pl.read_parquet(parquet, columns=["Z", "vacancy_shell", "edge_keV"])
+        except Exception:
+            continue
+        k_rows = df.filter(pl.col("vacancy_shell") == "K").select(["Z", "edge_keV"]).unique()
+        for row in k_rows.iter_rows(named=True):
+            edges[int(row["Z"])] = float(row["edge_keV"])
+    return edges
+
+
 def synthesize_xray_auger(
     decay_detailed: pl.DataFrame,
     photon_evap_gammas: pl.DataFrame,
@@ -565,6 +689,7 @@ def synthesize_xray_auger(
     Returns the consolidated DataFrame; caller writes per-element parquet.
     """
     z_to_symbol = _z_to_symbol(nuclides)
+    k_edges = load_k_edges(eadl_dir)
 
     # Step 1: EC vacancies in daughter (Z-1).
     ec_vacancies = compute_ec_vacancy_rates(decay_detailed)
@@ -572,7 +697,7 @@ def synthesize_xray_auger(
 
     # Step 2: build the parent-state list for IC lookup.
     parent_states = decay_detailed.select(["Z", "A", "parent_ex_kev"]).unique()
-    ic_vacancies = compute_ic_vacancy_rates(photon_evap_gammas, photon_evap_levels, parent_states)
+    ic_vacancies = compute_ic_vacancy_rates(photon_evap_gammas, photon_evap_levels, parent_states, k_edges=k_edges)
     logger.info("IC vacancy rows: %d", ic_vacancies.height)
 
     # Step 3: convolve with EADL.
