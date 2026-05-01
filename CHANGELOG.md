@@ -33,9 +33,47 @@ Bonus columns present where source supplies them, NULL elsewhere:
 ### Migration notes for downstream consumers
 
 - **Stable-isotope half-life**: Python code that does `if half_life_s is None` (or SQL `IS NULL`) to detect stable isotopes will need to add `or math.isinf(half_life_s)` (`is_finite()` is the canonical check). The new encoding distinguishes "stable per physical observation" (`+inf`) from "genuinely unknown / unmeasured" (NULL); v0.10.x conflated both.
+
+  ```sql
+  -- v0.10 (broken — would catch unknowns too):
+  SELECT * FROM nuclides WHERE half_life_s IS NULL;
+  -- v0.11 (correct):
+  SELECT * FROM nuclides WHERE NOT is_finite(half_life_s) AND half_life_s IS NOT NULL;
+  -- "stable or known-long-lived":
+  SELECT * FROM nuclides WHERE half_life_s IS NOT NULL AND (NOT is_finite(half_life_s) OR half_life_s > 1e17);
+  ```
+
 - **Per-shell EC**: `decay.parquet` now ships `decay_mode IN ('KshellEC', 'LshellEC', 'MshellEC', 'NshellEC')` separately rather than collapsing to `'EC'`. Callers searching `decay_mode == 'EC'` will find no rows after v0.11; use `decay_mode IN (...)` or sum across the per-shell rows. The aggregated total is recoverable; the v0.11 form is strictly richer.
+
+  ```sql
+  -- v0.10 (returns nothing in v0.11):
+  SELECT branching FROM decay WHERE Z=43 AND A=99 AND state='m' AND decay_mode='EC';
+  -- v0.11 equivalent (sum across per-shell rows):
+  SELECT SUM(branching) AS ec_total FROM decay
+   WHERE Z=43 AND A=99 AND state='m'
+     AND decay_mode IN ('KshellEC', 'LshellEC', 'MshellEC', 'NshellEC');
+  ```
+
 - **Filing convention for radiation rows**: G4 PhotonEvaporation is keyed by the *de-exciting nucleus*, not the decaying parent. The v0.10.x "121.78 keV ground-state Eu-152 line" was a Sm-152 daughter line credited via the IAEA fetcher's parent-merging artifact; under the v0.11 convention it lives in `Sm.parquet` (Z=62), not `Eu.parquet`. Parent-keyed clinical-line queries should join through `meta/decay.parquet` on `(parent_Z, parent_A, daughter_Z, daughter_A)`.
-- **`intensity_pct` for gamma rows**: v0.11 uses G4's relative-per-cascade-level normalization (max observed ~9000), NOT a 0-100 percentage. Consumers needing absolute coincidence probabilities should normalize per `(Z, A, parent_level_keV)`. See `nucl_parquet/g4/coincidences.py` module docstring for a worked DuckDB example.
+
+- **⚠️ `intensity_pct` is relative-per-cascade, not 0-100% absolute** — this is the most consequential semantic change for dose-calc consumers. v0.10.x stored absolute per-decay percentages; v0.11 mirrors G4 PhotonEvaporation's relative-per-cascade-level normalization (max observed ~9000). A v0.10 dose pipeline that did `intensity_pct/100 * activity_Bq` will silently produce wrong gamma fluences post-upgrade — no error, just incorrect numbers. Normalize per `(Z, A, parent_level_keV)` before treating as a probability:
+
+  ```sql
+  -- gamma emission probability per-decay (correct v0.11 form):
+  WITH cascade_totals AS (
+      SELECT Z, A, parent_level_keV, SUM(intensity_pct) AS cascade_sum
+        FROM radiation
+       WHERE rad_type = 'gamma'
+       GROUP BY Z, A, parent_level_keV
+  )
+  SELECT r.Z, r.A, r.energy_keV,
+         r.intensity_pct / NULLIF(c.cascade_sum, 0) AS p_per_cascade
+    FROM radiation r
+    JOIN cascade_totals c USING (Z, A, parent_level_keV)
+   WHERE r.rad_type = 'gamma' AND r.Z=63 AND r.A=152;
+  ```
+
+  See `nucl_parquet/g4/coincidences.py` module docstring for the full worked example including parent-keyed feeding fractions.
 
 ### Removed (obsolete with G4 inputs)
 
