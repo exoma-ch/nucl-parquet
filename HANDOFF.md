@@ -17,12 +17,12 @@ Live document tracking progress on the v0.10.x → v0.11.0 migration from IAEA-f
 | C | #69 | #81 ✅ merged 2026-05-01 | ensdfstate → nuclides + ground_states; AME/IUPAC LEFT JOIN; review fixes (DRY half-life expr, parity dual-carry) |
 | D | #70 | #82 ✅ merged 2026-05-01 | photon_evap_levels → 117 per-element parquet files; `n.parquet` → `N.parquet` case-FS edge fix |
 | E | #71 | #83 ✅ merged 2026-05-01 | radioactive_decay → decay + decay_detailed; per-shell EC preserved (NOT collapsed); IT-on-ground canary extended to detailed table |
+| F | #72 | #85 ✅ merged 2026-05-01 | photon_evap_gammas → 107 per-element radiation/{Symbol}.parquet (296599 gamma rows); fresh-agent review fixes (sweep invariants, intensity ≥ 0 + non-NaN, parent ≥ daughter, energy ≥ 0 with 2-row warning); clinical-line attribution docstring |
 
-### 🟡 In flight (loop tick 3, 2026-05-01 ~10:15 UTC)
+### 🟡 In flight (loop tick 4, 2026-05-01 ~07:32 UTC)
 
-- **#72 / PR #85 (gammas → radiation)** — rebased onto integration branch (commit 2994751); CI re-running. Merge on next tick if green. Review fixes already applied (#85 review verdict: ship-with-changes; addressed in 2053584).
-- **#73 (coincidences)** — agent `a862fe9a…` active; `data/meta/ensdf/coincidences/*.parquet` regenerating, no commits yet on its branch.
-- **#74 (X-ray + Auger synthesis)** — agent `ab13f63d…` 3 commits in: cfd2cfc (design memo), 3f376fe (synthesis), c0b04d1 (cascade propagation + K-edge gating). Agent still active.
+- **#73 / PR #86 (coincidences)** — open, fresh-agent review `ac29ddbf…` running. 600k cascade pairs across 104 element files (vs ~1.05M IAEA — agent attributes drop to strict directional pairs only, no reverse/parallel-branch).
+- **#74 (X-ray + Auger synthesis)** — agent `ab13f63d…` 3 commits, still active. Heaviest physics task; deposited design memo, synthesis core, cascade propagation + K-edge gating.
 
 
 ### ⏳ Blocked / pending
