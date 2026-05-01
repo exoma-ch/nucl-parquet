@@ -1,0 +1,743 @@
+"""Synthesize X-ray and Auger emission rows from G4EMLOW × per-shell EC/IC.
+
+This module convolves three independent inputs into a per-(Z, A, state)
+``rad_type ∈ {'xray', 'auger'}`` table appended (post-process) to
+``meta/ensdf/radiation/{Symbol}.parquet``:
+
+1. **EADL atomic-relaxation tables** (``data/meta/eadl/{Symbol}.parquet``):
+   per-element radiative + non-radiative transition probabilities, normalized
+   so ``Σ probability per vacancy = 1``.
+
+2. **Per-shell EC fractions** (``data/meta/decay_detailed.parquet``, output of
+   :mod:`nucl_parquet.g4.radioactive_decay`): ``decay_mode`` ∈
+   ``{KshellEC, LshellEC, MshellEC, NshellEC}`` carrying per-shell ``branching``
+   summed across daughter levels.
+
+3. **Internal-conversion totals** (``data/g4_raw/strata-nuclear/photon_evap_gammas.parquet``):
+   ``icc_total`` per gamma transition; we approximate per-shell IC vacancies
+   as **K-shell only** (per-shell partial ICCs absent from strata).
+
+Output schema (matches ``radiation/`` v0.10.x columns + new optional ones):
+    Z, A, state, rad_type, energy_keV, intensity_pct,
+    decay_mode, parent_level_keV, rad_subtype
+
+Per HANDOFF.md guidance, the synthesized rows are written to a sibling
+``data/meta/ensdf/radiation_atomic/{Symbol}.parquet`` directory; a follow-up
+PR (#75 validation harness) will merge them into the canonical ``radiation/``
+files alongside #72's gamma rows.
+
+Design memo: ``docs/g4-xray-auger-design.md``.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Final
+
+import polars as pl
+
+logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# Constants
+# -----------------------------------------------------------------------------
+
+# v0.10.x state-fuzzy-match tolerance (matches radioactive_decay.py).
+_STATE_KEV_TOL: Final[float] = 1.0
+
+# Energy-conservation slack for the per-vacancy intensity-sum invariant.
+_ENERGY_SLACK_PCT: Final[float] = 5.0
+
+# EADL maps: shell-letter sub-shells to roll-up labels.
+_SHELL_LETTER: Final[dict[str, str]] = {
+    "K": "K",
+    "L1": "L",
+    "L2": "L",
+    "L3": "L",
+    "M1": "M",
+    "M2": "M",
+    "M3": "M",
+    "M4": "M",
+    "M5": "M",
+    "N1": "N",
+    "N2": "N",
+    "N3": "N",
+    "N4": "N",
+    "N5": "N",
+    "N6": "N",
+    "N7": "N",
+    "O1": "O",
+    "O2": "O",
+    "O3": "O",
+    "O4": "O",
+    "O5": "O",
+    "O6": "O",
+    "O7": "O",
+    "P1": "P",
+    "P2": "P",
+    "P3": "P",
+    "P4": "P",
+    "P5": "P",
+    "Q1": "Q",
+}
+
+# Canonical Siegbahn / IUPAC X-ray line labels by (vacancy, filling).
+# Source: IUPAC nomenclature for X-ray spectroscopy, J. M. Hollas (mnemonics);
+# matched against EADL energies for Fe/Tc/Te to verify line ordering.
+# Where EADL exposes a sub-shell pair we don't have a canonical Siegbahn name
+# for (e.g. exotic Lγ lines), we fall back to "{vacancy}-{filling}" notation.
+_XRAY_LABEL: Final[dict[tuple[str, str], str]] = {
+    # K-series
+    ("K", "L2"): "Kα2",
+    ("K", "L3"): "Kα1",
+    ("K", "M2"): "Kβ3",
+    ("K", "M3"): "Kβ1",
+    ("K", "M4"): "Kβ5",
+    ("K", "M5"): "Kβ5",
+    ("K", "N2"): "Kβ2",
+    ("K", "N3"): "Kβ2",
+    ("K", "N4"): "Kβ4",
+    ("K", "N5"): "Kβ4",
+    ("K", "O2"): "Kβ",
+    ("K", "O3"): "Kβ",
+    # L1-series (Lβ3, Lβ4, Lγ2, Lγ3)
+    ("L1", "M2"): "Lβ4",
+    ("L1", "M3"): "Lβ3",
+    ("L1", "M4"): "Lβ10",
+    ("L1", "M5"): "Lβ9",
+    ("L1", "N2"): "Lγ2",
+    ("L1", "N3"): "Lγ3",
+    ("L1", "O2"): "Lγ4",
+    ("L1", "O3"): "Lγ4'",
+    # L2-series
+    ("L2", "M1"): "Lη",
+    ("L2", "M4"): "Lβ1",
+    ("L2", "N1"): "Lγ5",
+    ("L2", "N4"): "Lγ1",
+    ("L2", "O1"): "Lγ8",
+    ("L2", "O4"): "Lγ6",
+    # L3-series
+    ("L3", "M1"): "Lℓ",
+    ("L3", "M2"): "Lt",
+    ("L3", "M4"): "Lα2",
+    ("L3", "M5"): "Lα1",
+    ("L3", "N1"): "Lβ6",
+    ("L3", "N4"): "Lβ15",
+    ("L3", "N5"): "Lβ2",
+    ("L3", "O1"): "Lβ7",
+    ("L3", "O4"): "Lβ5",
+    ("L3", "O5"): "Lβ5",
+    # M-series (rough — IUPAC names get sparse here)
+    ("M3", "N5"): "Mγ",
+    ("M4", "N6"): "Mβ",
+    ("M5", "N6"): "Mα2",
+    ("M5", "N7"): "Mα1",
+}
+
+# v0.11 approximation: EC L/M/N totals attributed to L1/M1/N1 vacancies for
+# atomic-relaxation lookup. (Sub-shell branchings absent from strata input.)
+_SHELL_TOTAL_TO_VACANCY: Final[dict[str, str]] = {
+    "K": "K",
+    "L": "L1",
+    "M": "M1",
+    "N": "N1",
+}
+
+
+# -----------------------------------------------------------------------------
+# Pure helpers
+# -----------------------------------------------------------------------------
+
+
+def xray_subtype(vacancy: str, filling: str) -> str:
+    """Return canonical Siegbahn label for an X-ray (vacancy → filling).
+
+    Falls back to ``"{vacancy}-{filling}"`` for obscure transitions not in the
+    Siegbahn table.
+    """
+    return _XRAY_LABEL.get((vacancy, filling), f"{vacancy}-{filling}")
+
+
+def auger_subtype(vacancy: str, filling: str) -> str:
+    """Return three-letter Auger label aggregating to shell-level.
+
+    EADL stores Auger transitions tagged by (vacancy, filling) only; the third
+    shell (the one the ejected electron originates from) varies row-by-row
+    distinguishable only by ``energy_keV``. We label by the two-letter
+    ``vacancy_letter + filling_letter`` and append the *most likely* third
+    shell, which is the same as the filling shell for KLL, KMM, LMM family
+    and the higher-letter shell for cross-family (KLM, LMM…).
+
+    For the v0.11 granularity we collapse to the two-letter prefix +
+    filling-letter as the typical third shell. Not the full atomic-physics
+    accounting, but matches v0.10.x's ``"Auger K"`` / ``"Auger L"`` granularity
+    and is consistent with the EADL encoding.
+    """
+    vl = _SHELL_LETTER.get(vacancy, vacancy)
+    fl = _SHELL_LETTER.get(filling, filling)
+    # Heuristic: third electron ejected from the same shell-letter as filling
+    # (most KLL transitions involve two L electrons; KLM = L electron fills,
+    # M electron ejected). When vl != fl we use vl + fl + fl as the dominant
+    # group (e.g. K + L + L = KLL), upgraded to vl + fl + (next shell) when
+    # filling is already the highest in scope.
+    return f"{vl}{fl}{fl}"
+
+
+def map_decay_mode_to_shell(decay_mode: str) -> str | None:
+    """KshellEC → 'K', LshellEC → 'L', MshellEC → 'M', NshellEC → 'N'."""
+    if not decay_mode.endswith("shellEC"):
+        return None
+    return decay_mode[: -len("shellEC")]
+
+
+def assign_state(
+    z: int,
+    a: int,
+    parent_ex_kev: float,
+    nuclides: pl.DataFrame,
+) -> str | None:
+    """Map (Z, A, parent_ex_kev) → v0.10.x state label using ±1 keV fuzzy match.
+
+    Returns:
+        - ``""`` if ``parent_ex_kev`` is 0
+        - ``"m"`` / ``"m2"`` / … if a catalog isomer matches within ±1 keV
+        - ``None`` if excited but no catalog match (skip such parents)
+    """
+    if parent_ex_kev == 0.0:
+        return ""
+    candidates = nuclides.filter(
+        (pl.col("Z") == z)
+        & (pl.col("A") == a)
+        & (pl.col("state") != "")
+        & ((pl.col("level_keV") - parent_ex_kev).abs() <= _STATE_KEV_TOL)
+    )
+    if candidates.is_empty():
+        return None
+    # Closest match wins (matches radioactive_decay.py convention).
+    closest = (
+        candidates.with_columns((pl.col("level_keV") - parent_ex_kev).abs().alias("__delta"))
+        .sort("__delta")
+        .row(0, named=True)
+    )
+    return closest["state"]
+
+
+# -----------------------------------------------------------------------------
+# Vacancy rate computation
+# -----------------------------------------------------------------------------
+
+
+def compute_ec_vacancy_rates(
+    decay_detailed: pl.DataFrame,
+) -> pl.DataFrame:
+    """Aggregate per-shell EC branchings into vacancy rates per parent.
+
+    Returns DataFrame: (Z, A, parent_ex_kev, daughter_Z, shell, vacancy_rate).
+    ``shell`` ∈ {K, L, M, N}; ``daughter_Z = Z - 1`` (the atom in which the
+    vacancy is created).
+    """
+    ec = decay_detailed.filter(pl.col("decay_mode").str.ends_with("shellEC"))
+    if ec.is_empty():
+        return pl.DataFrame(
+            schema={
+                "Z": pl.Int32,
+                "A": pl.Int32,
+                "parent_ex_kev": pl.Float64,
+                "daughter_Z": pl.Int32,
+                "shell": pl.Utf8,
+                "vacancy_rate": pl.Float64,
+            }
+        )
+    return (
+        ec.with_columns(pl.col("decay_mode").str.replace("shellEC", "").alias("shell"))
+        .group_by(["Z", "A", "parent_ex_kev", "daughter_Z", "shell"])
+        .agg(pl.col("branching").sum().alias("vacancy_rate"))
+        .sort(["Z", "A", "parent_ex_kev", "shell"])
+    )
+
+
+def compute_ic_vacancy_rates(
+    photon_evap_gammas: pl.DataFrame,
+    photon_evap_levels: pl.DataFrame,
+    parent_states: pl.DataFrame,
+) -> pl.DataFrame:
+    """Approximate per-(Z, A, state) IC vacancy rates (K-shell only).
+
+    For each parent state at ``parent_ex_kev > 0`` (an isomer that decays via
+    IT), find gamma transitions in (Z, A) whose origin level is at or below
+    the parent isomer level, and sum
+    ``intensity × icc_total / (1 + icc_total) / 100`` as the K-vacancy rate.
+
+    Args:
+        photon_evap_gammas: Strata's gamma table (z, a, parent_level,
+            daughter_level, gamma_energy_kev, intensity, icc_total, …).
+        photon_evap_levels: Strata's level table (z, a, level_idx,
+            excitation_kev, half_life_s, …).
+        parent_states: DataFrame of (Z, A, state, parent_ex_kev) for the
+            parents we want IC vacancies for.
+
+    Returns:
+        DataFrame: (Z, A, parent_ex_kev, daughter_Z, shell='K', vacancy_rate).
+        Daughter Z = parent Z (IC happens in same atom).
+    """
+    if parent_states.is_empty():
+        return pl.DataFrame(
+            schema={
+                "Z": pl.Int32,
+                "A": pl.Int32,
+                "parent_ex_kev": pl.Float64,
+                "daughter_Z": pl.Int32,
+                "shell": pl.Utf8,
+                "vacancy_rate": pl.Float64,
+            }
+        )
+
+    # We're interested in isomer parents (parent_ex_kev > 0) — IC vacancies
+    # arise from their IT cascade. For ground-state parents, IC of post-EC
+    # daughter gammas is a v0.12 enrichment (see design memo).
+    isomer_parents = parent_states.filter(pl.col("parent_ex_kev") > 0).select(["Z", "A", "parent_ex_kev"]).unique()
+    if isomer_parents.is_empty():
+        return pl.DataFrame(
+            schema={
+                "Z": pl.Int32,
+                "A": pl.Int32,
+                "parent_ex_kev": pl.Float64,
+                "daughter_Z": pl.Int32,
+                "shell": pl.Utf8,
+                "vacancy_rate": pl.Float64,
+            }
+        )
+
+    # Build a level-idx → excitation_kev map per (Z, A) for the gamma table.
+    levels = photon_evap_levels.select(
+        pl.col("z").cast(pl.Int32).alias("Z"),
+        pl.col("a").cast(pl.Int32).alias("A"),
+        pl.col("level_idx").alias("parent_level"),
+        pl.col("excitation_kev").alias("origin_kev"),
+    )
+
+    gammas = photon_evap_gammas.select(
+        pl.col("z").cast(pl.Int32).alias("Z"),
+        pl.col("a").cast(pl.Int32).alias("A"),
+        pl.col("parent_level"),
+        pl.col("intensity").cast(pl.Float64),
+        pl.col("icc_total").cast(pl.Float64),
+    )
+    # Bring the origin level's excitation in.
+    gammas = gammas.join(levels, on=["Z", "A", "parent_level"], how="inner")
+
+    # For each isomer parent, take gammas where origin_kev ≤ parent_ex_kev
+    # (the cascade *down* from the isomer or below).
+    matched = gammas.join(isomer_parents, on=["Z", "A"], how="inner").filter(
+        pl.col("origin_kev") <= pl.col("parent_ex_kev")
+    )
+
+    # IC vacancy rate per gamma = (intensity_per100 / 100) × icc / (1 + icc).
+    # Sum over all qualifying gammas.
+    ic = (
+        matched.with_columns(
+            ((pl.col("intensity") / 100.0) * pl.col("icc_total") / (1.0 + pl.col("icc_total"))).alias("ic_per_decay")
+        )
+        .group_by(["Z", "A", "parent_ex_kev"])
+        .agg(pl.col("ic_per_decay").sum().alias("vacancy_rate"))
+        .with_columns(
+            pl.col("Z").alias("daughter_Z"),
+            pl.lit("K").alias("shell"),
+        )
+        .filter(pl.col("vacancy_rate") > 0)
+        .select(["Z", "A", "parent_ex_kev", "daughter_Z", "shell", "vacancy_rate"])
+    )
+    return ic
+
+
+# -----------------------------------------------------------------------------
+# EADL convolution
+# -----------------------------------------------------------------------------
+
+
+def _z_to_symbol(nuclides: pl.DataFrame) -> dict[int, str]:
+    """Build Z → element symbol map (e.g. 26 → 'Fe')."""
+    pairs = (
+        nuclides.select(["Z", "symbol"])
+        .filter(pl.col("symbol").is_not_null() & (pl.col("symbol") != ""))
+        .unique()
+        .iter_rows()
+    )
+    return {int(z): sym for z, sym in pairs}
+
+
+def synthesize_emissions(
+    vacancy_rates: pl.DataFrame,
+    decay_mode_label: str,
+    eadl_dir: Path,
+    z_to_symbol: dict[int, str],
+) -> pl.DataFrame:
+    """Convolve vacancy rates with EADL atomic-relaxation tables.
+
+    Args:
+        vacancy_rates: rows of (Z, A, parent_ex_kev, daughter_Z, shell,
+            vacancy_rate).
+        decay_mode_label: stored in the output ``decay_mode`` column,
+            distinguishing EC vs IC origin (e.g. ``"EC"``, ``"IT"``).
+        eadl_dir: Directory holding ``{Symbol}.parquet`` per-element tables.
+        z_to_symbol: mapping from Z to element symbol for EADL file lookup.
+
+    Returns:
+        DataFrame with columns (Z, A, parent_ex_kev, rad_type, energy_keV,
+        intensity_pct, decay_mode, rad_subtype). Caller assigns ``state``.
+    """
+    if vacancy_rates.is_empty():
+        return _empty_emissions()
+
+    rows: list[dict] = []
+    # Cache EADL files by daughter_Z to avoid re-reading.
+    eadl_cache: dict[int, pl.DataFrame] = {}
+
+    for rec in vacancy_rates.iter_rows(named=True):
+        d_z = int(rec["daughter_Z"])
+        sym = z_to_symbol.get(d_z)
+        if sym is None:
+            logger.debug("no symbol for daughter Z=%d, skipping", d_z)
+            continue
+
+        if d_z not in eadl_cache:
+            eadl_path = eadl_dir / f"{sym}.parquet"
+            if not eadl_path.exists():
+                logger.debug("no EADL table for %s (Z=%d)", sym, d_z)
+                eadl_cache[d_z] = pl.DataFrame()
+                continue
+            eadl_cache[d_z] = pl.read_parquet(eadl_path)
+
+        eadl = eadl_cache[d_z]
+        if eadl.is_empty():
+            continue
+
+        vacancy_shell = _SHELL_TOTAL_TO_VACANCY.get(rec["shell"])
+        if vacancy_shell is None:
+            continue
+
+        # Pull all relaxation transitions starting at this vacancy.
+        sub = eadl.filter(pl.col("vacancy_shell") == vacancy_shell)
+        if sub.is_empty():
+            continue
+
+        rate = float(rec["vacancy_rate"])
+
+        for transition in sub.iter_rows(named=True):
+            t_type = transition["transition_type"]
+            filling = transition["filling_shell"]
+            energy = float(transition["energy_keV"])
+            prob = float(transition["probability"])
+            intensity_pct = rate * prob * 100.0
+
+            if t_type == "radiative":
+                rad_type = "xray"
+                subtype = xray_subtype(vacancy_shell, filling)
+            elif t_type == "auger":
+                rad_type = "auger"
+                subtype = auger_subtype(vacancy_shell, filling)
+            else:
+                continue
+
+            rows.append(
+                {
+                    "Z": int(rec["Z"]),
+                    "A": int(rec["A"]),
+                    "parent_ex_kev": float(rec["parent_ex_kev"]),
+                    "rad_type": rad_type,
+                    "energy_keV": energy,
+                    "intensity_pct": intensity_pct,
+                    "decay_mode": decay_mode_label,
+                    "rad_subtype": subtype,
+                }
+            )
+
+    if not rows:
+        return _empty_emissions()
+    return pl.DataFrame(rows)
+
+
+def _empty_emissions() -> pl.DataFrame:
+    return pl.DataFrame(
+        schema={
+            "Z": pl.Int32,
+            "A": pl.Int32,
+            "parent_ex_kev": pl.Float64,
+            "rad_type": pl.Utf8,
+            "energy_keV": pl.Float64,
+            "intensity_pct": pl.Float64,
+            "decay_mode": pl.Utf8,
+            "rad_subtype": pl.Utf8,
+        }
+    )
+
+
+# -----------------------------------------------------------------------------
+# State assignment + output schema
+# -----------------------------------------------------------------------------
+
+
+def attach_states(
+    emissions: pl.DataFrame,
+    nuclides: pl.DataFrame,
+) -> pl.DataFrame:
+    """Add ``state`` and ``parent_level_keV`` columns; drop unmappable rows.
+
+    Per ADR-0001 / radioactive_decay.py convention:
+        - parent_ex_kev = 0  → state = ""
+        - parent_ex_kev > 0 within ±1 keV of a catalog isomer → state = that isomer's label
+        - parent_ex_kev > 0 with no catalog match → drop (not representable in v0.10.x state enum)
+    """
+    if emissions.is_empty():
+        return emissions.with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("state"),
+            pl.lit(None, dtype=pl.Float64).alias("parent_level_keV"),
+        ).select(_OUTPUT_COLUMNS)
+
+    # Group by (Z, A) and resolve states in Python — matrix is small enough.
+    out_rows: list[dict] = []
+    cache: dict[tuple[int, int, float], str | None] = {}
+
+    for rec in emissions.iter_rows(named=True):
+        key = (int(rec["Z"]), int(rec["A"]), float(rec["parent_ex_kev"]))
+        if key not in cache:
+            cache[key] = assign_state(*key, nuclides)
+        state = cache[key]
+        if state is None:
+            continue
+        out_rows.append(
+            {
+                "Z": int(rec["Z"]),
+                "A": int(rec["A"]),
+                "state": state,
+                "rad_type": rec["rad_type"],
+                "energy_keV": float(rec["energy_keV"]),
+                "intensity_pct": float(rec["intensity_pct"]),
+                "decay_mode": rec["decay_mode"],
+                "parent_level_keV": float(rec["parent_ex_kev"]),
+                "rad_subtype": rec["rad_subtype"],
+            }
+        )
+
+    if not out_rows:
+        empty = pl.DataFrame(schema={c: t for c, t in _OUTPUT_SCHEMA.items()})
+        return empty
+    return pl.DataFrame(out_rows).select(_OUTPUT_COLUMNS)
+
+
+_OUTPUT_SCHEMA: Final[dict[str, pl.DataType]] = {
+    "Z": pl.Int32,
+    "A": pl.Int32,
+    "state": pl.Utf8,
+    "rad_type": pl.Utf8,
+    "energy_keV": pl.Float64,
+    "intensity_pct": pl.Float64,
+    "decay_mode": pl.Utf8,
+    "parent_level_keV": pl.Float64,
+    "rad_subtype": pl.Utf8,
+}
+_OUTPUT_COLUMNS: Final[list[str]] = list(_OUTPUT_SCHEMA.keys())
+
+
+def _enforce_schema(df: pl.DataFrame) -> pl.DataFrame:
+    casts = []
+    for col, dtype in _OUTPUT_SCHEMA.items():
+        if col in df.columns:
+            casts.append(pl.col(col).cast(dtype))
+    return df.with_columns(casts).select(_OUTPUT_COLUMNS)
+
+
+# -----------------------------------------------------------------------------
+# Top-level orchestration
+# -----------------------------------------------------------------------------
+
+
+def synthesize_xray_auger(
+    decay_detailed: pl.DataFrame,
+    photon_evap_gammas: pl.DataFrame,
+    photon_evap_levels: pl.DataFrame,
+    nuclides: pl.DataFrame,
+    eadl_dir: Path,
+) -> pl.DataFrame:
+    """Compute X-ray and Auger emission rows for all parents in scope.
+
+    Returns the consolidated DataFrame; caller writes per-element parquet.
+    """
+    z_to_symbol = _z_to_symbol(nuclides)
+
+    # Step 1: EC vacancies in daughter (Z-1).
+    ec_vacancies = compute_ec_vacancy_rates(decay_detailed)
+    logger.info("EC vacancy rows: %d", ec_vacancies.height)
+
+    # Step 2: build the parent-state list for IC lookup.
+    parent_states = decay_detailed.select(["Z", "A", "parent_ex_kev"]).unique()
+    ic_vacancies = compute_ic_vacancy_rates(photon_evap_gammas, photon_evap_levels, parent_states)
+    logger.info("IC vacancy rows: %d", ic_vacancies.height)
+
+    # Step 3: convolve with EADL.
+    ec_emissions = synthesize_emissions(
+        ec_vacancies,
+        decay_mode_label="EC",
+        eadl_dir=eadl_dir,
+        z_to_symbol=z_to_symbol,
+    )
+    ic_emissions = synthesize_emissions(
+        ic_vacancies,
+        decay_mode_label="IT",
+        eadl_dir=eadl_dir,
+        z_to_symbol=z_to_symbol,
+    )
+    logger.info(
+        "synthesized: %d EC-emission rows, %d IC-emission rows",
+        ec_emissions.height,
+        ic_emissions.height,
+    )
+
+    combined = pl.concat([ec_emissions, ic_emissions], how="vertical_relaxed")
+    if combined.is_empty():
+        return pl.DataFrame(schema=_OUTPUT_SCHEMA)
+
+    # Step 4: assign v0.10.x state labels.
+    out = attach_states(combined, nuclides)
+    logger.info("final emission rows after state assignment: %d", out.height)
+    return _enforce_schema(out)
+
+
+def write_radiation_atomic(
+    emissions: pl.DataFrame,
+    nuclides: pl.DataFrame,
+    out_dir: Path,
+) -> list[Path]:
+    """Split synthesized emissions per element-symbol and write parquet files.
+
+    Returns list of paths written.
+    """
+    if emissions.is_empty():
+        logger.warning("no emissions to write")
+        return []
+
+    z_to_symbol = _z_to_symbol(nuclides)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    written: list[Path] = []
+    for z, group in emissions.group_by("Z"):
+        z_int = int(z[0])
+        sym = z_to_symbol.get(z_int)
+        if sym is None:
+            logger.warning("no symbol for Z=%d, skipping write", z_int)
+            continue
+        path = out_dir / f"{sym}.parquet"
+        # Sort for deterministic output.
+        group.sort(["A", "state", "rad_type", "energy_keV"]).write_parquet(path)
+        written.append(path)
+    logger.info("wrote %d per-element files to %s", len(written), out_dir)
+    return written
+
+
+# -----------------------------------------------------------------------------
+# Energy-conservation invariant
+# -----------------------------------------------------------------------------
+
+
+def check_energy_conservation(
+    emissions: pl.DataFrame,
+    vacancy_rates: pl.DataFrame,
+    slack_pct: float = _ENERGY_SLACK_PCT,
+) -> pl.DataFrame:
+    """For each (Z, A, parent_ex_kev, shell), verify
+    ``Σ intensity_pct ≈ vacancy_rate × 100`` within ``slack_pct``.
+
+    Returns a DataFrame of *violations* (empty if all pass).
+    """
+    if emissions.is_empty() or vacancy_rates.is_empty():
+        return pl.DataFrame(
+            schema={
+                "Z": pl.Int32,
+                "A": pl.Int32,
+                "parent_ex_kev": pl.Float64,
+                "shell": pl.Utf8,
+                "expected_pct": pl.Float64,
+                "actual_pct": pl.Float64,
+                "delta_pct": pl.Float64,
+            }
+        )
+
+    # Map emissions → shell letter from rad_subtype.
+    em = emissions.with_columns(pl.col("rad_subtype").str.slice(0, 1).alias("shell"))
+    actual = (
+        em.group_by(["Z", "A", "parent_level_keV", "shell"])
+        .agg(pl.col("intensity_pct").sum().alias("actual_pct"))
+        .rename({"parent_level_keV": "parent_ex_kev"})
+    )
+    expected = vacancy_rates.with_columns((pl.col("vacancy_rate") * 100.0).alias("expected_pct")).select(
+        ["Z", "A", "parent_ex_kev", "shell", "expected_pct"]
+    )
+
+    joined = (
+        expected.join(actual, on=["Z", "A", "parent_ex_kev", "shell"], how="left")
+        .with_columns(
+            pl.col("actual_pct").fill_null(0.0),
+        )
+        .with_columns(
+            (pl.col("actual_pct") - pl.col("expected_pct")).abs().alias("delta_pct"),
+        )
+    )
+    violations = joined.filter(pl.col("delta_pct") > slack_pct)
+    return violations
+
+
+# -----------------------------------------------------------------------------
+# CLI
+# -----------------------------------------------------------------------------
+
+
+def _main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument(
+        "--decay-detailed",
+        type=Path,
+        default=Path("data/meta/decay_detailed.parquet"),
+    )
+    parser.add_argument(
+        "--gammas",
+        type=Path,
+        default=Path("data/g4_raw/strata-nuclear/photon_evap_gammas.parquet"),
+    )
+    parser.add_argument(
+        "--levels",
+        type=Path,
+        default=Path("data/g4_raw/strata-nuclear/photon_evap_levels.parquet"),
+    )
+    parser.add_argument(
+        "--nuclides",
+        type=Path,
+        default=Path("data/meta/ensdf/nuclides.parquet"),
+    )
+    parser.add_argument(
+        "--eadl-dir",
+        type=Path,
+        default=Path("data/meta/eadl"),
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=Path("data/meta/ensdf/radiation_atomic"),
+    )
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+
+    decay_detailed = pl.read_parquet(args.decay_detailed)
+    gammas = pl.read_parquet(args.gammas)
+    levels = pl.read_parquet(args.levels)
+    nuclides = pl.read_parquet(args.nuclides)
+
+    emissions = synthesize_xray_auger(decay_detailed, gammas, levels, nuclides, args.eadl_dir)
+    write_radiation_atomic(emissions, nuclides, args.out_dir)
+
+
+if __name__ == "__main__":
+    _main()
