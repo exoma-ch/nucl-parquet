@@ -19,6 +19,10 @@ Modules
   schemes → per-element ``meta/ensdf/levels/{Symbol}.parquet`` (#70).
 - :mod:`nucl_parquet.g4.radioactive_decay` — RadioactiveDecay6.1.2 →
   ``meta/decay.parquet`` + ``meta/decay_detailed.parquet`` (#71).
+- :mod:`nucl_parquet.g4.photon_evap_gammas` — PhotonEvaporation6.1.2 gamma
+  transitions → ``meta/ensdf/radiation/{Symbol}.parquet`` rows with
+  ``rad_type='gamma'``. Per-element partition; carries multipolarity,
+  mixing_ratio, icc_total, daughter_level_keV as bonus columns (#72).
 """
 
 from __future__ import annotations
