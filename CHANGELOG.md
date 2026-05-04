@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.10.0...v0.11.0) (2026-05-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **release:** v0.11.0 — Geant4 migration (closes epic #66) ([#91](https://github.com/exoma-ch/nucl-parquet/issues/91))
+
+* bump release to 0.11.0 ([#93](https://github.com/exoma-ch/nucl-parquet/issues/93)) ([17be938](https://github.com/exoma-ch/nucl-parquet/commit/17be938123238b7658ed7ae71567e85319ea45dd))
+
+
+### Features
+
+* **release:** v0.11.0 — Geant4 migration (closes epic [#66](https://github.com/exoma-ch/nucl-parquet/issues/66)) ([#91](https://github.com/exoma-ch/nucl-parquet/issues/91)) ([8e3ef26](https://github.com/exoma-ch/nucl-parquet/commit/8e3ef2694b4cf9a4b03a7a76a648a69ac56ce4a5))
+
+
+### Bug Fixes
+
+* **build:** assigner stops fabricating isomer labels (closes [#49](https://github.com/exoma-ch/nucl-parquet/issues/49)) ([#57](https://github.com/exoma-ch/nucl-parquet/issues/57)) ([9892605](https://github.com/exoma-ch/nucl-parquet/commit/98926052524be026769a3aaf8b2f4d89fbe90506))
+* **build:** get_state_map sources from nuclides.parquet (closes [#58](https://github.com/exoma-ch/nucl-parquet/issues/58) P1+P3) ([#61](https://github.com/exoma-ch/nucl-parquet/issues/61)) ([b2abc9d](https://github.com/exoma-ch/nucl-parquet/commit/b2abc9d77ac6f0c28f57890671efb27d00db67b7))
+
 ## [0.11.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.10.1...v0.11.0) (2026-05-01)
 
 **The Geant4 migration.** v0.11 replaces the v0.10.x IAEA-LiveChart fetcher pipeline (which had multiple silent data-quality bugs traced to a one-shot AI-written scraper that was deleted before validation) with a Geant4-derived pipeline sourced from the strata project's published Hugging Face dataset. Tracking epic: [#66](https://github.com/exoma-ch/nucl-parquet/issues/66).
