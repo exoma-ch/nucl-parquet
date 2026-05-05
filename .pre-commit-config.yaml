@@ -24,7 +24,11 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
-        args: [--maxkb=1024]
+        # 5 MB cap — covers EM photon-matter parquet files (e.g. photon_pe ~4.5 MB,
+        # photon_compton ~1 MB, ...) without unbounded growth. Files larger than
+        # this should be considered for storage outside git (HF dataset, GitHub
+        # release artifacts).
+        args: [--maxkb=5120]
 
   - repo: local
     hooks:

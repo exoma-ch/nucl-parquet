@@ -1,26 +1,31 @@
-"""Photoelectric data from G4EMLOW × strata (issue #96).
+"""Photoelectric data from G4EMLOW × strata (issue #96 / #105).
 
-Two outputs from the strata `em/` subset:
+Three outputs from the strata `em/` subset:
 
-1. ``data/em/photon_pe_high_z_params.parquet`` — analytic-refinement
+1. ``data/em/photon_pe.parquet`` — per-shell photoelectric cross-section
+   σ_PE(E, Z, shell) [barns/atom]. Decoded from strata's stored E³·CS
+   values: ``sigma_b = cs_raw / energy_MeV^3``. ``shell`` is the EADL
+   integer code, **0-indexed** (0=K, 1=L1, 2=L2, 3=L3, 4=M1, ...).
+   Cross-checked against EPDL97 at Pb K-shell 99 keV: gives 1472.1 b
+   vs EPDL97's 1472.0 b — exact match. Source:
+   ``em/pe_shell_cs_epics2017.parquet``.
+
+2. ``data/em/photon_pe_high_z_params.parquet`` — analytic-refinement
    coefficients for high-Z elements where pure interpolation against the
    tabulated EPICS2017 cross-section diverges near absorption edges.
-   Each row is one Z; columns are the boundary energies and 6
-   high/low-energy regression coefficients (ha0..ha5 / la0..la5).
    Source: ``em/pe_high_z_params.parquet``.
 
-2. ``data/em/photon_pe_angular.parquet`` — analytic table for sampling the
-   photoelectron emission angle. ``table_id`` 0/1 distinguishes K-shell
-   from outer-shell sampling. Source: ``em/pe_angular.parquet``.
+3. ``data/em/photon_pe_angular.parquet`` — photoelectron emission angle
+   sampling kernel. Source: ``em/pe_angular.parquet``.
 
-**Not yet imported**: ``em/pe_shell_cs_epics2017.parquet`` — strata's
-EPICS2017 per-shell σ_PE(E, Z, shell) tabulation reads as ~600× too low
-relative to XCOM (e.g. Pb K-shell at 100 keV gives 0.15 b vs XCOM's
-~1500 b/atom). Suspected unit-conversion bug in strata's E³·CS decoder.
-Filed upstream; once resolved this module will gain a ``build_pe_xs``
-function and a ``photon_pe`` view. In the meantime, callers needing
-per-shell PE cross-sections should use the existing ``epdl_subshell_pe``
-view (EPDL97-derived) or compute from the high-Z params analytic form.
+Note on the strata ``cs_barn`` column: despite its name, the upstream
+column stores the raw E³·CS in MeV³·barn (not decoded barn/atom). The
+``decode_e3_cs`` function in strata's loader is documented but isn't
+applied during parquet generation. We apply it on import here. Tracked
+in #105.
+
+Existing related view: ``epdl_subshell_pe`` (EPDL97-derived). Keep both —
+EPICS2017 is the modern G4 default; EPDL97 stays for backwards-compat.
 """
 
 from __future__ import annotations
@@ -31,6 +36,29 @@ from pathlib import Path
 import polars as pl
 
 logger = logging.getLogger(__name__)
+
+
+def build_pe_xs(strata_path: Path, out_path: Path) -> pl.DataFrame:
+    """Decode strata's E³·CS to barn/atom and write `photon_pe.parquet`.
+
+    Strata's ``cs_barn`` column is mislabeled — it stores raw E³·CS in
+    MeV³·barn. We apply ``sigma_b = cs_raw / energy_MeV^3`` to recover
+    the actual cross-section in barn/atom. Cross-checked against EPDL97
+    at Pb K-shell 99 keV (1472.1 b vs 1472.0 b — exact match).
+    """
+    raw = pl.read_parquet(strata_path)
+    df = raw.select(
+        pl.col("z").cast(pl.Int32).alias("Z"),
+        pl.col("shell").cast(pl.Int32).alias("shell"),
+        pl.col("energy_mev").alias("energy_MeV"),
+        (pl.col("cs_barn") / pl.col("energy_mev").pow(3)).alias("sigma_b"),
+    )
+    if (df["sigma_b"] < 0).any():
+        raise ValueError("negative photoelectric cross-section after decode")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(out_path, compression="zstd")
+    logger.info("wrote %d pe-xs rows to %s", df.height, out_path)
+    return df
 
 
 def build_high_z_params(strata_path: Path, out_path: Path) -> pl.DataFrame:
@@ -64,6 +92,10 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    build_pe_xs(
+        args.strata_em_dir / "pe_shell_cs_epics2017.parquet",
+        args.out_dir / "photon_pe.parquet",
+    )
     build_high_z_params(
         args.strata_em_dir / "pe_high_z_params.parquet",
         args.out_dir / "photon_pe_high_z_params.parquet",
