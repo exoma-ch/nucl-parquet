@@ -255,6 +255,8 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     # --- G4EMLOW photon-matter cross-sections (v0.12 epic #95) ---
     _register_parquet(db, data_dir / "em" / "photon_pair.parquet", "photon_pair")
+    _register_parquet(db, data_dir / "em" / "photon_rayleigh_cdf.parquet", "photon_rayleigh_cdf")
+    _register_parquet(db, data_dir / "em" / "xray_form_factor.parquet", "xray_form_factor")
 
     return db
 
