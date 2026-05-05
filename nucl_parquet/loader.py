@@ -241,7 +241,14 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "epdl97" / "subshell_pe", "epdl_subshell_pe")
 
     # --- EADL atomic relaxation / fluorescence ---
-    _register_glob(db, data_dir / "meta" / "eadl", "eadl_transitions")
+    # Canonical name: atomic_relaxation. eadl_transitions kept as an alias for
+    # callers from v0.11 and earlier. fluorescence is the radiative subset;
+    # Auger lines stay in atomic_relaxation, query `WHERE transition_type='auger'`.
+    eadl_dir = data_dir / "meta" / "eadl"
+    if eadl_dir.exists() and list(eadl_dir.glob("*.parquet")):
+        _register_glob(db, eadl_dir, "atomic_relaxation")
+        db.execute("CREATE VIEW eadl_transitions AS SELECT * FROM atomic_relaxation")
+        db.execute("CREATE VIEW fluorescence AS SELECT * FROM atomic_relaxation WHERE transition_type = 'radiative'")
 
     # --- EEDL electron interaction data ---
     _register_glob(db, data_dir / "meta" / "eedl", "eedl_electron_xs")
