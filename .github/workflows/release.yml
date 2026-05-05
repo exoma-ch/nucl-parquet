@@ -13,7 +13,7 @@ jobs:
     name: Build & upload data tarball
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install zstd
         run: sudo apt-get update && sudo apt-get install -y zstd
       - name: Build tarball
@@ -32,8 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
 
@@ -48,8 +48,8 @@ jobs:
       run:
         working-directory: clients/ts/nucl-parquet
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -66,7 +66,7 @@ jobs:
       run:
         working-directory: clients/rs/nucl-parquet
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo publish --allow-dirty
         env:
@@ -80,8 +80,8 @@ jobs:
       run:
         working-directory: clients/py/nucl-parquet-mcp
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -98,8 +98,8 @@ jobs:
       run:
         working-directory: clients/ts/nucl-parquet-mcp
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -116,7 +116,7 @@ jobs:
       run:
         working-directory: clients/rs/nucl-parquet-mcp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo publish --allow-dirty
         env:
@@ -126,7 +126,7 @@ jobs:
     name: Mirror Go module tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Create Go module tag
         run: |
           git config user.name "github-actions[bot]"
