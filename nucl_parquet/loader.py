@@ -224,6 +224,14 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
 
+    # --- NUDEX neutron-capture primary gammas (v0.14 epic #115) ---
+    _register_parquet(db, data_dir / "meta" / "capture_gammas.parquet", "capture_gammas")
+    _register_parquet(
+        db,
+        data_dir / "meta" / "capture_gammas_summary.parquet",
+        "capture_gammas_summary",
+    )
+
     # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
 
