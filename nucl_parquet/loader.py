@@ -268,6 +268,7 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         data_dir / "em" / "compton_doppler_profiles.parquet",
         "compton_doppler_profiles",
     )
+    _register_parquet(db, data_dir / "em" / "photon_pe.parquet", "photon_pe")
     _register_parquet(
         db,
         data_dir / "em" / "photon_pe_high_z_params.parquet",
