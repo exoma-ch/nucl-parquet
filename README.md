@@ -65,6 +65,20 @@ db.sql("""
     WHERE target_Z=29 AND library='hi-xs-prod'
     ORDER BY residual_Z, residual_A, energy_MeV
 """)  # all C-12 fragmentation products on Cu
+
+# Nuclear structure & decay (v0.11+ — Geant4-derived from strata HF dataset)
+db.sql("SELECT * FROM nuclides WHERE Z=43 AND A=99")            # Tc-99g + Tc-99m
+db.sql("SELECT * FROM radiation WHERE Z=63 AND A=152 AND state=''")  # Eu-152 lines
+db.sql("SELECT * FROM coincidences WHERE Z=27 AND A=60")        # Co-60 cascade pairs
+db.sql("SELECT * FROM decay_detailed WHERE Z=43 AND A=99")      # per-shell EC fractions
+
+# Photon-matter interaction (v0.12+ — Geant4 G4EMLOW8.8)
+db.sql("SELECT * FROM photon_pe WHERE Z=82 AND shell=0")        # Pb K-shell σ_PE(E)
+db.sql("SELECT * FROM photon_compton WHERE Z=29")               # Cu Compton σ(E)
+db.sql("SELECT * FROM photon_pair WHERE Z=82 AND channel='total'")  # Pb pair σ(E)
+db.sql("SELECT * FROM photon_rayleigh_cdf WHERE Z=82")          # angular sampling CDF
+db.sql("SELECT * FROM atomic_relaxation WHERE Z=53 AND vacancy_shell='K'")  # I K-vacancy
+db.sql("SELECT * FROM fluorescence WHERE Z=82")                 # Pb fluorescence yields
 ```
 
 ### Data resolution
@@ -195,6 +209,52 @@ Full 92×92 matrix — all projectile elements Z=1–92 against all target eleme
 | target_Z | Int32 | Target atomic number (1–92) |
 | energy_MeV_u | Float64 | Kinetic energy per nucleon (MeV/u) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
+
+## Nuclear structure & decay (v0.11+, Geant4-derived)
+
+Sourced from the [strata project's HuggingFace dataset](https://huggingface.co/datasets/gerchowl/strata-data), which republishes G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 as Parquet. Replaces the v0.10.x IAEA-LiveChart pipeline; six bug classes eliminated by construction (see [ADR-0002](docs/adr/0002-g4-migration-schema.md)). Stable isotopes ship `half_life_s = +inf` (use `is_finite(half_life_s)` to test).
+
+| View | Source | What's in it |
+|---|---|---|
+| `nuclides` | `meta/ensdf/nuclides.parquet` | All known states (ground + isomers) with half-life, J^π, decay modes, AME2020 mass excess, IUPAC composition |
+| `ground_states` | `nuclides WHERE state = ''` | Compatibility view |
+| `decay` / `decay_detailed` | `meta/decay{,_detailed}.parquet` | Decay branches per `(Z, A, state)`. `decay_detailed` adds `parent_ex_kev`, `daughter_ex_kev`, `q_value_kev`, `forbiddenness`, and **per-shell EC fractions** (`KshellEC`/`LshellEC`/`MshellEC`/`NshellEC`) |
+| `radiation` | `meta/ensdf/radiation/{Symbol}.parquet` | Per-element gamma + X-ray + Auger lines, unioned by `rad_type` discriminator |
+| `coincidences` | `meta/ensdf/coincidences/{Symbol}.parquet` | Gamma cascade pairs (~600k pairs, 104 element files) |
+| `levels` | `meta/ensdf/levels/{Symbol}.parquet` | Excited-state level schemes |
+
+## Photon-matter interaction (v0.12+, G4EMLOW8.8)
+
+Per-process cross-sections + sampling kernels for "photon hits material" queries. Lets users break down `xcom`'s integrated µ/ρ into the dominant processes (PE / Compton / Rayleigh / pair / atomic relaxation). All views live under `data/em/`; epic [#95](https://github.com/exoma-ch/nucl-parquet/issues/95).
+
+| View | Process | Use case |
+|---|---|---|
+| `photon_pe` | Photoelectric per-shell σ | "After K-shell ionization in iodine at 33 keV…" |
+| `photon_pe_high_z_params` | Analytic fit coefficients | High-Z extrapolation near edges |
+| `photon_pe_angular` | Photoelectron emission angle kernel | Monte Carlo angular sampling |
+| `photon_compton` | Compton σ_C(E, Z) | Bound-electron Klein-Nishina total |
+| `compton_scattering_function` | S(x, Z) | Differential dσ/dΩ via S(x,Z) × Klein-Nishina |
+| `compton_doppler_profiles` | Per-shell f(p) | Doppler broadening of scattered energy |
+| `photon_rayleigh_cdf` | Coherent-scattering CDF | Inverse-CDF angular sampling |
+| `xray_form_factor` | Anomalous f1, f2 (Henke/CXRO) | Low-energy Rayleigh corrections |
+| `photon_pair` | Pair + triplet σ | Per-channel breakdown above 1.022 MeV (`channel ∈ {nuclear, triplet, total}`) |
+| `atomic_relaxation` | Full vacancy cascade | Radiative + Auger transitions per shell |
+| `fluorescence` | Radiative subset | K_α / K_β / L_α yields per Z |
+
+**Worked example — "what fraction of 511 keV photons in lead Compton-scatter vs photoelectric-absorb?"**
+
+```sql
+WITH pe_total AS (
+    SELECT Z, energy_MeV, SUM(sigma_b) AS sigma_pe
+      FROM photon_pe
+     WHERE Z = 82 AND ABS(energy_MeV - 0.511) < 1e-3
+     GROUP BY Z, energy_MeV
+)
+SELECT 'PE' AS process, sigma_pe AS sigma_b FROM pe_total
+UNION ALL
+SELECT 'Compton', sigma_b FROM photon_compton
+ WHERE Z = 82 AND ABS(energy_MeV - 0.511) < 1e-3;
+```
 
 ## Development
 
