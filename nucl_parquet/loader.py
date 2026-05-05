@@ -21,6 +21,13 @@ Usage:
 
     # Decay chain (recursive):
     db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
+
+    # Photon-matter interaction (v0.12+, G4EMLOW8.8):
+    db.sql("SELECT * FROM photon_pe WHERE Z=82 AND shell=0")        # Pb K σ_PE
+    db.sql("SELECT * FROM photon_compton WHERE Z=29")               # Cu σ_C
+    db.sql("SELECT * FROM photon_pair WHERE channel='total'")       # σ_pair
+    db.sql("SELECT * FROM atomic_relaxation WHERE Z=53")            # I cascade
+    db.sql("SELECT * FROM fluorescence WHERE Z=82 AND vacancy_shell='K'")
 """
 
 from __future__ import annotations
