@@ -253,6 +253,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- EEDL electron interaction data ---
     _register_glob(db, data_dir / "meta" / "eedl", "eedl_electron_xs")
 
+    # --- G4EMLOW photon-matter cross-sections (v0.12 epic #95) ---
+    _register_parquet(db, data_dir / "em" / "photon_pair.parquet", "photon_pair")
+
     return db
 
 
