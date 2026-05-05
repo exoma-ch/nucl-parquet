@@ -257,6 +257,17 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_parquet(db, data_dir / "em" / "photon_pair.parquet", "photon_pair")
     _register_parquet(db, data_dir / "em" / "photon_rayleigh_cdf.parquet", "photon_rayleigh_cdf")
     _register_parquet(db, data_dir / "em" / "xray_form_factor.parquet", "xray_form_factor")
+    _register_parquet(db, data_dir / "em" / "photon_compton.parquet", "photon_compton")
+    _register_parquet(
+        db,
+        data_dir / "em" / "compton_scattering_function.parquet",
+        "compton_scattering_function",
+    )
+    _register_parquet(
+        db,
+        data_dir / "em" / "compton_doppler_profiles.parquet",
+        "compton_doppler_profiles",
+    )
 
     return db
 
