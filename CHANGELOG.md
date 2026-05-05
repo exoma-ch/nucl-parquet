@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.11.0...v0.12.0) (2026-05-05)
+
+
+### Features
+
+* **em:** atomic_relaxation + fluorescence views (closes [#100](https://github.com/exoma-ch/nucl-parquet/issues/100)) ([#101](https://github.com/exoma-ch/nucl-parquet/issues/101)) ([e04766f](https://github.com/exoma-ch/nucl-parquet/commit/e04766fc5d71a196243acfdd005d6b4ce3f452e8))
+* **em:** Compton XS + scattering function + Doppler (closes [#97](https://github.com/exoma-ch/nucl-parquet/issues/97)) ([#104](https://github.com/exoma-ch/nucl-parquet/issues/104)) ([f28d725](https://github.com/exoma-ch/nucl-parquet/commit/f28d725a7864440c6fa62900608a24bb7b2485e1))
+* **em:** pair + triplet production cross-sections (closes [#99](https://github.com/exoma-ch/nucl-parquet/issues/99)) ([#102](https://github.com/exoma-ch/nucl-parquet/issues/102)) ([4e322e9](https://github.com/exoma-ch/nucl-parquet/commit/4e322e9bbd99156c6b5e924674b0f90206a9c0df))
+* **em:** per-shell σ_PE from EPICS2017 (closes [#105](https://github.com/exoma-ch/nucl-parquet/issues/105)) ([#108](https://github.com/exoma-ch/nucl-parquet/issues/108)) ([085d05b](https://github.com/exoma-ch/nucl-parquet/commit/085d05b01c30774f6ca1c47a77ca67df4f51d840))
+* **em:** photoelectric high-Z params + angular kernels (closes [#96](https://github.com/exoma-ch/nucl-parquet/issues/96)) ([#106](https://github.com/exoma-ch/nucl-parquet/issues/106)) ([dcaa242](https://github.com/exoma-ch/nucl-parquet/commit/dcaa2420e13970075ec64ef18cc47b677c90a4a9))
+* **em:** Rayleigh CDF + X-ray form factors (closes [#98](https://github.com/exoma-ch/nucl-parquet/issues/98)) ([#103](https://github.com/exoma-ch/nucl-parquet/issues/103)) ([648628b](https://github.com/exoma-ch/nucl-parquet/commit/648628b379339401230c89266d0db48184851226))
+
 ## [0.11.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.10.0...v0.11.0) (2026-05-04)
 
 
