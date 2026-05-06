@@ -31,11 +31,22 @@ class TestSmloE1View:
 
     def test_pb208_e1(self, db) -> None:
         # Pb-208 GDR peak sits around 13.4 MeV (well-known experimental value).
-        rows = db.execute("SELECT E1_MeV, W1_MeV, S1_mb FROM psf_e1 WHERE Z=82 AND A=208").fetchone()
+        rows = db.execute("SELECT E1_MeV, W1_MeV, S1 FROM psf_e1 WHERE Z=82 AND A=208").fetchone()
         assert rows is not None
         assert 13.0 < rows[0] < 14.0, f"Pb-208 E1={rows[0]}, expected ~13.4 MeV"
         assert rows[1] > 0
-        assert rows[2] > 0
+        # S1 is a dimensionless SMLO strength parameter, typically 0.4-2.0
+        assert 0.1 < rows[2] < 5.0, f"Pb-208 S1={rows[2]} outside SMLO strength range"
+
+    def test_smlo_s_is_strength_not_cross_section(self, db) -> None:
+        # Defense-in-depth: S1 is dimensionless SMLO strength, not mb. Range
+        # check rules out the rename-to-_mb regression that the review caught.
+        # Across all 8980 rows, S1 should land in [0.05, 5] (SMLO conventions).
+        # If someone re-aliases this to a peak XS, it'd land in [10, 700] mb.
+        rows = db.execute("SELECT MIN(S1), MAX(S1) FROM psf_e1").fetchone()
+        assert 0.0 < rows[0] and rows[1] < 10.0, (
+            f"S1 range [{rows[0]}, {rows[1]}] looks like cross-section in mb, not SMLO strength — schema regression?"
+        )
 
 
 @pytest.mark.data

@@ -9,7 +9,7 @@ Sources (strata, gate-class 1 raw-file copies of G4NUDEXLIB1.0/PSF/):
 
 | Output view | Source parquet | Description |
 |---|---|---|
-| ``psf_e1`` | ``nudex_psf_crp_iaea_smlo_e1.parquet`` | **IAEA CRP SMLO E1 — modern recommended default**. Two-resonance Simple Modified Lorentzian for E1, plus deformation β. Covers 8980 nuclides. |
+| ``psf_e1`` | ``nudex_psf_crp_iaea_smlo_e1.parquet`` | **IAEA CRP SMLO E1 — modern recommended default**. Two-resonance Simple Modified Lorentzian for E1: ``E1, W1, S1`` (strength parameter, dimensionless) + deformation β. Covers 8980 nuclides. |
 | ``psf_gdr_lor`` | ``nudex_psf_gdr_exp_lor.parquet`` | Experimental two-resonance Standard Lorentzian (CENPL.GDP-1.1, 1995). 145 measurements over 112 nuclides. |
 | ``psf_gdr_mlo`` | ``nudex_psf_gdr_exp_mlo.parquet`` | Experimental two-resonance Modified Lorentzian with uncertainties + energy bounds. 178 measurements over 120 nuclides. |
 | ``psf_gdr_slo`` | ``nudex_psf_gdr_exp_slo.parquet`` | Experimental two-resonance Standard Lorentzian (re-fit) with uncertainties + bounds. 180 measurements over 120 nuclides. |
@@ -35,6 +35,13 @@ fit used only one resonance. Uncertainties (``dE1`` / ``dCS1`` / ...)
 are similarly NaN when not available. These are legitimate "no data"
 sentinels, not bugs.
 
+**``S1`` (SMLO) vs ``CS1_mb`` (LOR/MLO/SLO)**: do not confuse these.
+``psf_e1`` uses SMLO strength parameters ``S1`` / ``S2`` (dimensionless,
+typically 0.4-2.0). The experimental GDR tables use peak cross-sections
+``CS1`` / ``CS2`` in mb (typically 10-700 mb). They differ in physical
+meaning *and* magnitude by ~3 orders of magnitude. Module surfaces
+this asymmetry intentionally — don't unify the names.
+
 **Upstream-format note** (``photonuclear`` only): 17 rows are duplicated
 on ``(Z, A, Reac, peak_idx, Ref, EXFOR)`` with one copy carrying a filled
 ``sint_mev_mb`` integral and the other NaN. These appear in the raw
@@ -58,21 +65,32 @@ logger = logging.getLogger(__name__)
 
 
 def build_e1(strata_path: Path, out_path: Path) -> pl.DataFrame:
-    """IAEA CRP SMLO E1 — modern recommended default. One row per (Z, A)."""
+    """IAEA CRP SMLO E1 — modern recommended default. One row per (Z, A).
+
+    NOTE on `S1` / `S2`: these are the SMLO **strength parameters**
+    (dimensionless, typically ~0.4-2.0), not peak cross-sections in
+    mb. They feed the SMLO Lorentzian normalization, distinct from
+    the LOR/MLO/SLO `CS1`/`CS2` peak cross-sections (which ARE in mb,
+    typically 10-700 mb). Don't confuse the two.
+    """
     raw = pl.read_parquet(strata_path)
     df = raw.select(
         pl.col("z").cast(pl.Int32).alias("Z"),
         pl.col("a").cast(pl.Int32).alias("A"),
         pl.col("er1_mev").alias("E1_MeV"),
         pl.col("wr1_mev").alias("W1_MeV"),
-        pl.col("s1").alias("S1_mb"),
+        pl.col("s1").alias("S1"),
         pl.col("er2_mev").alias("E2_MeV"),
         pl.col("wr2_mev").alias("W2_MeV"),
-        pl.col("s2").alias("S2_mb"),
+        pl.col("s2").alias("S2"),
         pl.col("beta").alias("deformation_beta"),
     ).sort("Z", "A")
     if (df["E1_MeV"] <= 0).any():
         raise ValueError("non-positive E1 in SMLO E1 table")
+    if (df["W1_MeV"] <= 0).any():
+        raise ValueError("non-positive W1 in SMLO E1 table")
+    if (df["S1"] <= 0).any():
+        raise ValueError("non-positive S1 strength in SMLO E1 table")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d SMLO E1 rows to %s", df.height, out_path)
@@ -126,6 +144,12 @@ def _build_mlo_slo(strata_path: Path, out_path: Path, label: str) -> pl.DataFram
         pl.col("Emax_mev").alias("E_max_MeV"),
         pl.col("Ref").alias("reference"),
     ).sort("Z", "A", "reaction_code", "reference")
+    if (df["E1_MeV"] <= 0).any():
+        raise ValueError(f"non-positive E1 in GDR {label} table")
+    if (df["W1_MeV"] <= 0).any():
+        raise ValueError(f"non-positive W1 in GDR {label} table")
+    if (df["CS1_mb"] <= 0).any():
+        raise ValueError(f"non-positive CS1 in GDR {label} table")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d GDR %s rows to %s", df.height, label, out_path)
@@ -157,6 +181,8 @@ def build_gdr_theor(strata_path: Path, out_path: Path) -> pl.DataFrame:
     ).sort("Z", "A")
     if (df["E1_MeV"] <= 0).any():
         raise ValueError("non-positive E1 in theoretical GDR table")
+    if (df["W1_MeV"] <= 0).any():
+        raise ValueError("non-positive W1 in theoretical GDR table")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d GDR theor rows to %s", df.height, out_path)
@@ -184,6 +210,10 @@ def build_photonuclear(strata_path: Path, out_path: Path) -> pl.DataFrame:
     ).sort("Z", "A", "reaction", "peak_idx", "reference")
     if (df["Er_MeV"] <= 0).any():
         raise ValueError("non-positive resonance energy in photonuclear table")
+    # Cs/W can have NaN for not-fitted entries; restrict guard to finite values.
+    cs_finite = df.filter(df["Cs_mb"].is_finite())
+    if cs_finite.height and (cs_finite["Cs_mb"] < 0).any():
+        raise ValueError("negative Cs_mb in photonuclear table")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d photonuclear rows to %s", df.height, out_path)
