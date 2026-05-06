@@ -34,6 +34,18 @@ regimes typically use a hybrid.
 within their fit range. Pure-theory calculations (microscopic combinatorial,
 HFB-based) use different conventions and won't match these.
 
+**Strata#611 — missing CTM temperature parameter**: the upstream
+``level-densities-ctmeff.dat`` ships 19 columns, but strata's parquet
+truncates to the 16 columns shared with BFM, dropping ``Ematch`` (matching
+energy), ``E0`` (low-energy shift), and ``T`` (the actual CTM
+**temperature** in MeV — the parameter that makes "CTM" CTM). Without
+``T``, this view is half-useful for the canonical CTM use case
+``ρ(U) ~ exp((U−E0)/T)/T``; consumers should fall back to
+``level_density_params.T_MeV`` for the per-nuclide temperature, which
+covers a different (broader) nuclide set. Filed strata#611; once fixed
+and the catalog SHA bumps, extend ``_normalize_eff`` additively to
+expose the three CTM-specific columns without breaking existing queries.
+
 **NaN columns in `levels_param`**: the upstream `EX` (excitation energy)
 and `sigma_mev` (spin-cutoff parameter) columns are NaN for all 3353
 rows in the current strata pin. These appear to be placeholder columns
@@ -85,11 +97,25 @@ def _normalize_eff(df: pl.DataFrame) -> pl.DataFrame:
     ).sort("Z", "A")
 
 
+def _assert_eff_invariants(df: pl.DataFrame, name: str) -> None:
+    """Shared positivity / finite-ness guards. Smoke-alarms an upstream
+    column-shift or unit regression — cheap insurance against silent breakage
+    of the kind that bit us in strata#600 / strata#610 before."""
+    if (df["neutron_binding_MeV"] <= 0).any():
+        raise ValueError(f"non-positive neutron-binding energy in {name} table")
+    if (df["D0_eV"] <= 0).any():
+        raise ValueError(f"non-positive s-wave resonance spacing in {name} table")
+    if (df["a_asymptotic_per_MeV"] <= 0).any():
+        raise ValueError(f"non-positive asymptotic level-density parameter in {name} table")
+    for col in ("neutron_binding_MeV", "D0_eV", "a_asymptotic_per_MeV", "pairing_MeV", "shell_correction_MeV"):
+        if not df[col].is_finite().all():
+            raise ValueError(f"non-finite values in {name}.{col}")
+
+
 def build_bfm(strata_path: Path, out_path: Path) -> pl.DataFrame:
     """Back-shifted Fermi-gas effective parameters."""
     df = _normalize_eff(pl.read_parquet(strata_path))
-    if (df["neutron_binding_MeV"] <= 0).any():
-        raise ValueError("non-positive neutron-binding energy in BFM table")
+    _assert_eff_invariants(df, "BFM")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d BFM rows to %s", df.height, out_path)
@@ -99,8 +125,7 @@ def build_bfm(strata_path: Path, out_path: Path) -> pl.DataFrame:
 def build_ctm(strata_path: Path, out_path: Path) -> pl.DataFrame:
     """Constant-temperature effective parameters."""
     df = _normalize_eff(pl.read_parquet(strata_path))
-    if (df["neutron_binding_MeV"] <= 0).any():
-        raise ValueError("non-positive neutron-binding energy in CTM table")
+    _assert_eff_invariants(df, "CTM")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d CTM rows to %s", df.height, out_path)
@@ -135,6 +160,8 @@ def build_params(strata_path: Path, out_path: Path) -> pl.DataFrame:
 
     if (df["N_levels"] < 0).any():
         raise ValueError("negative level count in NUDEX levels_param")
+    if (df["T_MeV"] < 0).any():
+        raise ValueError("negative temperature in NUDEX levels_param (T=0 means unfit; <0 is a parse error)")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
