@@ -28,6 +28,9 @@ Usage:
     db.sql("SELECT * FROM photon_pair WHERE channel='total'")       # σ_pair
     db.sql("SELECT * FROM atomic_relaxation WHERE Z=53")            # I cascade
     db.sql("SELECT * FROM fluorescence WHERE Z=82 AND vacancy_shell='K'")
+
+    # NUDEX per-shell ICC factors (v0.14+):
+    db.sql("SELECT alpha FROM icc_factors WHERE Z=82 AND shell='K' AND multipolarity='E1'")
 """
 
 from __future__ import annotations
@@ -231,6 +234,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         data_dir / "meta" / "capture_gammas_summary.parquet",
         "capture_gammas_summary",
     )
+
+    # --- NUDEX per-shell internal-conversion factors (v0.14 epic #115) ---
+    _register_parquet(db, data_dir / "meta" / "icc_factors.parquet", "icc_factors")
 
     # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
