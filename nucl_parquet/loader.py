@@ -238,6 +238,15 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- NUDEX per-shell internal-conversion factors (v0.14 epic #115) ---
     _register_parquet(db, data_dir / "meta" / "icc_factors.parquet", "icc_factors")
 
+    # --- NUDEX level-density parameters (v0.14 epic #115) ---
+    _register_parquet(db, data_dir / "meta" / "level_density_bfm.parquet", "level_density_bfm")
+    _register_parquet(db, data_dir / "meta" / "level_density_ctm.parquet", "level_density_ctm")
+    _register_parquet(
+        db,
+        data_dir / "meta" / "level_density_params.parquet",
+        "level_density_params",
+    )
+
     # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
 
