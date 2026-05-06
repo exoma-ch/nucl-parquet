@@ -58,13 +58,38 @@ class TestIccFactorsView:
         n = db.execute("SELECT COUNT(*) FROM icc_factors").fetchone()[0]
         assert n > 0
 
-    def test_expected_row_count(self, db) -> None:
-        # Upstream: 61140 (Z, A, shell, E_γ) wide rows × 10 multipolarities.
+    def test_row_count_invariants(self, db) -> None:
+        # Long-format row count = unique (Z, shell, E_γ) × 10 multipolarities.
+        # Don't pin an exact number — pinning breaks on legitimate upstream
+        # regen even when the converter is correct.
         n = db.execute("SELECT COUNT(*) FROM icc_factors").fetchone()[0]
-        assert n == 611400, f"expected 611400 long-format rows, got {n}"
+        assert n % 10 == 0, f"row count {n} not a multiple of 10 multipolarities"
+        assert n >= 500_000, f"row count {n} unexpectedly small — coverage shrunk?"
+
+    def test_no_duplicate_rows(self, db) -> None:
+        # Guards against the strata#610 contamination (totals-block rows
+        # mis-tagged with the previous shell). The converter dedupes on
+        # (Z, shell, E_γ, multipolarity); if dedup is removed or upstream
+        # changes shape, this catches it.
+        n = db.execute(
+            """SELECT COUNT(*) FROM (
+                 SELECT Z, shell, gamma_energy_keV, multipolarity, COUNT(*) AS c
+                   FROM icc_factors
+                  GROUP BY Z, shell, gamma_energy_keV, multipolarity
+                 HAVING c > 1
+               )"""
+        ).fetchone()[0]
+        assert n == 0, f"{n} duplicate (Z, shell, E_γ, multipolarity) tuples — strata#610 regression?"
 
     def test_no_negative_alpha(self, db) -> None:
         n = db.execute("SELECT COUNT(*) FROM icc_factors WHERE alpha < 0").fetchone()[0]
+        assert n == 0
+
+    def test_alpha_finite(self, db) -> None:
+        # NULL/NaN protect: '<' returns False for NaN so a separate check is needed.
+        n = db.execute(
+            "SELECT COUNT(*) FROM icc_factors WHERE alpha IS NULL OR isnan(alpha) OR isinf(alpha)"
+        ).fetchone()[0]
         assert n == 0
 
     def test_binding_energy_positive(self, db) -> None:
@@ -84,6 +109,11 @@ class TestIccFactorsView:
         rows = db.execute("SELECT DISTINCT shell FROM icc_factors").fetchall()
         shells = {r[0] for r in rows}
         assert shells == _SHELLS, f"unexpected shell set: {shells ^ _SHELLS}"
+
+    def test_no_total_contamination(self, db) -> None:
+        # Strata#610: 'TOT' tag ever leaks through, fail loudly.
+        n = db.execute("SELECT COUNT(*) FROM icc_factors WHERE shell = 'TOT'").fetchone()[0]
+        assert n == 0
 
     def test_all_multipolarities_present(self, db) -> None:
         rows = db.execute("SELECT DISTINCT multipolarity FROM icc_factors").fetchall()
@@ -125,6 +155,18 @@ class TestUpstreamSpotChecks:
         rows = db.execute("SELECT DISTINCT binding_energy_eV FROM icc_factors WHERE Z = 10 AND shell = 'L1'").fetchall()
         assert len(rows) == 1
         assert 40 < rows[0][0] < 60
+
+    def test_cm247_p4_dedup_kept_real_row(self, db) -> None:
+        # Strata#610 specific: the contamination at (Z=96, P4, 129 MeV) had
+        # M5=6.182e+04. After dedup we must keep the real per-shell row
+        # (M5≈1.802, ~5 orders of magnitude smaller).
+        rows = db.execute(
+            """SELECT alpha FROM icc_factors
+               WHERE Z = 96 AND shell = 'P4' AND multipolarity = 'M5'
+                 AND ABS(gamma_energy_keV - 129000.0) < 0.5"""
+        ).fetchall()
+        assert len(rows) == 1, "Cm-247 P4 M5 @ 129 MeV not unique after dedup"
+        assert rows[0][0] < 10.0, f"kept the contaminated totals row (alpha={rows[0][0]})"
 
 
 @pytest.mark.data
