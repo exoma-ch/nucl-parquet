@@ -257,6 +257,14 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_parquet(db, data_dir / "meta" / "psf_gdr_theor.parquet", "psf_gdr_theor")
     _register_parquet(db, data_dir / "meta" / "psf_photonuclear.parquet", "psf_photonuclear")
 
+    # --- NUDEX full ENSDF level schemes (v0.14 epic #115) ---
+    # `nudex_levels` (richer ENSDF source) coexists with `ensdf_levels` (the
+    # PhotonEvaporation summary used by G4 transport). Pick by query class:
+    # ensdf_levels for transport-aligned queries; nudex_levels for spectroscopy.
+    _register_parquet(db, data_dir / "meta" / "nudex_levels.parquet", "nudex_levels")
+    _register_parquet(db, data_dir / "meta" / "nudex_level_gammas.parquet", "nudex_level_gammas")
+    _register_parquet(db, data_dir / "meta" / "nudex_isotopes.parquet", "nudex_isotopes")
+
     # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
 
