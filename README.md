@@ -79,6 +79,17 @@ db.sql("SELECT * FROM photon_pair WHERE Z=82 AND channel='total'")  # Pb pair σ
 db.sql("SELECT * FROM photon_rayleigh_cdf WHERE Z=82")          # angular sampling CDF
 db.sql("SELECT * FROM atomic_relaxation WHERE Z=53 AND vacancy_shell='K'")  # I K-vacancy
 db.sql("SELECT * FROM fluorescence WHERE Z=82")                 # Pb fluorescence yields
+
+# Electron-matter interaction (v0.13+ — Geant4 G4EMLOW8.8)
+db.sql("SELECT * FROM electron_brem WHERE Z=82")                # Pb bremsstrahlung σ_brem(E)
+
+# NUDEX detailed nuclear data (v0.14+ — Geant4 G4NUDEXLIB1.0)
+db.sql("SELECT * FROM nudex_levels WHERE Z=27 AND A=60")        # Co-60 full level scheme
+db.sql("SELECT * FROM nudex_level_gammas WHERE Z=82 AND A=208") # Pb-208 transitions
+db.sql("SELECT * FROM capture_gammas WHERE Z=27 AND A=60")      # 59Co(n,γ)60Co primaries
+db.sql("SELECT * FROM icc_factors WHERE Z=82 AND shell='K'")    # Pb K-shell BrIcc
+db.sql("SELECT * FROM psf_e1 WHERE Z=82 AND A=208")             # Pb-208 SMLO E1 GDR
+db.sql("SELECT * FROM level_density_bfm WHERE Z=82 AND A=208")  # Pb-208 BFM params
 ```
 
 ### Data resolution
@@ -254,6 +265,46 @@ SELECT 'PE' AS process, sigma_pe AS sigma_b FROM pe_total
 UNION ALL
 SELECT 'Compton', sigma_b FROM photon_compton
  WHERE Z = 82 AND ABS(energy_MeV - 0.511) < 1e-3;
+```
+
+## Electron-matter interaction (v0.13+, G4EMLOW8.8)
+
+Per-process electron transport cross-sections — companion to the v0.12 photon-matter views. Epic [#114](https://github.com/exoma-ch/nucl-parquet/issues/114) tracks the full electron-matter rollout (bremsstrahlung shipped; Seltzer-Berger DCS, MSC, DPWA, ESTAR migration in progress).
+
+| View | Process | Use case |
+|---|---|---|
+| `electron_brem` | Bremsstrahlung total σ_brem(Z, T) | Photon-emission rate from electron transport |
+
+## Detailed nuclear data — NUDEX (v0.14+, G4NUDEXLIB1.0)
+
+Where `nuclides` / `radiation` / `coincidences` ship the *summary* G4 PhotonEvaporation tables, the NUDEX views below import the **fully-detailed** ENSDF source — every known nuclear level, every measured gamma transition, full BrIcc internal-conversion tables, neutron-capture primary spectra, photon strength functions, and statistical-model level density parameters. Epic [#115](https://github.com/exoma-ch/nucl-parquet/issues/115) (5/5 sub-issues complete).
+
+| View | Rows | What's in it |
+|---|---|---|
+| `nudex_levels` | 158,900 | Per-level: energy, J^π, half-life, decay modes (3,331 isotopes) |
+| `nudex_level_gammas` | 245,975 | Per-transition: source/dest level, γ energy, intensity, uncertainty |
+| `nudex_isotopes` | 3,331 | Per-isotope summary: level/gamma counts, mass excess, S_n |
+| `capture_gammas` | 39,157 | Neutron-capture primary γ spectra (PGAA / activation analysis) |
+| `capture_gammas_summary` | 982 | Per (target, daughter): reaction, S_n, multiplicity |
+| `icc_factors` | 579,380 | Per-shell BrIcc factors (35 shells × 10 multipolarities × 117 Z) |
+| `psf_e1` | 8,980 | **IAEA SMLO E1 (recommended modern default)** |
+| `psf_gdr_lor` / `mlo` / `slo` | 145 / 178 / 180 | Experimental GDR Lorentzian / Modified-Lorentzian / Standard-Lorentzian |
+| `psf_gdr_theor` | 5,986 | Goriely theoretical PSF systematics |
+| `psf_photonuclear` | 1,912 | Photonuclear (γ,abs)/(γ,sn)/(γ,xn) experimental peaks |
+| `level_density_bfm` | 289 | Back-shifted Fermi-gas effective parameters |
+| `level_density_ctm` | 289 | Constant-temperature effective parameters |
+| `level_density_params` | 3,353 | Per-nuclide T, U_cutoff, N_levels |
+
+**Schema overlap with v0.11**: `nudex_levels` and `ensdf_levels` coexist by design. Use `ensdf_levels` for transport-aligned queries (matches G4's bundled level set); use `nudex_levels` for high-fidelity gamma spectroscopy and statistical decay calculations.
+
+**Worked example — "predict the prompt-gamma signature of a neutron-irradiated Co-59 sample"**
+
+```sql
+SELECT energy_keV, intensity_pct
+  FROM capture_gammas
+ WHERE Z = 27 AND A = 60 AND variant = 'default'
+ ORDER BY intensity_pct DESC
+ LIMIT 10;
 ```
 
 ## Development
