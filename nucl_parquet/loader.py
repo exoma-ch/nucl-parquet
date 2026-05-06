@@ -247,6 +247,16 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         "level_density_params",
     )
 
+    # --- NUDEX photon strength functions (v0.14 epic #115) ---
+    # `psf_e1` is the IAEA-recommended modern default; the others are alternates
+    # for systematic-uncertainty studies.
+    _register_parquet(db, data_dir / "meta" / "psf_e1.parquet", "psf_e1")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_lor.parquet", "psf_gdr_lor")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_mlo.parquet", "psf_gdr_mlo")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_slo.parquet", "psf_gdr_slo")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_theor.parquet", "psf_gdr_theor")
+    _register_parquet(db, data_dir / "meta" / "psf_photonuclear.parquet", "psf_photonuclear")
+
     # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
 
