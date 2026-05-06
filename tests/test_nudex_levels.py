@@ -81,10 +81,10 @@ class TestNudexLevelGammas:
         assert n == 0
 
     def test_source_above_dest(self, db) -> None:
-        # Cascade direction: source level idx must be > destination idx.
-        # Allow a small tolerance for upstream weirdness (logged as warning at build).
+        # Cascade direction: gamma decay goes higher → lower level.
+        # Current upstream pin has 0 violations; converter raises on any.
         n = db.execute("SELECT COUNT(*) FROM nudex_level_gammas WHERE source_level_idx <= dest_level_idx").fetchone()[0]
-        assert n < 100, f"{n} transitions with source ≤ dest — cascade-direction regression?"
+        assert n == 0, f"{n} transitions with source ≤ dest — converter regression"
 
     def test_co60_canonical_gammas(self, db) -> None:
         # Co-60 textbook decay: 1173 keV + 1332 keV gamma cascade (β⁻ to Ni-60 levels).
