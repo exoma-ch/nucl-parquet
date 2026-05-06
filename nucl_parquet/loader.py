@@ -29,8 +29,13 @@ Usage:
     db.sql("SELECT * FROM atomic_relaxation WHERE Z=53")            # I cascade
     db.sql("SELECT * FROM fluorescence WHERE Z=82 AND vacancy_shell='K'")
 
-    # NUDEX per-shell ICC factors (v0.14+):
+    # Detailed nuclear data — NUDEX (v0.14+, G4NUDEXLIB1.0):
+    db.sql("SELECT * FROM nudex_levels WHERE Z=27 AND A=60")        # Co-60 full level scheme
+    db.sql("SELECT * FROM nudex_level_gammas WHERE Z=82 AND A=208") # Pb-208 transitions
+    db.sql("SELECT * FROM capture_gammas WHERE Z=27 AND A=60")      # 59Co(n,γ)60Co
     db.sql("SELECT alpha FROM icc_factors WHERE Z=82 AND shell='K' AND multipolarity='E1'")
+    db.sql("SELECT * FROM psf_e1 WHERE Z=82 AND A=208")             # IAEA SMLO E1 GDR
+    db.sql("SELECT * FROM level_density_bfm WHERE Z=82 AND A=208")  # BFM params
 """
 
 from __future__ import annotations
