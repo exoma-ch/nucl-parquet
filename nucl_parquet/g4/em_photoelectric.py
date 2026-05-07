@@ -1,6 +1,6 @@
 """Photoelectric data from G4EMLOW × strata (issue #96 / #105).
 
-Three outputs from the strata `em/` subset:
+Four outputs from the strata `em/` subset:
 
 1. ``data/em/photon_pe.parquet`` — per-shell photoelectric cross-section
    σ_PE(E, Z, shell) [barns/atom]. Decoded from strata's stored E³·CS
@@ -18,11 +18,23 @@ Three outputs from the strata `em/` subset:
 3. ``data/em/photon_pe_angular.parquet`` — photoelectron emission angle
    sampling kernel. Source: ``em/pe_angular.parquet``.
 
-Note on the strata ``cs_barn`` column: despite its name, the upstream
+4. ``data/em/photon_pe_total.parquet`` — **total** photoelectric
+   cross-section σ_PE(E, Z) summed across shells, in barn/atom. Pre-decoded
+   upstream (per strata#600 fix). Split into two energy regions
+   (``region`` ∈ {0, 1}) for lin-lin interpolation runtime; each region
+   covers a contiguous energy range delimited by the K-edge for the
+   element. Consumers running attenuation queries should prefer this
+   over ``photon_pe`` (which is per-shell). Source:
+   ``em/epics2017/pe_cs.parquet``.
+
+Note on the strata ``cs_barn`` column in the per-shell file
+(``pe_shell_cs_epics2017.parquet``): despite its name, the upstream
 column stores the raw E³·CS in MeV³·barn (not decoded barn/atom). The
 ``decode_e3_cs`` function in strata's loader is documented but isn't
-applied during parquet generation. We apply it on import here. Tracked
-in #105.
+applied during parquet generation for the per-shell file. We apply it
+on import here. The total file (``epics2017/pe_cs.parquet``) is
+already-decoded — strata#600 fixed it for total but not per-shell;
+follow-up tracker: strata#645.
 
 Existing related view: ``epdl_subshell_pe`` (EPDL97-derived). Keep both —
 EPICS2017 is the modern G4 default; EPDL97 stays for backwards-compat.
@@ -70,13 +82,56 @@ def build_high_z_params(strata_path: Path, out_path: Path) -> pl.DataFrame:
     return df
 
 
-def build_angular(strata_path: Path, out_path: Path) -> pl.DataFrame:
-    df = pl.read_parquet(strata_path).select(
-        pl.col("table_id").cast(pl.Int32).alias("table_id"),
+def build_total_xs(strata_path: Path, out_path: Path) -> pl.DataFrame:
+    """Total photoelectric XS per (Z, energy) — already decoded upstream.
+
+    Source file is ``em/epics2017/pe_cs.parquet`` (strata#600 fix). The
+    ``region`` column splits the lookup grid by lin-lin interpolation
+    region (0 = low-energy, 1 = above the K-edge for the element). For
+    a continuous σ_PE(E) curve, ``ORDER BY z, energy_MeV`` and ignore
+    region; for documented region semantics see the strata fix discussion.
+    """
+    raw = pl.read_parquet(strata_path)
+    df = raw.select(
+        pl.col("z").cast(pl.Int32).alias("Z"),
+        pl.col("region").cast(pl.Int32).alias("region"),
         pl.col("energy_mev").alias("energy_MeV"),
-        pl.col("f_value"),
-        pl.col("e_upper_mev").alias("e_upper_MeV"),
+        pl.col("cs_barn").alias("sigma_b"),
+    ).sort("Z", "energy_MeV")
+    if (df["sigma_b"] < 0).any():
+        raise ValueError("negative photoelectric total cross-section in upstream data")
+    if not df["sigma_b"].is_finite().all():
+        raise ValueError("non-finite photoelectric total cross-section in upstream data")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(out_path, compression="zstd")
+    logger.info("wrote %d pe-total rows to %s", df.height, out_path)
+    return df
+
+
+def build_angular(strata_path: Path, out_path: Path) -> pl.DataFrame:
+    """Photoelectron emission angle sampling kernel (strata#294 fix).
+
+    New schema (after strata#294 fixed the misread ftab format):
+    ``(shell_id, beta_index, beta, a_majorant, c_majorant)``. ``shell_id``
+    is 0 (K-shell) or 1 (L-shell catch-all per Sauter-Gavrila parameterization).
+    ``beta`` = v/c of the photoelectron; ``beta_index`` is the lookup index
+    into the per-shell rejection-sampling table; ``a_majorant`` /
+    ``c_majorant`` parameterize the Sauter-Gavrila majorant for rejection
+    sampling.
+    """
+    df = (
+        pl.read_parquet(strata_path)
+        .select(
+            pl.col("shell_id").cast(pl.Int32).alias("shell_id"),
+            pl.col("beta_index").cast(pl.Int32).alias("beta_index"),
+            pl.col("beta"),
+            pl.col("a_majorant"),
+            pl.col("c_majorant"),
+        )
+        .sort("shell_id", "beta_index")
     )
+    if (df["beta"] < 0).any() or (df["beta"] > 1).any():
+        raise ValueError("beta out of [0, 1] range in pe_angular table")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d pe-angular rows to %s", df.height, out_path)
@@ -103,4 +158,8 @@ if __name__ == "__main__":
     build_angular(
         args.strata_em_dir / "pe_angular.parquet",
         args.out_dir / "photon_pe_angular.parquet",
+    )
+    build_total_xs(
+        args.strata_em_dir / "epics2017" / "pe_cs.parquet",
+        args.out_dir / "photon_pe_total.parquet",
     )

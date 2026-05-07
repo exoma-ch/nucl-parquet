@@ -98,22 +98,29 @@ class TestIccFactorsView:
 
     def test_gamma_above_binding(self, db) -> None:
         # Below shell binding, conversion is energetically forbidden — upstream
-        # only tabulates above-threshold rows. Validates the upstream invariant
-        # so any future schema change that violates it gets caught.
+        # only tabulates above-threshold rows for per-shell rows. (TOT rows
+        # carry binding_energy_eV=0 by convention, so the implication holds
+        # vacuously.) Validates the upstream invariant.
         n = db.execute(
-            "SELECT COUNT(*) FROM icc_factors WHERE gamma_energy_keV * 1000.0 <= binding_energy_eV"
+            "SELECT COUNT(*) FROM icc_factors WHERE shell != 'TOT' AND gamma_energy_keV * 1000.0 <= binding_energy_eV"
         ).fetchone()[0]
         assert n == 0
 
     def test_all_shells_present(self, db) -> None:
         rows = db.execute("SELECT DISTINCT shell FROM icc_factors").fetchall()
         shells = {r[0] for r in rows}
-        assert shells == _SHELLS, f"unexpected shell set: {shells ^ _SHELLS}"
+        # Per-shell labels + TOT (the latter from strata#610 fix — proper
+        # totals-block separation).
+        expected = _SHELLS | {"TOT"}
+        assert shells == expected, f"unexpected shell set: {shells ^ expected}"
 
-    def test_no_total_contamination(self, db) -> None:
-        # Strata#610: 'TOT' tag ever leaks through, fail loudly.
+    def test_tot_rows_present(self, db) -> None:
+        # Strata#610 fix: totals are now a distinct shell label, not contaminating
+        # per-shell rows. Verify TOT rows are present and reasonable in count
+        # (~3,181 isotopes × 10 multipolarities).
         n = db.execute("SELECT COUNT(*) FROM icc_factors WHERE shell = 'TOT'").fetchone()[0]
-        assert n == 0
+        assert n > 0, "no TOT rows — strata#610 regression?"
+        assert n % 10 == 0, f"TOT row count {n} not a multiple of 10 multipolarities"
 
     def test_all_multipolarities_present(self, db) -> None:
         rows = db.execute("SELECT DISTINCT multipolarity FROM icc_factors").fetchall()

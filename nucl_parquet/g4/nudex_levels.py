@@ -26,15 +26,6 @@ Decision: keep both; consumers pick by query class.
 - Use ``nudex_levels`` for: high-fidelity gamma spectroscopy, statistical
   decay calculations needing the full level cascade, ENSDF-derived audits.
 
-**strata#621 — orphan null-Z rows**: 19 rows in the upstream
-``nudex_known_levels.parquet`` have ``z`` and ``a`` NULL — the upstream
-parser failed to associate them with their parent isotope's block header.
-They all share ``level_idx=1``, ``energy_mev=0.0``, and have malformed
-``decay_modes_str`` like ``"AP 1.0000E+02 %A"`` / ``"? 0.0000E+00 %A"``.
-We filter them at import (``where z is not null``); once strata#621
-ships and the catalog SHA bumps, the filter becomes a no-op and can be
-removed.
-
 **Multi-row gamma transitions**: 33 ``(z, a, source_level_idx,
 dest_level_idx)`` tuples appear twice with different intensity values.
 These are real upstream entries — alternate evaluations of the same
@@ -74,43 +65,31 @@ import polars as pl
 
 logger = logging.getLogger(__name__)
 
-# strata#621 invariant — 19 orphan null-Z rows in the current strata pin.
-# If upstream fixes the parser, this drops to 0 and the filter no-ops.
-_EXPECTED_ORPHAN_ROWS = 19
-
 
 def build_levels(strata_path: Path, out_path: Path) -> pl.DataFrame:
     """Per-level entries — energy, spin/parity, half-life, decay modes."""
     raw = pl.read_parquet(strata_path)
 
-    n_orphan = raw.filter(pl.col("z").is_null()).height
-    if n_orphan != _EXPECTED_ORPHAN_ROWS:
-        logger.warning(
-            "strata#621 orphan-row drift: expected %d null-Z rows, got %d — "
-            "check whether strata fixed the parser or introduced new orphans.",
-            _EXPECTED_ORPHAN_ROWS,
-            n_orphan,
-        )
+    if raw.filter(pl.col("z").is_null()).height:
+        # Sanity guard — upstream strata#621 was fixed; if null-Z rows reappear
+        # something has regressed.
+        raise ValueError("null-Z rows in NUDEX known levels (strata#621 regression?)")
 
-    df = (
-        raw.filter(pl.col("z").is_not_null() & pl.col("a").is_not_null())
-        .select(
-            pl.col("z").cast(pl.Int32).alias("Z"),
-            pl.col("a").cast(pl.Int32).alias("A"),
-            pl.col("level_idx").cast(pl.Int32).alias("level_idx"),
-            pl.col("energy_mev").alias("energy_MeV"),
-            pl.col("spin"),
-            pl.col("parity"),
-            pl.col("half_life_s"),
-            pl.col("flag"),
-            pl.col("ucert_marker"),
-            pl.col("jpi_str"),
-            pl.col("num_decays"),
-            pl.col("decay_modes_str"),
-            pl.col("extra_field").alias("level_extra"),
-        )
-        .sort("Z", "A", "level_idx")
-    )
+    df = raw.select(
+        pl.col("z").cast(pl.Int32).alias("Z"),
+        pl.col("a").cast(pl.Int32).alias("A"),
+        pl.col("level_idx").cast(pl.Int32).alias("level_idx"),
+        pl.col("energy_mev").alias("energy_MeV"),
+        pl.col("spin"),
+        pl.col("parity"),
+        pl.col("half_life_s"),
+        pl.col("flag"),
+        pl.col("ucert_marker"),
+        pl.col("jpi_str"),
+        pl.col("num_decays"),
+        pl.col("decay_modes_str"),
+        pl.col("extra_field").alias("level_extra"),
+    ).sort("Z", "A", "level_idx")
 
     if (df["energy_MeV"] < 0).any():
         raise ValueError("negative level energy in NUDEX known levels")
@@ -120,9 +99,8 @@ def build_levels(strata_path: Path, out_path: Path) -> pl.DataFrame:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info(
-        "wrote %d level rows (%d orphan null-Z rows filtered, %d isotopes covered) to %s",
+        "wrote %d level rows (%d isotopes covered) to %s",
         df.height,
-        n_orphan,
         df.select(["Z", "A"]).unique().height,
         out_path,
     )
