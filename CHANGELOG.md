@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.13.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.12.0...v0.13.0) (2026-05-07)
+
+
+### Features
+
+* **em:** bremsstrahlung total cross-section (epic [#114](https://github.com/exoma-ch/nucl-parquet/issues/114)) ([#117](https://github.com/exoma-ch/nucl-parquet/issues/117)) ([1889697](https://github.com/exoma-ch/nucl-parquet/commit/1889697a6dd8b3de2df80ac05815782f4cba9f12))
+* **nudex:** full ENSDF level schemes — final v0.14 deliverable (closes [#122](https://github.com/exoma-ch/nucl-parquet/issues/122)) ([#132](https://github.com/exoma-ch/nucl-parquet/issues/132)) ([ebc3591](https://github.com/exoma-ch/nucl-parquet/commit/ebc35912fba571d1b29f08a3363e11b0bcaee962))
+* **nudex:** level-density parameter views (closes [#125](https://github.com/exoma-ch/nucl-parquet/issues/125)) ([#129](https://github.com/exoma-ch/nucl-parquet/issues/129)) ([826efbb](https://github.com/exoma-ch/nucl-parquet/commit/826efbb5b3e9d5a2c0b0197c839d370cf3827633))
+* **nudex:** neutron-capture primary gamma spectra (epic [#115](https://github.com/exoma-ch/nucl-parquet/issues/115)) ([#116](https://github.com/exoma-ch/nucl-parquet/issues/116)) ([2c1bdce](https://github.com/exoma-ch/nucl-parquet/commit/2c1bdce46b72e1b039df3771b345c5799b1072bc))
+* **nudex:** per-shell ICC factors view (closes [#123](https://github.com/exoma-ch/nucl-parquet/issues/123)) ([#127](https://github.com/exoma-ch/nucl-parquet/issues/127)) ([e346c9f](https://github.com/exoma-ch/nucl-parquet/commit/e346c9fc67571230cad156e2d75cd2d3f67993b8))
+* **nudex:** photon strength functions — 6 PSF tables (closes [#124](https://github.com/exoma-ch/nucl-parquet/issues/124)) ([#130](https://github.com/exoma-ch/nucl-parquet/issues/130)) ([8312557](https://github.com/exoma-ch/nucl-parquet/commit/831255758dc4d79f245a3a3ba411439dd1df647a))
+
+
+### Documentation
+
+* **em:** reframe σ_PE per-shell decode as ETL, not workaround ([#135](https://github.com/exoma-ch/nucl-parquet/issues/135)) ([bb69fc1](https://github.com/exoma-ch/nucl-parquet/commit/bb69fc1f246d8d3774d88c81696715a9281b204e))
+* surface v0.11 nuclear and v0.12 photon-matter views ([#111](https://github.com/exoma-ch/nucl-parquet/issues/111)) ([042f4d9](https://github.com/exoma-ch/nucl-parquet/commit/042f4d9a9339ccd1ae0781885636dfbaff27c135))
+* surface v0.14 NUDEX views in README + connect() docstring ([#133](https://github.com/exoma-ch/nucl-parquet/issues/133)) ([92ddfef](https://github.com/exoma-ch/nucl-parquet/commit/92ddfefe6bbf4711c23b04b944b5c32eb5285c92))
+
 ## [0.12.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.11.0...v0.12.0) (2026-05-05)
 
 
