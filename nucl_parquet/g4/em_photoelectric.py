@@ -28,13 +28,26 @@ Four outputs from the strata `em/` subset:
    ``em/epics2017/pe_cs.parquet``.
 
 Note on the strata ``cs_barn`` column in the per-shell file
-(``pe_shell_cs_epics2017.parquet``): despite its name, the upstream
-column stores the raw E³·CS in MeV³·barn (not decoded barn/atom). The
-``decode_e3_cs`` function in strata's loader is documented but isn't
-applied during parquet generation for the per-shell file. We apply it
-on import here. The total file (``epics2017/pe_cs.parquet``) is
-already-decoded — strata#600 fixed it for total but not per-shell;
-follow-up tracker: strata#645.
+(``pe_shell_cs_epics2017.parquet``): the column stores **E³·σ in
+MeV³·barn**, *not* decoded barn/atom — this is the pre-conditioned
+ordinate that strata's ``LinLinEpsilonE3PerRegion`` runtime path expects
+(per strata ADR-054 §1+§5). The encoding is required for log-log
+extrapolation correctness above the per-shell grid endpoints; storing
+decoded σ instead breaks ``livermore_pe::test_interpolation_continuity``
+with 226× discontinuities at high energies (strata#645 closure).
+
+The decode applied in :func:`build_pe_xs` (``sigma_b = cs_raw / E³``) is
+the correct ETL transform from stored E³·σ to consumer-facing barn/atom,
+**not a workaround** — verified against EPDL97 at Pb K-shell 99 keV
+(1472.1 b vs 1472.0 b, exact match).
+
+Strata is planning two follow-up PRs (per strata#645 closure):
+- PR-A (small): add ``strata.pe.encoding`` parquet metadata key to the
+  per-shell file (the total file ``epics2017/pe_cs.parquet`` already has
+  it). Will let consumers detect the encoding programmatically.
+- PR-B (larger): implement loader-side decode path for per-shell tables
+  (analog of strata #459 for the total file). Optional for consumers
+  to switch; doesn't obsolete the decode here.
 
 Existing related view: ``epdl_subshell_pe`` (EPDL97-derived). Keep both —
 EPICS2017 is the modern G4 default; EPDL97 stays for backwards-compat.
@@ -51,12 +64,14 @@ logger = logging.getLogger(__name__)
 
 
 def build_pe_xs(strata_path: Path, out_path: Path) -> pl.DataFrame:
-    """Decode strata's E³·CS to barn/atom and write `photon_pe.parquet`.
+    """Decode strata's E³·σ encoding to barn/atom and write `photon_pe.parquet`.
 
-    Strata's ``cs_barn`` column is mislabeled — it stores raw E³·CS in
-    MeV³·barn. We apply ``sigma_b = cs_raw / energy_MeV^3`` to recover
-    the actual cross-section in barn/atom. Cross-checked against EPDL97
-    at Pb K-shell 99 keV (1472.1 b vs 1472.0 b — exact match).
+    Strata's per-shell ``cs_barn`` column stores E³·σ in MeV³·barn — the
+    pre-conditioned ordinate the ``LinLinEpsilonE3PerRegion`` runtime
+    path expects (strata ADR-054 §1+§5). We apply ``sigma_b = cs_raw /
+    energy_MeV³`` to recover the consumer-facing barn/atom value.
+    Cross-checked against EPDL97 at Pb K-shell 99 keV: 1472.1 b vs
+    1472.0 b — exact match.
     """
     raw = pl.read_parquet(strata_path)
     df = raw.select(
