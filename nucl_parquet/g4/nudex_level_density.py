@@ -34,17 +34,18 @@ regimes typically use a hybrid.
 within their fit range. Pure-theory calculations (microscopic combinatorial,
 HFB-based) use different conventions and won't match these.
 
-**Strata#611 — missing CTM temperature parameter**: the upstream
-``level-densities-ctmeff.dat`` ships 19 columns, but strata's parquet
-truncates to the 16 columns shared with BFM, dropping ``Ematch`` (matching
-energy), ``E0`` (low-energy shift), and ``T`` (the actual CTM
-**temperature** in MeV — the parameter that makes "CTM" CTM). Without
-``T``, this view is half-useful for the canonical CTM use case
-``ρ(U) ~ exp((U−E0)/T)/T``; consumers should fall back to
-``level_density_params.T_MeV`` for the per-nuclide temperature, which
-covers a different (broader) nuclide set. Filed strata#611; once fixed
-and the catalog SHA bumps, extend ``_normalize_eff`` additively to
-expose the three CTM-specific columns without breaking existing queries.
+**CTM-only columns** (per strata#611 fix): ``level_density_ctm`` carries
+three additional columns absent from BFM:
+
+- ``match_energy_MeV`` (``Ematch``): energy at which low- and high-energy
+  CTM formulae match
+- ``E0_MeV`` (``E0``): energy shift for the low-energy approach
+- ``temperature_MeV`` (``T``): CTM temperature — the parameter driving
+  ``ρ(U) ~ exp((U−E0)/T)/T``
+
+For the canonical CTM use case prefer ``temperature_MeV`` from this view
+over the broader-coverage ``level_density_params.T_MeV`` (which covers
+3,353 nuclides at lower fidelity).
 
 **NaN columns in `levels_param`**: the upstream `EX` (excitation energy)
 and `sigma_mev` (spin-cutoff parameter) columns are NaN for all 3353
@@ -68,32 +69,41 @@ import polars as pl
 logger = logging.getLogger(__name__)
 
 
-def _normalize_eff(df: pl.DataFrame) -> pl.DataFrame:
-    """Shared schema for BFM and CTM effective tables.
+_SHARED_EFF_COLUMNS = [
+    pl.col("z").cast(pl.Int32).alias("Z"),
+    pl.col("a").cast(pl.Int32).alias("A"),
+    pl.col("El").alias("symbol"),
+    pl.col("I0").alias("target_spin"),
+    pl.col("Bn").alias("neutron_binding_MeV"),
+    pl.col("D0").alias("D0_eV"),
+    pl.col("Derr").alias("D0_err_eV"),
+    pl.col("Nlow").alias("N_low"),
+    pl.col("Ulow").alias("U_low_MeV"),
+    pl.col("Ntop").alias("N_top"),
+    pl.col("Utop").alias("U_top_MeV"),
+    pl.col("dW").alias("shell_correction_MeV"),
+    pl.col("gamma").alias("damping_per_MeV"),
+    pl.col("ainf").alias("a_asymptotic_per_MeV"),
+    pl.col("aerr").alias("a_asymptotic_err"),
+    pl.col("pairing").alias("pairing_MeV"),
+]
 
-    Both upstream files have identical column sets (16 columns each):
-    nuclide id (z, a, El), spin parameter (I0), neutron-binding (Bn),
-    s-wave spacing (D0/Derr), low/high level-fit anchors (Nlow/Ulow,
-    Ntop/Utop), shell correction (dW), damping (gamma), asymptotic
-    level-density parameter (ainf/aerr), and pairing (pairing).
-    """
+
+def _normalize_bfm(df: pl.DataFrame) -> pl.DataFrame:
+    """BFM schema (16 columns): nuclide id, spin, neutron-binding, s-wave
+    spacing, fit anchors, shell correction, damping, asymptotic level-density
+    parameter, pairing."""
+    return df.select(*_SHARED_EFF_COLUMNS).sort("Z", "A")
+
+
+def _normalize_ctm(df: pl.DataFrame) -> pl.DataFrame:
+    """CTM schema (19 columns): BFM shared 16 plus three CTM-specific —
+    matching energy ``Ematch``, low-E shift ``E0``, and temperature ``T``."""
     return df.select(
-        pl.col("z").cast(pl.Int32).alias("Z"),
-        pl.col("a").cast(pl.Int32).alias("A"),
-        pl.col("El").alias("symbol"),
-        pl.col("I0").alias("target_spin"),
-        pl.col("Bn").alias("neutron_binding_MeV"),
-        pl.col("D0").alias("D0_eV"),
-        pl.col("Derr").alias("D0_err_eV"),
-        pl.col("Nlow").alias("N_low"),
-        pl.col("Ulow").alias("U_low_MeV"),
-        pl.col("Ntop").alias("N_top"),
-        pl.col("Utop").alias("U_top_MeV"),
-        pl.col("dW").alias("shell_correction_MeV"),
-        pl.col("gamma").alias("damping_per_MeV"),
-        pl.col("ainf").alias("a_asymptotic_per_MeV"),
-        pl.col("aerr").alias("a_asymptotic_err"),
-        pl.col("pairing").alias("pairing_MeV"),
+        *_SHARED_EFF_COLUMNS,
+        pl.col("Ematch").alias("match_energy_MeV"),
+        pl.col("E0").alias("E0_MeV"),
+        pl.col("T").alias("temperature_MeV"),
     ).sort("Z", "A")
 
 
@@ -114,7 +124,7 @@ def _assert_eff_invariants(df: pl.DataFrame, name: str) -> None:
 
 def build_bfm(strata_path: Path, out_path: Path) -> pl.DataFrame:
     """Back-shifted Fermi-gas effective parameters."""
-    df = _normalize_eff(pl.read_parquet(strata_path))
+    df = _normalize_bfm(pl.read_parquet(strata_path))
     _assert_eff_invariants(df, "BFM")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
@@ -123,9 +133,13 @@ def build_bfm(strata_path: Path, out_path: Path) -> pl.DataFrame:
 
 
 def build_ctm(strata_path: Path, out_path: Path) -> pl.DataFrame:
-    """Constant-temperature effective parameters."""
-    df = _normalize_eff(pl.read_parquet(strata_path))
+    """Constant-temperature effective parameters (with Ematch/E0/T)."""
+    df = _normalize_ctm(pl.read_parquet(strata_path))
     _assert_eff_invariants(df, "CTM")
+    if (df["temperature_MeV"] <= 0).any():
+        raise ValueError("non-positive CTM temperature_MeV")
+    if not df["temperature_MeV"].is_finite().all():
+        raise ValueError("non-finite CTM temperature_MeV")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out_path, compression="zstd")
     logger.info("wrote %d CTM rows to %s", df.height, out_path)

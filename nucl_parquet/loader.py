@@ -328,6 +328,9 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         "photon_pe_high_z_params",
     )
     _register_parquet(db, data_dir / "em" / "photon_pe_angular.parquet", "photon_pe_angular")
+    # Total photoelectric XS (per strata#600 fix) — preferred over photon_pe
+    # for attenuation queries; photon_pe stays for K-shell/L-shell breakdown.
+    _register_parquet(db, data_dir / "em" / "photon_pe_total.parquet", "photon_pe_total")
 
     # --- G4EMLOW electron-matter cross-sections (v0.13 epic #114) ---
     _register_parquet(db, data_dir / "em" / "electron_brem.parquet", "electron_brem")

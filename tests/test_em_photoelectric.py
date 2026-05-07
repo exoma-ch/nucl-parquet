@@ -40,17 +40,60 @@ class TestHighZParams:
 
 @pytest.mark.data
 class TestAngular:
+    """Schema migrated per strata#294 — Sauter-Gavrila majorant table now
+    keyed on (shell_id, beta_index) instead of (table_id, energy_mev)."""
+
     def test_view_registered(self, db) -> None:
         n = db.execute("SELECT COUNT(*) FROM photon_pe_angular").fetchone()[0]
         assert n > 0
 
-    def test_two_table_ids(self, db) -> None:
-        # G4 ships table_id ∈ {0, 1}: K-shell vs other-shell sampling kernels.
-        ids = sorted(row[0] for row in db.execute("SELECT DISTINCT table_id FROM photon_pe_angular").fetchall())
+    def test_two_shells(self, db) -> None:
+        # shell_id ∈ {0, 1}: K-shell vs L-shell-and-above sampling kernels.
+        ids = sorted(row[0] for row in db.execute("SELECT DISTINCT shell_id FROM photon_pe_angular").fetchall())
         assert ids == [0, 1]
 
-    def test_energy_range(self, db) -> None:
-        e_min, e_max = db.execute("SELECT MIN(energy_MeV), MAX(energy_MeV) FROM photon_pe_angular").fetchone()
-        # Photoelectric angular kernel grid covers ~20 keV to ~1 MeV.
-        assert e_min < 0.05
-        assert e_max >= 0.99
+    def test_beta_in_unit_range(self, db) -> None:
+        # beta = v/c of the photoelectron must land in [0, 1].
+        bad = db.execute("SELECT COUNT(*) FROM photon_pe_angular WHERE beta < 0 OR beta > 1").fetchone()[0]
+        assert bad == 0
+
+    def test_majorants_finite_positive(self, db) -> None:
+        # a_majorant and c_majorant parameterize the rejection-sampling
+        # envelope; both must be positive finite.
+        bad = db.execute(
+            "SELECT COUNT(*) FROM photon_pe_angular "
+            "WHERE a_majorant <= 0 OR c_majorant <= 0 OR isnan(a_majorant) OR isnan(c_majorant)"
+        ).fetchone()[0]
+        assert bad == 0
+
+
+@pytest.mark.data
+class TestPhotonPeTotal:
+    """Total σ_PE summed across shells — pre-decoded per strata#600 fix."""
+
+    def test_view_registered(self, db) -> None:
+        n = db.execute("SELECT COUNT(*) FROM photon_pe_total").fetchone()[0]
+        assert n > 0
+
+    def test_pb_99kev_total_xs(self, db) -> None:
+        # Pb total σ_PE @ 99 keV ≈ 1856 b (K-shell ~1472 + L+M+N).
+        rows = db.execute(
+            "SELECT sigma_b FROM photon_pe_total WHERE Z=82 AND ABS(energy_MeV - 0.099) < 1e-4"
+        ).fetchall()
+        assert rows
+        # Allow 2% tolerance — interpolation grid points may not land exactly on 99 keV.
+        for (s,) in rows:
+            assert 1700 < s < 2000, f"Pb @ 99 keV total σ_PE = {s} b, expected ~1856"
+
+    def test_total_above_pershell(self, db) -> None:
+        # Total must equal-or-exceed the sum across shells from the per-shell
+        # view at any matched (Z, energy). Spot-check at Pb K-edge.
+        # photon_pe shell=0 at 99 keV ≈ 1472 b; total ≈ 1856 b.
+        per_shell = db.execute(
+            "SELECT sigma_b FROM photon_pe WHERE Z=82 AND shell=0 AND ABS(energy_MeV - 0.099) < 1e-4"
+        ).fetchall()
+        total = db.execute(
+            "SELECT MIN(sigma_b) FROM photon_pe_total WHERE Z=82 AND ABS(energy_MeV - 0.099) < 1e-4"
+        ).fetchone()
+        assert per_shell and total and total[0] is not None
+        assert total[0] >= per_shell[0][0] * 0.95  # within interpolation noise

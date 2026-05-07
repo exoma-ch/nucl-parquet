@@ -18,17 +18,26 @@ class TestNudexLevels:
 
     def test_view_registered(self, db) -> None:
         n = db.execute("SELECT COUNT(*) FROM nudex_levels").fetchone()[0]
-        # Upstream 158919; we filter 19 strata#621 orphans → 158900.
-        assert n == 158900, f"expected 158900 levels (post strata#621 filter), got {n}"
+        # Strata#621 fix recovered 19 superheavy (Z=113-118) levels.
+        assert n == 158919, f"expected 158919 levels, got {n}"
 
     def test_no_null_z(self, db) -> None:
-        # strata#621 protection — all rows must have valid Z and A.
+        # strata#621 fix — all rows must have valid Z and A.
         n = db.execute("SELECT COUNT(*) FROM nudex_levels WHERE Z IS NULL OR A IS NULL").fetchone()[0]
         assert n == 0
 
     def test_isotope_coverage(self, db) -> None:
+        # 3331 + 19 superheavies (Nh, Fl, Mc, Lv, Ts, Og) recovered post-strata#621.
         n_iso = db.execute("SELECT COUNT(DISTINCT (Z, A)) FROM nudex_levels").fetchone()[0]
-        assert n_iso == 3331
+        assert n_iso == 3350
+
+    def test_superheavies_present(self, db) -> None:
+        # Strata#621 specific: Z=113-117 superheavies were missing pre-fix.
+        # (Z=118 Og has no measured discrete-level data in NUDEX; ENSDF only
+        # tabulates ground states for it. Z=113-117 each have measured isotopes.)
+        rows = db.execute("SELECT DISTINCT Z FROM nudex_levels WHERE Z >= 113 ORDER BY Z").fetchall()
+        zs = {r[0] for r in rows}
+        assert zs >= {113, 114, 115, 116, 117}, f"superheavy coverage: {zs}"
 
     def test_no_negative_energy(self, db) -> None:
         n = db.execute("SELECT COUNT(*) FROM nudex_levels WHERE energy_MeV < 0").fetchone()[0]
@@ -106,11 +115,11 @@ class TestNudexIsotopes:
 
     def test_view_registered(self, db) -> None:
         n = db.execute("SELECT COUNT(*) FROM nudex_isotopes").fetchone()[0]
-        assert n == 3331
+        assert n == 3350
 
     def test_unique_z_a(self, db) -> None:
         n_unique = db.execute("SELECT COUNT(DISTINCT (Z, A)) FROM nudex_isotopes").fetchone()[0]
-        assert n_unique == 3331
+        assert n_unique == 3350
 
     def test_pb208_summary(self, db) -> None:
         # Pb-208 — doubly magic, well-known spectroscopy.
