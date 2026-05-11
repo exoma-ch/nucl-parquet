@@ -36,9 +36,10 @@ jobs:
           fi
           tar --zstd -C data -cf "nucl-parquet-data-${CALVER}.tar.zst" .
           ls -lh "nucl-parquet-data-${CALVER}.tar.zst"
+          echo "ASSET_PATH=nucl-parquet-data-${CALVER}.tar.zst" >> "$GITHUB_ENV"
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: nucl-parquet-data-*.tar.zst
+          files: ${{ env.ASSET_PATH }}
           fail_on_unmatched_files: true
           generate_release_notes: true

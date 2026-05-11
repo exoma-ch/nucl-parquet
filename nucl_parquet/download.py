@@ -71,8 +71,13 @@ def data_version(data_dir_path: Path | str | None = None) -> str:
 
 
 def _resolve_latest_data_tag() -> str:
-    """Return the most recent `data-YYYY.MM.DD` release tag on GitHub."""
-    url = f"https://api.github.com/repos/{_GITHUB_REPO}/releases?per_page=30"
+    """Return the most recent `data-YYYY.MM.DD` release tag on GitHub.
+
+    Scans the most-recent 100 releases (single page, max page_size). Code
+    releases share this listing, so a high code-release cadence between
+    data refreshes could mask the data tag; raise loudly if none found.
+    """
+    url = f"https://api.github.com/repos/{_GITHUB_REPO}/releases?per_page=100"
     req = Request(url, headers={"Accept": "application/vnd.github+json"})
     with urlopen(req) as resp:  # noqa: S310
         payload = json.load(resp)
@@ -80,7 +85,10 @@ def _resolve_latest_data_tag() -> str:
         tag = release.get("tag_name", "")
         if _DATA_TAG_RE.match(tag):
             return tag
-    raise RuntimeError(f"No data-YYYY.MM.DD release found in the latest 30 releases at {url}")
+    raise RuntimeError(f"No data-YYYY.MM.DD release found in the latest 100 releases at {url}")
+
+
+_CODE_VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+")
 
 
 def download(
@@ -94,11 +102,12 @@ def download(
     Args:
         dest: Destination directory. Defaults to ~/.nucl-parquet/.
         data_version: CalVer string (`"2026.05.11"`) OR `"latest"` to resolve
-            the most recent `data-*` GitHub release.
-        tag: Deprecated. Pre-CalVer callers passed a code-version tag
-            (e.g. `"v0.13.0"`); this is now ignored with a DeprecationWarning
-            and resolves to the latest data release instead. New callers
-            should use `data_version=`.
+            the most recent `data-*` GitHub release. Pre-CalVer code-version
+            strings (e.g. `"v0.13.0"`) are detected and resolve to latest data
+            with a DeprecationWarning.
+        tag: Deprecated keyword alias of pre-CalVer call sites. Ignored with
+            a DeprecationWarning; resolves to latest data. New callers should
+            use `data_version=`.
 
     Returns:
         Path to the downloaded data directory.
@@ -108,6 +117,17 @@ def download(
             "`tag=` is deprecated in nucl_parquet.download(); pass `data_version=` "
             "with a CalVer identifier (e.g. `'2026.05.11'`) or `'latest'`. "
             "Resolving to latest data release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        data_version = "latest"
+    elif _CODE_VERSION_RE.match(data_version):
+        # Pre-CalVer positional call: download(dest, "v0.13.0"). Same
+        # remediation as the keyword path — warn and fall through to latest.
+        warnings.warn(
+            f"`{data_version!r}` looks like a code-version tag; "
+            "nucl_parquet.download() now takes CalVer data identifiers "
+            "(e.g. `'2026.05.11'`) or `'latest'`. Resolving to latest data.",
             DeprecationWarning,
             stacklevel=2,
         )
