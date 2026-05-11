@@ -68,7 +68,7 @@ def test_elements_schema(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_stopping_schema(data_dir_path: Path) -> None:
-    _check_schema(data_dir_path / "stopping" / "stopping.parquet", STOPPING_SCHEMA)
+    _check_schema(data_dir_path / "stopping" / "PSTAR.parquet", STOPPING_SCHEMA)
 
 
 @pytest.mark.data
