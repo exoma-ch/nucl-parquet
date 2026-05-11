@@ -54,7 +54,18 @@ const CATALOG: Catalog = {
   },
   shared: {
     meta: { path: "meta/", files: { abundances: "abundances.parquet", decay: "decay.parquet", elements: "elements.parquet" } },
-    stopping: { path: "stopping/", files: { stopping: "stopping.parquet" }, sources: ["PSTAR", "ASTAR", "ICRU73", "MSTAR"] },
+    stopping: {
+      path: "stopping/",
+      files: {
+        PSTAR: "PSTAR.parquet",
+        ASTAR: "ASTAR.parquet",
+        ESTAR: "ESTAR.parquet",
+        dSTAR: "dSTAR.parquet",
+        tSTAR: "tSTAR.parquet",
+        catima: "catima/catima.parquet",
+      } as Record<string, string>,
+      sources: ["PSTAR", "ASTAR", "ESTAR", "dSTAR", "tSTAR", "catima"],
+    },
   },
 };
 
@@ -250,16 +261,30 @@ server.tool(
   "get_stopping_power",
   "Get mass stopping power (dE/dx) data for a projectile in a target element.",
   {
-    source: z.string().describe("Data source: PSTAR, ASTAR, ICRU73, or MSTAR"),
+    source: z.string().describe(
+      "Data source: PSTAR (protons), ASTAR (α, NIST ICRU-49), ESTAR (electrons), dSTAR, tSTAR (velocity-scaled from PSTAR), or catima (full Z×Z table; α/³He fallback for non-NIST elements)",
+    ),
     target_z: z.number().describe("Target element atomic number"),
   },
   async ({ source, target_z }) => {
-    const stoppingPath = CATALOG.shared.stopping.path + CATALOG.shared.stopping.files.stopping;
+    // Post-#143: aggregate stopping.parquet is deleted; route per-source.
+    const fileMap = CATALOG.shared.stopping.files;
+    if (!(source in fileMap)) {
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            error: `unknown source ${source}; valid: ${CATALOG.shared.stopping.sources.join(", ")}`,
+          }, null, 2),
+        }],
+      };
+    }
+    const stoppingPath = CATALOG.shared.stopping.path + fileMap[source];
     const rows = await fetchParquetRows(stoppingPath);
 
-    const filtered = rows.filter(
-      (row) => row["source"] === source && row["target_Z"] === target_z,
-    );
+    // catima uses (proj_Z, target_Z); NIST tables use (source, target_Z).
+    // Filter by target_Z in both cases — the file already restricts to one source.
+    const filtered = rows.filter((row) => row["target_Z"] === target_z);
 
     return {
       content: [{
