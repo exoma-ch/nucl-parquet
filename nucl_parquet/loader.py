@@ -214,8 +214,11 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     # --- Stopping powers ---
     # Per-source files: stopping/PSTAR.parquet, ASTAR.parquet, ESTAR.parquet,
-    # dSTAR.parquet, tSTAR.parquet, He3STAR.parquet, catima_*.parquet
-    # catima.parquet (92×92 MeV/u table, different schema) lives in stopping/catima/
+    # dSTAR.parquet, tSTAR.parquet, catima_*.parquet — all reproducible from
+    # nucl_parquet/build_stopping.py (NIST CGI) + build_light_ions.py + the
+    # pycatima-based build_heavy_ions.py.
+    # catima.parquet (92×92 MeV/u table, different schema) lives in stopping/catima/.
+    # ³He routes through catima (no NIST table); α through NIST ASTAR (#137).
     _register_glob(db, data_dir / "stopping", "stopping")
     _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
 
@@ -605,8 +608,11 @@ _PROJECTILES: dict[str, tuple[int, int, str]] = {
     "p": (1, 1, "PSTAR"),
     "d": (2, 1, "PSTAR"),
     "t": (3, 1, "PSTAR"),
-    "h": (3, 2, "ASTAR"),  # 3He
-    "he3": (3, 2, "ASTAR"),
+    # α uses NIST ASTAR (ICRU-49 reference; reproducible via build_stopping.py).
+    # ³He has no NIST table — routes through catima. Both pre-#137 paths used
+    # the broken ASTAR.parquet that was Z²-scaled from PSTAR at the wrong axis.
+    "h": (3, 2, "catima"),  # 3He
+    "he3": (3, 2, "catima"),
     "a": (4, 2, "ASTAR"),
     "he4": (4, 2, "ASTAR"),
     "e": (0, -1, "ESTAR"),  # electron
@@ -703,11 +709,15 @@ def elemental_dedx(
 ) -> np.ndarray:
     """Mass stopping power [MeV cm2/g] for a projectile in a pure element.
 
-    Supports all projectiles:
-    - Light ions via NIST tables: p, d, t, h/he3, a/he4, e/e-
-    - Any heavy ion via catima: 'c12', 'pb208', 'xe132', 'fe56', etc.
-      Any isotope of a given element works — catima stores data in MeV/u
-      and the lookup divides total energy by A automatically.
+    Source routing (post-#137):
+    - p, d, t          → NIST PSTAR (ICRU-49); d/t velocity-scaled (E_p = E/A)
+    - α (a, he4)       → NIST ASTAR (ICRU-49)
+    - ³He (h, he3)     → catima (no NIST ³He table)
+    - e, e-            → NIST ESTAR (ICRU-37)
+    - heavy ions       → catima (any isotope of Z=1-92)
+
+    NIST PSTAR/ASTAR only publishes 25 elemental materials; for target_Z not
+    in NIST's table (e.g. Tc, Pm, Po, Rn), the loader falls back to catima.
 
     Args:
         db: DuckDB connection from connect().
@@ -732,9 +742,8 @@ def elemental_dedx(
 
     log_E, log_S = _get_stopping_table(db, ref_source, target_Z)
     if len(log_E) == 0:
-        # NIST PSTAR/ASTAR only covers 74 predefined materials; fall back to
-        # CatIMA (Bethe-Bloch) for elements not in the NIST table (e.g. Ra, Rn,
-        # Ac, Po, Fr, At, Tc, Pm and many others).
+        # NIST tables only cover 25 elemental materials; fall back to catima
+        # (Bethe-Bloch) for elements NIST doesn't publish (Tc, Pm, Po, Rn, …).
         if ref_source in ("PSTAR", "ASTAR"):
             log_E_c, log_S_c = _get_catima_table(db, proj_Z, target_Z)
             if len(log_E_c) > 0:
@@ -743,12 +752,11 @@ def elemental_dedx(
 
     if ref_source == "ESTAR":
         return _interp_loglog(log_E, log_S, energy_MeV)
-    elif ref_source == "PSTAR":
-        # velocity-scale for d/t: same velocity → E_p = E_proj / A
-        return _interp_loglog(log_E, log_S, energy_MeV / proj_A)
-    else:
-        # ASTAR for alpha (A=4); velocity-scale for 3He: E_alpha = E_proj * (4/A)
-        return _interp_loglog(log_E, log_S, energy_MeV * (4.0 / proj_A))
+    if ref_source == "ASTAR":
+        # ASTAR is keyed on total α kinetic energy (A=4); no rescaling needed.
+        return _interp_loglog(log_E, log_S, energy_MeV)
+    # PSTAR: velocity-scale for d/t (same velocity → E_p = E / A_proj).
+    return _interp_loglog(log_E, log_S, energy_MeV / proj_A)
 
 
 def compound_dedx(
