@@ -40,8 +40,9 @@ db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_A=63 AND residual
 # Decay chain
 db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
 
-# Stopping power — light ions (NIST PSTAR/ASTAR/ESTAR)
+# Stopping power — light ions (NIST PSTAR/ASTAR/ESTAR; catima for ³He)
 nucl_parquet.elemental_dedx(db, "p", 29, 10.0)     # protons in Cu at 10 MeV
+nucl_parquet.elemental_dedx(db, "a", 29, 5.0)      # α in Cu at 5 MeV (NIST ASTAR)
 nucl_parquet.elemental_dedx(db, "e", 29, 1.0)      # electrons in Cu at 1 MeV
 nucl_parquet.compound_dedx(db, "p", [(29, 0.5), (30, 0.5)], 10.0)
 
@@ -175,14 +176,14 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 
 | Column | Type | Description |
 |--------|------|-------------|
-| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR`, `dSTAR`, `tSTAR`, `He3STAR`, `catima_C12`, … |
+| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR`, `dSTAR`, `tSTAR`, `catima_C12`, … |
 | target_Z | Int32 | Target element Z (1–92) |
 | energy_MeV | Float64 | Projectile kinetic energy (MeV, total) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
 
-Files: `PSTAR.parquet`, `ASTAR.parquet`, `ESTAR.parquet`, `dSTAR.parquet`, `tSTAR.parquet`, `He3STAR.parquet`, and `catima_{beam}.parquet` for C12/O16/Ne20/Si28/Ar40/Fe56. The full 92×92 CaTiMA matrix (MeV/u units) lives separately at `stopping/catima/catima.parquet`.
+Files: `PSTAR.parquet`, `ASTAR.parquet`, `ESTAR.parquet`, `dSTAR.parquet`, `tSTAR.parquet`, and `catima_{beam}.parquet` for C12/O16/Ne20/Si28/Ar40/Fe56. The full 92×92 CaTiMA matrix (MeV/u units) lives separately at `stopping/catima/catima.parquet`.
 
-`dSTAR`, `tSTAR`, and `He3STAR` are velocity-scaled from PSTAR/ASTAR — exact for electronic stopping since Z_proj and velocity fully determine dE/dx. For elements not in the NIST table (e.g. Ra, Rn, Ac, Po, Fr, At, Tc, Pm), `elemental_dedx()` automatically falls back to CaTiMA (Bethe-Bloch), which covers all Z=1–92.
+All three NIST programs (PSTAR, ASTAR, ESTAR) are reproducible from NIST CGI via `uv run python -m nucl_parquet.build_stopping`. `dSTAR` and `tSTAR` are velocity-scaled from PSTAR (exact, same Z=1, just relabel energy axis) by `build_light_ions.py`. ³He has no published NIST table; α and ³He earlier shipped via wrong-by-4× files that have been removed (#137) — α now uses NIST ASTAR (ICRU-49 reference), ³He uses CaTiMA. NIST PSTAR/ASTAR only publish 25 elemental targets; for elements outside that list (e.g. Tc, Pm, Po, Rn), `elemental_dedx()` falls back to CaTiMA (Bethe-Bloch), which covers all Z=1–92.
 
 **Heavy-ion total reaction cross-sections** (`hi-xs/xs/{proj}_{target}.parquet`):
 

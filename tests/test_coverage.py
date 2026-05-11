@@ -40,7 +40,12 @@ def test_meta_files_exist(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_stopping_exists(data_dir_path: Path) -> None:
-    assert (data_dir_path / "stopping" / "stopping.parquet").exists()
+    """Per-source NIST tables + catima master must be present."""
+    stopping = data_dir_path / "stopping"
+    assert (stopping / "PSTAR.parquet").exists()
+    assert (stopping / "ASTAR.parquet").exists()
+    assert (stopping / "ESTAR.parquet").exists()
+    assert (stopping / "catima" / "catima.parquet").exists()
 
 
 @pytest.mark.data
@@ -56,13 +61,40 @@ def test_elements_has_all_z(data_dir_path: Path) -> None:
 
 
 @pytest.mark.data
-def test_stopping_covers_pstar_astar(data_dir_path: Path) -> None:
-    """Stopping data should include both PSTAR and ASTAR sources."""
+def test_stopping_covers_nist_sources(data_dir_path: Path) -> None:
+    """The per-source NIST tables must each be loadable and non-empty.
+
+    Sourced from build_stopping.py (NIST CGI). The deleted aggregate
+    stopping.parquet was an unprovenanced blob; we now check the per-source
+    files directly.
+    """
     db = duckdb.connect()
-    path = data_dir_path / "stopping" / "stopping.parquet"
-    sources = {r[0] for r in db.sql(f"SELECT DISTINCT source FROM read_parquet('{path}')").fetchall()}
-    assert "PSTAR" in sources
-    assert "ASTAR" in sources
+    stopping = data_dir_path / "stopping"
+    for label in ("PSTAR", "ASTAR", "ESTAR"):
+        path = stopping / f"{label}.parquet"
+        rows = db.sql(f"SELECT COUNT(*) FROM read_parquet('{path}') WHERE source = '{label}'").fetchone()[0]
+        assert rows > 100, f"{label}: expected >100 rows, got {rows}"
+
+
+@pytest.mark.data
+def test_stopping_no_broken_legacy_files(data_dir_path: Path) -> None:
+    """Regression guard: He3STAR.parquet and the unprovenanced stopping.parquet
+    aggregate must stay deleted (both produced wrong α / ³He values; see #137).
+
+    The top-level stopping/catima.parquet must also stay deleted (it was a
+    byte-identical duplicate of stopping/catima/catima.parquet with a different
+    schema that broke the `_register_glob` view).
+    """
+    stopping = data_dir_path / "stopping"
+    assert not (stopping / "He3STAR.parquet").exists(), (
+        "He3STAR.parquet inherited the broken ASTAR Z²-scaling — see #137"
+    )
+    assert not (stopping / "stopping.parquet").exists(), (
+        "stopping.parquet was an unprovenanced aggregate; use per-source files"
+    )
+    assert not (stopping / "catima.parquet").exists(), (
+        "stopping/catima.parquet duplicated stopping/catima/catima.parquet and broke the glob view (different schema)"
+    )
 
 
 @pytest.mark.data

@@ -40,17 +40,16 @@ def test_co60_half_life(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_proton_stopping_cu(data_dir_path: Path) -> None:
-    """PSTAR stopping power for protons in Cu at 10 MeV should be ~30-60 MeV cm2/g."""
+    """PSTAR stopping power for protons in Cu at 10 MeV: NIST ICRU-49 value ≈ 27."""
     db = duckdb.connect()
-    path = data_dir_path / "stopping" / "stopping.parquet"
+    path = data_dir_path / "stopping" / "PSTAR.parquet"
     result = db.sql(
         f"SELECT dedx FROM read_parquet('{path}') "
-        "WHERE source='PSTAR' AND target_Z=29 "
-        "AND energy_MeV BETWEEN 9.0 AND 11.0 "
+        "WHERE target_Z=29 AND energy_MeV BETWEEN 9.0 AND 11.0 "
         "ORDER BY ABS(energy_MeV - 10.0) LIMIT 1"
     ).fetchone()
     assert result is not None, "No PSTAR data for Cu near 10 MeV"
-    assert 20.0 < result[0] < 80.0, f"Unexpected stopping power: {result[0]}"
+    assert 20.0 < result[0] < 35.0, f"Unexpected stopping power: {result[0]}"
 
 
 @pytest.mark.data

@@ -6,8 +6,11 @@ import { stoppingColumns, xsColumns } from "../src/columns.js";
 const DATA_DIR = join(import.meta.dirname, "../../../../data");
 
 describe("stoppingColumns", () => {
-  it("returns typed arrays for stopping.parquet", async () => {
-    const buf = await readFile(join(DATA_DIR, "stopping/stopping.parquet"));
+  it("returns typed arrays for a per-source stopping parquet", async () => {
+    // The unprovenanced stopping.parquet aggregate was removed in #143 (#137).
+    // Per-source files (PSTAR/ASTAR/ESTAR/dSTAR/tSTAR/catima_*) are the canonical
+    // shape; full TS-client cleanup of docstrings + sample paths is #147.
+    const buf = await readFile(join(DATA_DIR, "stopping/PSTAR.parquet"));
     const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     const cols = await stoppingColumns(ab);
 
@@ -23,7 +26,7 @@ describe("stoppingColumns", () => {
     expect(cols.energyMeV.length).toBe(n);
     expect(cols.dedx.length).toBe(n);
 
-    // Sanity: sources include PSTAR
+    // Sanity: PSTAR file contains PSTAR-source rows
     expect(cols.source).toContain("PSTAR");
 
     // Sanity: all dedx > 0
