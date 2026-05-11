@@ -153,8 +153,15 @@ CATALOG: dict[str, Any] = {
         },
         "stopping": {
             "path": "stopping/",
-            "files": {"stopping": "stopping.parquet"},
-            "sources": ["PSTAR", "ASTAR", "ICRU73", "MSTAR"],
+            "files": {
+                "PSTAR": "PSTAR.parquet",
+                "ASTAR": "ASTAR.parquet",
+                "ESTAR": "ESTAR.parquet",
+                "dSTAR": "dSTAR.parquet",
+                "tSTAR": "tSTAR.parquet",
+                "catima": "catima/catima.parquet",
+            },
+            "sources": ["PSTAR", "ASTAR", "ESTAR", "dSTAR", "tSTAR", "catima"],
         },
     },
 }
@@ -335,14 +342,25 @@ async def get_stopping_power(source: str, target_z: int) -> str:
     """Get mass stopping power (dE/dx) for a projectile in a target element.
 
     Args:
-        source: Data source: PSTAR, ASTAR, ICRU73, or MSTAR.
+        source: Data source: PSTAR (protons), ASTAR (α via NIST ICRU-49),
+                ESTAR (electrons), dSTAR/tSTAR (velocity-scaled deuteron/triton).
+                ³He routes through the catima master table (no NIST table exists).
         target_z: Target element atomic number.
     """
     sp = CATALOG["shared"]["stopping"]
-    path = sp["path"] + sp["files"]["stopping"]
+    if source not in sp["files"]:
+        import json
+
+        return json.dumps(
+            {"error": f"unknown source {source!r}; valid: {sp['sources']}"},
+            indent=2,
+        )
+    path = sp["path"] + sp["files"][source]
     rows = await fetch_parquet_rows(path)
 
-    filtered = [row for row in rows if row.get("source") == source and row.get("target_Z") == target_z]
+    # catima uses (proj_Z, target_Z, energy_MeV_u, dedx); NIST tables use
+    # (source, target_Z, energy_MeV, dedx). Filter by target_Z either way.
+    filtered = [row for row in rows if row.get("target_Z") == target_z]
 
     import json
 
