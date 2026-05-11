@@ -1,6 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
+  "data_version": "2026.05.11",
+  "data_version_note": "CalVer (YYYY.MM.DD) identifier for the data tarball published alongside this catalog. Independent of the code release that ships with this catalog — bump whenever data refreshes upstream. The matching GitHub release tag is `data-{data_version}`.",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
