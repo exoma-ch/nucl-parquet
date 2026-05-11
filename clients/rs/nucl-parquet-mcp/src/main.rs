@@ -404,7 +404,7 @@ fn tool_definitions() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "source": { "type": "string", "description": "PSTAR, ASTAR, ICRU73, or MSTAR" },
+                        "source": { "type": "string", "description": "PSTAR (protons), ASTAR (α, NIST ICRU-49), ESTAR (electrons), dSTAR, tSTAR (velocity-scaled from PSTAR), or catima (full Z×Z table; α/³He fallback for non-NIST elements)" },
                         "target_z": { "type": "integer", "description": "Target atomic number" }
                     },
                     "required": ["source", "target_z"]
@@ -558,13 +558,25 @@ async fn handle_tool_call(
                 .get("target_z")
                 .and_then(|v| v.as_i64())
                 .ok_or("missing 'target_z'")?;
-            let rows = fetch_parquet_rows(client, cache, "stopping/stopping.parquet").await?;
+            // Post-#143: aggregate stopping.parquet is deleted; route to per-source
+            // files. catima's full Z×Z master sits under stopping/catima/.
+            let path = match source {
+                "PSTAR" => "stopping/PSTAR.parquet",
+                "ASTAR" => "stopping/ASTAR.parquet",
+                "ESTAR" => "stopping/ESTAR.parquet",
+                "dSTAR" => "stopping/dSTAR.parquet",
+                "tSTAR" => "stopping/tSTAR.parquet",
+                "catima" => "stopping/catima/catima.parquet",
+                other => {
+                    return Err(format!(
+                        "unknown stopping source {other:?}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima"
+                    ));
+                }
+            };
+            let rows = fetch_parquet_rows(client, cache, path).await?;
             let filtered: Vec<_> = rows
                 .into_iter()
-                .filter(|row| {
-                    row.get("source").and_then(|v| v.as_str()) == Some(source)
-                        && row.get("target_Z").and_then(|v| v.as_i64()) == Some(target_z)
-                })
+                .filter(|row| row.get("target_Z").and_then(|v| v.as_i64()) == Some(target_z))
                 .collect();
             let result = serde_json::json!({ "source": source, "target_z": target_z, "count": filtered.len(), "rows": filtered });
             Ok(
