@@ -5,6 +5,8 @@
  * then wraps numeric columns in typed arrays — no JSON serialisation round-trip.
  *
  * Intended use:
+ *   // Per-source parquet (PSTAR.parquet / ASTAR.parquet / ESTAR.parquet /
+ *   // dSTAR.parquet / tSTAR.parquet) — schema: source, target_Z, energy_MeV, dedx
  *   const cols = await stoppingColumns(arrayBuffer);
  *   wasm.load_stopping_arrays(cols.source, cols.targetZ, cols.energyMeV, cols.dedx);
  */
@@ -19,7 +21,7 @@ import { compressors } from "hyparquet-compressors";
 
 /** Column-oriented stopping power data for direct WASM transfer. */
 export interface StoppingColumns {
-  /** Stopping source name (e.g. "PSTAR", "ASTAR", "catima"). */
+  /** Stopping source name (one of "PSTAR", "ASTAR", "ESTAR", "dSTAR", "tSTAR"). */
   source: string[];
   /** Target element atomic number. */
   targetZ: Int32Array;
@@ -103,8 +105,13 @@ function getStrings(cols: Map<string, number[] | string[]>, name: string): strin
 // ---------------------------------------------------------------------------
 
 /**
- * Extract stopping power columns from a `stopping.parquet` ArrayBuffer.
- * Schema: source str, target_Z i32, energy_MeV f64, dedx f64
+ * Extract stopping power columns from a per-source NIST parquet ArrayBuffer
+ * (PSTAR.parquet, ASTAR.parquet, ESTAR.parquet, dSTAR.parquet, tSTAR.parquet).
+ * Schema: source str, target_Z i32, energy_MeV f64, dedx f64.
+ *
+ * The previously-shipped `stopping.parquet` aggregate is no longer published
+ * (deleted in #143); fetch the per-source file you need. For full Z×Z catima
+ * coverage use `catimaColumns` against `stopping/catima/catima.parquet`.
  */
 export async function stoppingColumns(buffer: ArrayBuffer): Promise<StoppingColumns> {
   const cols = await extractColumns(buffer);
