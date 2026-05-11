@@ -116,7 +116,11 @@ _NIST_ASTAR_ALPHA: list[tuple[int, float, float]] = [
     (29, 20.0, 64.54),
     (29, 50.0, 32.20),
     (29, 100.0, 19.32),
-    # Tungsten
+    # Tungsten — sub-MeV/u + therapy range
+    (74, 0.10, 346.4),
+    (74, 0.15, 386.8),
+    (74, 0.20, 401.7),
+    (74, 0.30, 392.2),
     (74, 0.5, 345.3),
     (74, 1.0, 261.1),
     (74, 2.0, 187.4),
@@ -138,7 +142,11 @@ _NIST_ASTAR_ALPHA: list[tuple[int, float, float]] = [
     (79, 20.0, 45.13),
     (79, 50.0, 23.55),
     (79, 100.0, 14.45),
-    # Lead
+    # Lead — sub-MeV/u Bragg-peak shoulder for high-Z TAT relevance
+    (82, 0.10, 359.7),
+    (82, 0.15, 395.4),
+    (82, 0.20, 404.9),
+    (82, 0.30, 394.8),
     (82, 0.5, 349.1),
     (82, 1.0, 258.6),
     (82, 2.0, 184.6),
@@ -171,21 +179,33 @@ def test_alpha_dedx_matches_nist_astar_exactly(
 
 @pytest.mark.data
 @pytest.mark.parametrize("energy_MeV_per_u", [0.2, 1.0, 10.0, 100.0])
-def test_he3_dispatches_and_matches_alpha_at_equal_velocity(data_dir_path: Path, energy_MeV_per_u: float) -> None:
-    """³He must dispatch via catima with non-NaN, matching α at equal MeV/u.
+def test_he3_dispatches_through_catima(data_dir_path: Path, energy_MeV_per_u: float) -> None:
+    """³He via the loader must equal a direct catima lookup at the same MeV/u.
 
-    catima encodes dedx by (proj_Z, energy_MeV_u) — both ³He and α (Z=2) hit
-    the same row at equal velocity. This catches the loader dividing by the
-    wrong A.
+    Goes through `_get_catima_table(2, target_Z)` and `_interp_loglog(.../A)`
+    independently to assert the dispatch is reading the right row and dividing
+    by proj_A=3. Note this only validates the *dispatch arithmetic* — pycatima's
+    actual ³He physics isn't anchored against a published reference here. The
+    physics anchor is via α (same proj_Z=2, same row).
     """
+    import numpy as np
+
+    from nucl_parquet.loader import _get_catima_table, _interp_loglog
+
     db = np_lib.connect(data_dir_path)
     he3 = float(np_lib.elemental_dedx(db, "he3", 29, energy_MeV_per_u * 3.0)[0])
-    a = float(np_lib.elemental_dedx(db, "a", 29, energy_MeV_per_u * 4.0)[0])
-    assert he3 > 0 and a > 0, f"NaN at {energy_MeV_per_u} MeV/u: he3={he3}, a={a}"
+    log_E, log_S = _get_catima_table(db, proj_Z=2, target_Z=29)
+    expected = float(_interp_loglog(log_E, log_S, np.atleast_1d(energy_MeV_per_u))[0])
+    assert he3 == pytest.approx(expected, rel=1e-9), (
+        f"³He dispatch at {energy_MeV_per_u} MeV/u: got {he3}, direct catima lookup {expected}"
+    )
 
 
 @pytest.mark.data
-@pytest.mark.parametrize(("target_Z", "energy_MeV_per_u"), [(6, 100.0), (29, 100.0), (82, 100.0)])
+@pytest.mark.parametrize(
+    ("target_Z", "energy_MeV_per_u"),
+    [(6, 100.0), (29, 100.0), (82, 100.0), (6, 1.0), (29, 1.0), (82, 1.0)],
+)
 def test_alpha_proton_velocity_scaling_invariant(data_dir_path: Path, target_Z: int, energy_MeV_per_u: float) -> None:
     """Direct invariant: S(α, Z, 4E) ≈ 4·S(p, Z, E) at same velocity (Bethe regime).
 
@@ -199,8 +219,11 @@ def test_alpha_proton_velocity_scaling_invariant(data_dir_path: Path, target_Z: 
     a = float(np_lib.elemental_dedx(db, "a", target_Z, energy_MeV_per_u * 4.0)[0])
     p = float(np_lib.elemental_dedx(db, "p", target_Z, energy_MeV_per_u * 1.0)[0])
     ratio = a / p
-    # Tolerance: ~3% accounts for the lnI / shell-correction difference between
-    # ICRU-49's proton and α parameterizations even when Z² dominates.
+    # ICRU-49 Z²-scaling holds within ~3% across 1-100 MeV/u — the empirical
+    # ratio sits 3.97-4.11 across that range on light/medium/heavy targets.
+    # The original Z²-at-wrong-axis bug pinned ratio ≈ 4 only when the wrong
+    # energy axis was used; running this at two distinct MeV/u values catches
+    # a regression that survives single-energy validation.
     assert 3.85 <= ratio <= 4.15, (
         f"Z²-scaling broken at Z={target_Z}, {energy_MeV_per_u} MeV/u: S_α/S_p = {ratio:.3f}, expected ≈ 4.0 (Z²=4)"
     )
@@ -286,10 +309,62 @@ def test_alpha_in_water_compound_matches_nist(data_dir_path: Path) -> None:
     """
     db = np_lib.connect(data_dir_path)
     water = [(1, 0.1119), (8, 0.8881)]
-    for energy_MeV, nist in [(5.0, 885.5), (20.0, 314.6), (100.0, 86.49)]:
+    # Therapy-range α (1-8 MeV) is the dosimetrically critical regime for
+    # targeted-α decay chains (²¹³Bi, ²²⁵Ac); Bragg peak lives near 0.3-0.8
+    # MeV/u so 1-2 MeV α is on the rising side. Bragg-rule on the elemental
+    # NIST tables overestimates compound water by ~9% at 1 MeV, dropping to
+    # ~2% above 5 MeV — that's the I-value compound systematic that ICRU-49
+    # corrects via published compound mean-excitation energies. The wider
+    # low-energy tolerance pins the current behaviour; #140 will tighten it
+    # via compound I-values.
+    cases = [
+        (1.0, 2193.0, 10.0),
+        (2.0, 1625.0, 6.0),
+        (5.0, 885.5, 5.0),
+        (8.0, 630.6, 5.0),
+        (20.0, 314.6, 5.0),
+        (100.0, 86.49, 5.0),
+    ]
+    for energy_MeV, nist, tol_pct in cases:
         got = float(np_lib.compound_dedx(db, "a", water, energy_MeV)[0])
         rel = abs(got - nist) / nist * 100.0
-        assert rel <= 5.0, (
+        assert rel <= tol_pct, (
             f"α in water at {energy_MeV} MeV: got={got:.4g}, NIST={nist}, "
-            f"|Δ|={rel:.2f}% > 5% — check elemental H/O anchors first"
+            f"|Δ|={rel:.2f}% > {tol_pct}% — check elemental H/O anchors first"
         )
+
+
+@pytest.mark.data
+@pytest.mark.parametrize(("projectile", "scale_A"), [("d", 2.0), ("t", 3.0)])
+def test_deuteron_triton_velocity_scaling(data_dir_path: Path, projectile: str, scale_A: float) -> None:
+    """S(d, Z, 2E) == S(p, Z, E) and S(t, Z, 3E) == S(p, Z, E) at equal velocity.
+
+    d and t are velocity-scaled from PSTAR by build_light_ions.py — they
+    share Z=1, so at the same MeV/u they collapse onto the PSTAR curve.
+    Test exercises the loader's `energy_MeV / proj_A` divisor for the
+    PSTAR branch.
+    """
+    db = np_lib.connect(data_dir_path)
+    for target_Z in (6, 29, 82):
+        for energy_MeV_per_u in (1.0, 10.0, 100.0):
+            heavy = float(np_lib.elemental_dedx(db, projectile, target_Z, energy_MeV_per_u * scale_A)[0])
+            proton = float(np_lib.elemental_dedx(db, "p", target_Z, energy_MeV_per_u)[0])
+            rel = abs(heavy - proton) / proton * 100.0
+            assert rel < 0.5, (
+                f"{projectile} vs p at Z={target_Z}, {energy_MeV_per_u} MeV/u: "
+                f"got {heavy:.4g} vs {proton:.4g}, |Δ|={rel:.3f}%"
+            )
+
+
+@pytest.mark.data
+def test_electron_dedx_matches_nist_estar(data_dir_path: Path) -> None:
+    """ESTAR anchor on Cu at 1 MeV: NIST ICRU-37 reference value.
+
+    The electron path (ESTAR) routes through the same `_get_stopping_table`
+    machinery as PSTAR/ASTAR but with no MeV→MeV/u rescaling. One anchor
+    here keeps that branch structurally tested.
+    """
+    db = np_lib.connect(data_dir_path)
+    got = float(np_lib.elemental_dedx(db, "e", 29, 1.0)[0])
+    # NIST ESTAR Cu at 1 MeV: 1.309 MeV·cm²/g (fetched 2026-05-11).
+    assert got == pytest.approx(1.309, rel=0.005), f"ESTAR e on Cu at 1 MeV: got {got:.4g}, NIST 1.309"
