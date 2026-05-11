@@ -251,12 +251,22 @@ def test_alpha_out_of_range_target_returns_nan(data_dir_path: Path) -> None:
 def test_alpha_falls_back_to_catima_for_non_nist_element(data_dir_path: Path) -> None:
     """NIST ASTAR only publishes 25 elemental targets; the rest fall back to catima.
 
-    Tc (Z=43) is not in NIST's list — should still return a finite α dedx via
-    the catima fallback in `elemental_dedx`.
+    Tc (Z=43) is not in NIST's list. Verify both (a) the dispatch returns a
+    finite α dedx and (b) the value actually came from catima, not some
+    stale cache entry — by comparing against a direct catima lookup at the
+    same energy.
     """
+    import numpy as np
+
+    from nucl_parquet.loader import _get_catima_table, _interp_loglog
+
     db = np_lib.connect(data_dir_path)
     got = float(np_lib.elemental_dedx(db, "a", 43, 5.0)[0])
-    assert got > 0, f"Tc α fallback returned non-finite value {got}"
+    log_E_c, log_S_c = _get_catima_table(db, proj_Z=2, target_Z=43)
+    expected = float(_interp_loglog(log_E_c, log_S_c, np.atleast_1d(5.0 / 4.0))[0])
+    assert got == pytest.approx(expected, rel=1e-9), (
+        f"Tc α fallback returned {got}, but direct catima lookup is {expected}"
+    )
 
 
 @pytest.mark.data

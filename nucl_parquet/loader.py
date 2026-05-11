@@ -771,7 +771,8 @@ def compound_dedx(
 
     Args:
         db: DuckDB connection from connect().
-        projectile: Projectile type ('p', 'd', 't', 'h', 'a').
+        projectile: Projectile name. Light ions: 'p','d','t','h','a','e'.
+                    Heavy ions: e.g. 'c12','pb208','xe132' (any isotope of Z=1-92).
         composition: List of (Z, mass_fraction) pairs. Should sum to ~1.0.
         energy_MeV: Projectile energy [MeV].
 
