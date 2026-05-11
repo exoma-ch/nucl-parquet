@@ -2,9 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "nucl-parquet catalog",
   "type": "object",
-  "required": ["version", "libraries", "shared"],
+  "required": ["version", "data_version", "libraries", "shared"],
   "properties": {
     "version": { "type": "integer", "const": 1 },
+    "data_version": {
+      "type": "string",
+      "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$",
+      "description": "CalVer YYYY.MM.DD identifier for the data tarball; matches the GitHub Release tag `data-{data_version}`."
+    },
     "description": { "type": "string" },
     "libraries": {
       "type": "object",

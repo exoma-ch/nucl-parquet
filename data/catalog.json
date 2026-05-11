@@ -1,6 +1,7 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
+  "data_version": "2026.05.11",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {

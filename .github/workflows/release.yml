@@ -1,5 +1,13 @@
 name: Release
 
+# Code-only release pipeline. Triggered on semver tags from release-please
+# (`v*`); fans out to PyPI, crates.io, npm, and the Go module mirror.
+#
+# Data tarballs ship from a separate workflow (.github/workflows/release-data.yml)
+# triggered on `data-YYYY.MM.DD` CalVer tags. The two pipelines run independently
+# so a code-only bump does not republish data, and a data refresh does not bump
+# every code package.
+
 on:
   push:
     tags: ["v*"]
@@ -9,24 +17,6 @@ permissions:
   id-token: write
 
 jobs:
-  data-asset:
-    name: Build & upload data tarball
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install zstd
-        run: sudo apt-get update && sudo apt-get install -y zstd
-      - name: Build tarball
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          tar --zstd -C data -cf "nucl-parquet-data-v${VERSION}.tar.zst" .
-          ls -lh "nucl-parquet-data-v${VERSION}.tar.zst"
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: nucl-parquet-data-v*.tar.zst
-          fail_on_unmatched_files: true
-
   pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest

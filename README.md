@@ -13,8 +13,14 @@ The pip package is a thin loader (~50 KB). Data files are either cloned from the
 ```python
 import nucl_parquet
 
-# Download data to ~/.nucl-parquet/ (first time only)
+# Download the latest data tarball to ~/.nucl-parquet/ (first time only)
 nucl_parquet.download()
+
+# Or pin a specific CalVer release
+nucl_parquet.download(data_version="2026.05.11")
+
+# Inspect which data version a checkout pins
+nucl_parquet.data_version()  # → "2026.05.11"
 ```
 
 Or clone the repo directly for the full dataset:
@@ -23,6 +29,17 @@ Or clone the repo directly for the full dataset:
 git clone https://github.com/exoma-ch/nucl-parquet.git
 export NUCL_PARQUET_DATA=/path/to/nucl-parquet/data
 ```
+
+### Release scheme — data on CalVer, code on semver
+
+Data tarballs and code packages release on independent cadences. Data refreshes when upstream sources (NIST/Geant4/strata) update — tracked as `data-YYYY.MM.DD` tags on GitHub. Code releases follow conventional-commit semver via release-please as `vX.Y.Z` tags. The active data version a checkout pins lives at `data/catalog.json::data_version`.
+
+| Release | Tag form | Trigger | Cadence |
+|---|---|---|---|
+| Data tarball | `data-2026.05.11` | manual push of CalVer tag matching `catalog.json::data_version` | upstream refreshes |
+| Code (PyPI, crates, npm, Go) | `v0.14.0` | release-please PR merge | conventional-commit semver |
+
+Per-package code semver (split MCP from core, etc.) is tracked in #150.
 
 ## Usage
 
