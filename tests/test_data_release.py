@@ -162,17 +162,24 @@ def test_version_and_sha_co_change_in_pr() -> None:
     version_moved = base_version is not None and base_version != current_version
     sha_moved = base_sha is not None and base_sha != current_sha
 
+    # Bootstrap exception: the PR that first introduces `data_sha256` is
+    # allowed to update `data_version` without a parquet change — it's the
+    # one-time format migration / field introduction, not a cosmetic bump.
+    # After this lands, every future PR sees `data_sha256` on base and the
+    # check applies normally.
+    sha_bootstrapped = base_sha is None and current_sha is not None
+
     if parquet_changed:
         # Real data change: both must move.
         assert version_moved, (
             f"Parquet files changed but data_version did not (still {current_version!r}). "
             "Bump it to today's CalVer (e.g. 2026.5.X) in the same PR."
         )
-        assert sha_moved, (
+        assert sha_moved or sha_bootstrapped, (
             "Parquet files changed but data_sha256 did not. "
             "Recompute the tree hash and update catalog.json::data_sha256."
         )
-    elif version_moved or sha_moved:
+    elif (version_moved or sha_moved) and not sha_bootstrapped:
         # Cosmetic bump: neither parquets nor anything else justifying the move.
         pytest.fail(
             f"data_version / data_sha256 changed but no parquet files did. "
@@ -186,14 +193,18 @@ def test_version_and_sha_co_change_in_pr() -> None:
 
 
 def test_data_version_monotonic_vs_main() -> None:
-    """`data_version` must be >= the value on the base branch (lexicographic CalVer).
+    """`data_version` must be >= the value on the base branch.
 
     Catches: cherry-picking an old data revision back into a PR, or hand-
-    editing the version backwards. CalVer YYYY.MM.MICRO sorts correctly
-    lexicographically because every component is left-padded year/digits
-    of equal width per refresh epoch (years and months are unbounded
-    integers but we treat lexicographic == temporal — that holds within
-    a given year; cross-year is also monotonic by year).
+    editing the version backwards. CalVer YYYY.MM.MICRO compared by
+    numeric tuple `(year, month, micro)` so `2026.5.10 > 2026.5.9` works.
+
+    Bootstrap exception: when the SHA anchor (`data_sha256`) was absent
+    on base and is introduced by this PR, we're doing a format migration
+    or first-time field introduction; the version may be re-baselined to
+    start a new MICRO sequence (e.g. `2026.05.11` legacy YYYY.MM.DD → new
+    `2026.5.0`). After this lands, future PRs see the anchor on base and
+    the monotonic check applies normally.
     """
     import os
 
@@ -201,12 +212,18 @@ def test_data_version_monotonic_vs_main() -> None:
     base = f"origin/{base_ref}"
 
     base_version = _git_value_at(base, "data/catalog.json", "data_version")
+    base_sha = _git_value_at(base, "data/catalog.json", "data_sha256")
+    current_sha = nucl_parquet.data_sha256(_DATA_DIR)
     if base_version is None:
         pytest.skip(f"No catalog at {base} (first introduction).")
+    if base_sha is None and current_sha is not None:
+        pytest.skip(
+            "Bootstrap commit introducing data_sha256 — version may re-baseline. "
+            "Future PRs will have the anchor on base and this check will apply normally."
+        )
 
     current_version = nucl_parquet.data_version(_DATA_DIR)
 
-    # Numeric tuple compare — handles `2026.5.10` > `2026.5.9` correctly.
     def _tup(v: str) -> tuple[int, ...]:
         return tuple(int(x) for x in v.split("."))
 
