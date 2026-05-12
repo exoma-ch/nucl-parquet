@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.13.0...nucl-parquet-py-v0.14.0) (2026-05-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **stopping:** route α through NIST ASTAR, ³He through catima (closes #137) ([#143](https://github.com/exoma-ch/nucl-parquet/issues/143))
+
+### Features
+
+* **release:** Path A — data on CalVer, code on lockstep semver ([#151](https://github.com/exoma-ch/nucl-parquet/issues/151)) ([1d419c7](https://github.com/exoma-ch/nucl-parquet/commit/1d419c7eccb50a0026c87b5b6f7a2a3ad5f74ba5))
+* **release:** Path B — per-package semver across 7 code packages (closes [#150](https://github.com/exoma-ch/nucl-parquet/issues/150)) ([#153](https://github.com/exoma-ch/nucl-parquet/issues/153)) ([1f14f52](https://github.com/exoma-ch/nucl-parquet/commit/1f14f52658949449d6fea4c11fb623d18bfd67e5))
+
+
+### Bug Fixes
+
+* **ci:** Pass PAT to release-please so tag pushes trigger release.yml ([#136](https://github.com/exoma-ch/nucl-parquet/issues/136)) ([11dbd18](https://github.com/exoma-ch/nucl-parquet/commit/11dbd1836d8e2e1b8a0fb814cd5a29061afe9548))
+* **release:** Bump-minor-pre-major on all 7 packages (refs [#150](https://github.com/exoma-ch/nucl-parquet/issues/150)) ([#154](https://github.com/exoma-ch/nucl-parquet/issues/154)) ([f2d0f81](https://github.com/exoma-ch/nucl-parquet/commit/f2d0f81ccb85acfec18c27d8b021ffa656f41194))
+* **stopping:** Route α through NIST ASTAR, ³He through catima (closes [#137](https://github.com/exoma-ch/nucl-parquet/issues/137)) ([#143](https://github.com/exoma-ch/nucl-parquet/issues/143)) ([d6beab0](https://github.com/exoma-ch/nucl-parquet/commit/d6beab000f045749b55e9ddbf7f364a8a17962ab))
+
 ## [0.13.0](https://github.com/exoma-ch/nucl-parquet/compare/v0.12.0...v0.13.0) (2026-05-07)
 
 
