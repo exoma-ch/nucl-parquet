@@ -75,6 +75,13 @@ def data_version(data_dir_path: Path | str | None = None) -> str:
     return version
 
 
+_HASH_EXCLUDE_DIRS = frozenset(
+    {
+        "g4_raw",  # build-time cache (gitignored)
+    }
+)
+
+
 def compute_data_sha256(data_dir_path: Path | str | None = None) -> str:
     """Deterministic SHA-256 tree hash of every `data/**/*.parquet` file.
 
@@ -85,13 +92,19 @@ def compute_data_sha256(data_dir_path: Path | str | None = None) -> str:
       - parquets changed but `data_version` did not (silent drift)
       - `data_version` changed but parquets did not (cosmetic bump)
 
-    The hash deliberately ignores non-parquet files (manifests, schemas,
-    catalog itself) — those are descriptors, not data. Changes to them
-    do not require a data release.
+    The hash deliberately ignores:
+      - non-parquet files (manifests, schemas, catalog itself) — descriptors,
+        not data; changes don't require a data release
+      - any path under a top-level directory in `_HASH_EXCLUDE_DIRS` (e.g.
+        `data/g4_raw/`, which is a gitignored build cache populated by
+        `scripts/fetch_strata_nuclear.py`)
     """
     root = Path(data_dir_path) if data_dir_path else data_dir()
     h = hashlib.sha256()
     for path in sorted(root.rglob("*.parquet")):
+        rel_parts = path.relative_to(root).parts
+        if rel_parts and rel_parts[0] in _HASH_EXCLUDE_DIRS:
+            continue
         rel = path.relative_to(root).as_posix().encode("utf-8")
         fh = hashlib.sha256()
         with open(path, "rb") as f:
