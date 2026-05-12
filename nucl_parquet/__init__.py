@@ -1,6 +1,6 @@
 """nucl-parquet: Nuclear data as Parquet — queryable with DuckDB."""
 
-from .download import data_dir, data_version, download
+from .download import compute_data_sha256, data_dir, data_sha256, data_version, download
 from .loader import (
     COINCIDENCE_SQL,
     DECAY_CHAIN_SQL,
@@ -24,8 +24,10 @@ __all__ = [
     "IDENTIFY_GAMMA_ALL_SQL",
     "IDENTIFY_GAMMA_SQL",
     "compound_dedx",
+    "compute_data_sha256",
     "connect",
     "data_dir",
+    "data_sha256",
     "data_version",
     "download",
     "elemental_dedx",

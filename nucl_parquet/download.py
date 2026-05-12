@@ -1,12 +1,16 @@
 """Data directory resolution and GitHub Release download.
 
 Data and code release on separate cadences (#150 tracks the analogous code-side
-split). Data tarballs are CalVer-tagged `data-YYYY.MM.DD`; the version a given
-checkout pins lives at `data/catalog.json::data_version`.
+split). Data tarballs are CalVer-tagged `data-YYYY.MM.MICRO` (e.g. `data-2026.5.0`,
+`data-2026.5.1` for an in-month iteration); the version a given checkout pins
+lives at `data/catalog.json::data_version`. A deterministic SHA-256 tree hash
+of the parquets ships alongside in `data/catalog.json::data_sha256` so PR CI
+can gate on "data changed ⇔ version changed".
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -19,7 +23,8 @@ from urllib.request import Request, urlopen
 import zstandard
 
 _GITHUB_REPO = "exoma-ch/nucl-parquet"
-_DATA_TAG_RE = re.compile(r"^data-\d{4}\.\d{2}\.\d{2}$")
+_DATA_TAG_RE = re.compile(r"^data-\d{4}\.\d+\.\d+$")
+_DATA_VERSION_RE = re.compile(r"^\d{4}\.\d+\.\d+$")
 
 
 def data_dir() -> Path:
@@ -59,7 +64,7 @@ def data_dir() -> Path:
 def data_version(data_dir_path: Path | str | None = None) -> str:
     """Return the CalVer identifier of the data shipping with this checkout.
 
-    Reads `data/catalog.json::data_version` (e.g. `"2026.05.11"`). The matching
+    Reads `data/catalog.json::data_version` (e.g. `"2026.5.0"`). The matching
     GitHub Release tag is `data-{data_version}`.
     """
     root = Path(data_dir_path) if data_dir_path else data_dir()
@@ -70,8 +75,49 @@ def data_version(data_dir_path: Path | str | None = None) -> str:
     return version
 
 
+def compute_data_sha256(data_dir_path: Path | str | None = None) -> str:
+    """Deterministic SHA-256 tree hash of every `data/**/*.parquet` file.
+
+    The hash digests, in sorted POSIX-relpath order, lines of the form
+    `<relpath>\\0<per-file sha256>\\n`. Reproducible across machines and
+    independent of filesystem mtimes / inode order. PR CI compares this
+    to `data/catalog.json::data_sha256` to detect:
+      - parquets changed but `data_version` did not (silent drift)
+      - `data_version` changed but parquets did not (cosmetic bump)
+
+    The hash deliberately ignores non-parquet files (manifests, schemas,
+    catalog itself) — those are descriptors, not data. Changes to them
+    do not require a data release.
+    """
+    root = Path(data_dir_path) if data_dir_path else data_dir()
+    h = hashlib.sha256()
+    for path in sorted(root.rglob("*.parquet")):
+        rel = path.relative_to(root).as_posix().encode("utf-8")
+        fh = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda f=f: f.read(1 << 20), b""):
+                fh.update(chunk)
+        h.update(rel + b"\0" + fh.hexdigest().encode("ascii") + b"\n")
+    return h.hexdigest()
+
+
+def data_sha256(data_dir_path: Path | str | None = None) -> str:
+    """Return the cached SHA-256 declared in `catalog.json::data_sha256`.
+
+    Use `compute_data_sha256()` to recompute from the on-disk tree.
+    Use this helper to read the value the catalog *claims* matches the
+    tree. PR CI compares the two.
+    """
+    root = Path(data_dir_path) if data_dir_path else data_dir()
+    catalog = json.loads((root / "catalog.json").read_text())
+    declared = catalog.get("data_sha256")
+    if not declared:
+        raise RuntimeError(f"catalog.json at {root} is missing `data_sha256` field.")
+    return declared
+
+
 def _resolve_latest_data_tag() -> str:
-    """Return the most recent `data-YYYY.MM.DD` release tag on GitHub.
+    """Return the most recent `data-YYYY.MM.MICRO` release tag on GitHub.
 
     Scans the most-recent 100 releases (single page, max page_size). Code
     releases share this listing, so a high code-release cadence between
@@ -85,7 +131,7 @@ def _resolve_latest_data_tag() -> str:
         tag = release.get("tag_name", "")
         if _DATA_TAG_RE.match(tag):
             return tag
-    raise RuntimeError(f"No data-YYYY.MM.DD release found in the latest 100 releases at {url}")
+    raise RuntimeError(f"No data-YYYY.MM.MICRO release found in the latest 100 releases at {url}")
 
 
 _CODE_VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+")
@@ -101,7 +147,7 @@ def download(
 
     Args:
         dest: Destination directory. Defaults to ~/.nucl-parquet/.
-        data_version: CalVer string (`"2026.05.11"`) OR `"latest"` to resolve
+        data_version: CalVer string (`"2026.5.0"`) OR `"latest"` to resolve
             the most recent `data-*` GitHub release. Pre-CalVer code-version
             strings (e.g. `"v0.13.0"`) are detected and resolve to latest data
             with a DeprecationWarning.
@@ -115,7 +161,7 @@ def download(
     if tag is not None:
         warnings.warn(
             "`tag=` is deprecated in nucl_parquet.download(); pass `data_version=` "
-            "with a CalVer identifier (e.g. `'2026.05.11'`) or `'latest'`. "
+            "with a CalVer identifier (e.g. `'2026.5.0'`) or `'latest'`. "
             "Resolving to latest data release.",
             DeprecationWarning,
             stacklevel=2,
@@ -127,7 +173,7 @@ def download(
         warnings.warn(
             f"`{data_version!r}` looks like a code-version tag; "
             "nucl_parquet.download() now takes CalVer data identifiers "
-            "(e.g. `'2026.05.11'`) or `'latest'`. Resolving to latest data.",
+            "(e.g. `'2026.5.0'`) or `'latest'`. Resolving to latest data.",
             DeprecationWarning,
             stacklevel=2,
         )
