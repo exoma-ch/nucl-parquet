@@ -16,13 +16,17 @@ on:
   push:
     branches: [main]
     paths: [data/catalog.json]
+  # Manual-trigger escape hatch: if a catalog change merged without
+  # firing this workflow (e.g. the workflow itself was being updated in
+  # the same merge), an admin can dispatch from the Actions UI to retry.
+  workflow_dispatch: {}
 
 permissions:
   contents: write
 
 jobs:
   auto-tag:
-    name: Auto-tag data-${{ steps.detect.outputs.version }} on data_version change
+    name: Auto-tag data release on data_version change
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
