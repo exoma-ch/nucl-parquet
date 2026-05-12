@@ -1,7 +1,23 @@
-//! Stopping power databases (NIST PSTAR/ASTAR/ESTAR and CatIMA).
+//! Stopping power databases (NIST PSTAR/ASTAR/ESTAR + dSTAR/tSTAR and CatIMA).
 //!
 //! Provides mass stopping power lookups via log-log interpolation.
 //! `StoppingDb` is `Send + Sync` — load once, share via `Arc`.
+//!
+//! ## Source routing (post-#137)
+//!
+//! - p, d, t → NIST PSTAR via [`dedx`]; d/t velocity-scaled at the caller
+//!   (E_p = E / A) before lookup (dSTAR/tSTAR pre-built).
+//! - α → NIST ASTAR via [`dedx`] (ICRU-49 reference; reproducible via
+//!   `nucl_parquet.build_stopping`).
+//! - ³He → [`catima_dedx`] with `proj_z = 2` (no NIST ³He table exists).
+//! - e → NIST ESTAR via [`dedx`].
+//! - heavy ions → [`catima_dedx`] (catima's full 92×92 master).
+//!
+//! The previously-shipped He3STAR.parquet and the broken ASTAR.parquet
+//! (Z²-scaled from PSTAR at the wrong energy axis) were removed in #143.
+//!
+//! [`dedx`]: StoppingDb::dedx
+//! [`catima_dedx`]: StoppingDb::catima_dedx
 
 use std::collections::HashMap;
 use std::fs;
@@ -13,8 +29,8 @@ use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use crate::error::Error;
 use crate::interp::{log_log_interp, sort_paired_vecs, XYTable};
 
-/// Mass stopping power database for NIST tabulated sources (PSTAR, ASTAR, ESTAR, …)
-/// and CatIMA heavy-ion calculations.
+/// Mass stopping power database for NIST tabulated sources (PSTAR, ASTAR, ESTAR,
+/// dSTAR, tSTAR) and CatIMA heavy-ion calculations.
 ///
 /// Thread-safe: `Send + Sync`. Share via `Arc<StoppingDb>`.
 #[derive(Clone)]
@@ -34,8 +50,8 @@ unsafe impl Sync for StoppingDb {}
 impl StoppingDb {
     /// Load stopping power data from the nucl-parquet `stopping/` directory.
     ///
-    /// Reads all `*.parquet` files (PSTAR, ASTAR, ESTAR, …) and
-    /// `catima/catima.parquet`.
+    /// Reads all `*.parquet` files at the top level (PSTAR, ASTAR, ESTAR,
+    /// dSTAR, tSTAR, catima_*) plus the full master at `catima/catima.parquet`.
     pub fn open(data_dir: impl AsRef<Path>) -> crate::Result<Self> {
         let dir = data_dir.as_ref();
 
@@ -53,9 +69,15 @@ impl StoppingDb {
         })
     }
 
-    /// Mass stopping power [MeV cm²/g] for a NIST source (e.g. "PSTAR", "ASTAR", "ESTAR").
+    /// Mass stopping power [MeV cm²/g] for a NIST source.
     ///
+    /// Valid `source` values: `"PSTAR"`, `"ASTAR"`, `"ESTAR"`, `"dSTAR"`, `"tSTAR"`.
     /// Returns `f64::NAN` if the (source, target_Z) combination is not loaded.
+    ///
+    /// `energy_mev` is the projectile's *total* kinetic energy. ASTAR is keyed
+    /// on total α KE; PSTAR/dSTAR/tSTAR are projectile-specific tables; ESTAR
+    /// is electron KE. For ³He route via [`catima_dedx`] (`proj_z = 2`) — no
+    /// NIST ³He table exists.
     #[inline]
     pub fn dedx(&self, source: &str, target_z: u32, energy_mev: f64) -> f64 {
         match self.nist.get(&(source.to_string(), target_z)) {
@@ -201,11 +223,13 @@ mod tests {
     use super::*;
 
     fn data_dir() -> std::path::PathBuf {
-        // Repo root is three levels up from src/
+        // Repo root is three levels up from this crate's manifest dir; data
+        // moved under `data/` in the repo layout refactor.
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
             .join("..")
+            .join("data")
             .join("stopping")
     }
 
@@ -233,5 +257,39 @@ mod tests {
         let db = StoppingDb::open(data_dir()).unwrap();
         let s = db.dedx("NONEXISTENT", 999, 10.0);
         assert!(s.is_nan());
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn alpha_on_cu_matches_nist_icru49_anchors() {
+        // Post-#137 ASTAR.parquet is reproducible from NIST. These anchors
+        // mirror tests/test_stopping_anchors.py — agreement to <1% guards
+        // against fetcher / data regressions and the Z²-at-wrong-axis bug
+        // class.
+        let db = StoppingDb::open(data_dir()).unwrap();
+        // (energy_MeV total, expected ICRU-49 dedx)
+        let anchors: &[(f64, f64)] = &[
+            (4.0, 483.8),   // 1 MeV/u
+            (20.0, 177.4),  // 5 MeV/u
+            (80.0, 64.54),  // 20 MeV/u
+            (400.0, 19.32), // 100 MeV/u
+        ];
+        for &(e, expected) in anchors {
+            let got = db.dedx("ASTAR", 29, e);
+            let rel = (got - expected).abs() / expected;
+            assert!(
+                rel < 0.01,
+                "α Cu at {e} MeV: got {got}, NIST {expected}, rel err {rel}",
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn legacy_he3star_source_missing() {
+        // He3STAR.parquet was deleted in #143 — callers must use catima_dedx
+        // with proj_z=2 instead. A `dedx("He3STAR", ...)` lookup returns NaN.
+        let db = StoppingDb::open(data_dir()).unwrap();
+        assert!(db.dedx("He3STAR", 29, 10.0).is_nan());
     }
 }

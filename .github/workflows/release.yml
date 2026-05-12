@@ -1,44 +1,86 @@
 name: Release
 
+# Per-package code release pipeline. Each tag prefix routes to exactly one
+# publish job; an MCP-only fix no longer pushes a no-op release on the core
+# packages. See release-please-config.json for the package-to-tag mapping.
+#
+# Data tarballs ship from a separate workflow (release-data.yml) on
+# `data-YYYY.MM.DD` CalVer tags. Data and code release independently.
+
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "nucl-parquet-py-v*"
+      - "nucl-parquet-mcp-py-v*"
+      - "nucl-parquet-rs-v*"
+      - "nucl-parquet-mcp-rs-v*"
+      - "nucl-parquet-ts-v*"
+      - "nucl-parquet-mcp-ts-v*"
+      - "clients/go/nucl-parquet/v*"
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
-  data-asset:
-    name: Build & upload data tarball
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install zstd
-        run: sudo apt-get update && sudo apt-get install -y zstd
-      - name: Build tarball
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          tar --zstd -C data -cf "nucl-parquet-data-v${VERSION}.tar.zst" .
-          ls -lh "nucl-parquet-data-v${VERSION}.tar.zst"
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: nucl-parquet-data-v*.tar.zst
-          fail_on_unmatched_files: true
-
   pypi:
-    name: Publish to PyPI
+    name: Publish nucl-parquet to PyPI
+    if: startsWith(github.ref, 'refs/tags/nucl-parquet-py-v')
     runs-on: ubuntu-latest
     environment: pypi
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
 
+  pypi-mcp:
+    name: Publish nucl-parquet-mcp to PyPI
+    if: startsWith(github.ref, 'refs/tags/nucl-parquet-mcp-py-v')
+    runs-on: ubuntu-latest
+    environment: pypi-mcp
+    defaults:
+      run:
+        working-directory: clients/py/nucl-parquet-mcp
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: clients/py/nucl-parquet-mcp/dist
+
+  cargo:
+    name: Publish nucl-parquet to crates.io
+    if: startsWith(github.ref, 'refs/tags/nucl-parquet-rs-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/rs/nucl-parquet
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  cargo-mcp:
+    name: Publish nucl-parquet-mcp to crates.io
+    if: startsWith(github.ref, 'refs/tags/nucl-parquet-mcp-rs-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/rs/nucl-parquet-mcp
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
   npm:
-    name: Publish to npm
+    name: Publish @nucl-parquet/core to npm
+    if: startsWith(github.ref, 'refs/tags/nucl-parquet-ts-v')
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -48,8 +90,8 @@ jobs:
       run:
         working-directory: clients/ts/nucl-parquet
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -59,36 +101,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  cargo:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: clients/rs/nucl-parquet
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo publish --allow-dirty
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  pypi-mcp:
-    name: Publish nucl-parquet-mcp to PyPI
-    runs-on: ubuntu-latest
-    environment: pypi-mcp
-    defaults:
-      run:
-        working-directory: clients/py/nucl-parquet-mcp
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv build
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: clients/py/nucl-parquet-mcp/dist
-
   npm-mcp:
     name: Publish @nucl-parquet/mcp to npm
+    if: startsWith(github.ref, 'refs/tags/nucl-parquet-mcp-ts-v')
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -98,8 +113,8 @@ jobs:
       run:
         working-directory: clients/ts/nucl-parquet-mcp
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -109,28 +124,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  cargo-mcp:
-    name: Publish nucl-parquet-mcp to crates.io
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: clients/rs/nucl-parquet-mcp
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo publish --allow-dirty
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  go-tag:
-    name: Mirror Go module tag
+  # Go does not need a publish job: release-please tags `clients/go/nucl-parquet/v*`
+  # directly, which is the form the Go module proxy resolves. The tag's
+  # existence on GitHub *is* the publish. We keep a noop step on the Go tag
+  # purely so the workflow run shows up in the release record.
+  go-noop:
+    name: Acknowledge Go module tag
+    if: startsWith(github.ref, 'refs/tags/clients/go/nucl-parquet/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Create Go module tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          VERSION=${GITHUB_REF#refs/tags/v}
-          git tag -a "clients/go/nucl-parquet/v${VERSION}" -m "Go v${VERSION}"
-          git push origin "clients/go/nucl-parquet/v${VERSION}"
+      - run: |
+          echo "Go module tag $GITHUB_REF pushed; Go module proxy resolves it directly."

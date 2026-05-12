@@ -97,7 +97,7 @@ impl DataDir {
         crate::ElectronDb::open(self.meta())
     }
 
-    /// Open the stopping power database (PSTAR/ASTAR/ESTAR/CatIMA).
+    /// Open the stopping power database (NIST PSTAR/ASTAR/ESTAR + dSTAR/tSTAR + CatIMA).
     pub fn stopping_db(&self) -> Result<crate::StoppingDb> {
         crate::StoppingDb::open(self.stopping())
     }

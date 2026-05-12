@@ -2,24 +2,45 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "nucl-parquet catalog",
   "type": "object",
-  "required": ["version", "libraries", "shared"],
+  "required": ["version", "data_version", "data_sha256", "libraries", "shared"],
   "properties": {
     "version": { "type": "integer", "const": 1 },
+    "data_version": {
+      "type": "string",
+      "pattern": "^[0-9]{4}\\.[0-9]+\\.[0-9]+$",
+      "description": "CalVer YYYY.MM.MICRO identifier for the data tarball (e.g. `2026.5.0`, `2026.5.1` for an in-month iteration); matches the GitHub Release tag `data-{data_version}`."
+    },
+    "data_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Deterministic SHA-256 tree hash of all data/**/*.parquet files. Recompute via `nucl_parquet.compute_data_sha256()`. PR CI gates on hash matching the on-disk tree; data_version must change iff data_sha256 changes."
+    },
     "description": { "type": "string" },
     "libraries": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["name", "projectiles", "data_type", "version", "path"],
+        "description": "Two shapes supported: (1) evaluated cross-section libraries with `projectiles`, `version`, `path`; (2) external-dataset references (e.g. strata-data on HF) with `revision`, `fetcher`, `files`. The common required minimum is `name` + `data_type`.",
+        "required": ["name", "data_type"],
         "properties": {
           "name": { "type": "string" },
           "description": { "type": "string" },
           "source_url": { "type": "string", "format": "uri" },
           "projectiles": {
             "type": "array",
-            "items": { "type": "string", "enum": ["p", "d", "t", "h", "a"] }
+            "items": { "type": "string" },
+            "description": "Light-ion shorthand (n/p/d/t/h/a/g) for evaluated libraries; heavy-ion identifiers (e.g. c12, fe56) for production / total-reaction libraries."
           },
-          "data_type": { "type": "string", "enum": ["cross_sections"] },
+          "data_type": {
+            "type": "string",
+            "enum": [
+              "cross_sections",
+              "production_cross_sections",
+              "total_reaction_cross_sections",
+              "experimental_cross_sections",
+              "nuclear_structure"
+            ]
+          },
           "version": { "type": "string" },
           "path": { "type": "string" }
         }
@@ -38,11 +59,14 @@
         },
         "stopping": {
           "type": "object",
-          "required": ["path", "files"],
+          "required": ["path", "sources"],
           "properties": {
             "path": { "type": "string" },
-            "files": { "type": "object", "additionalProperties": { "type": "string" } },
-            "sources": { "type": "array", "items": { "type": "string" } }
+            "layout": { "type": "string" },
+            "catima_full_matrix": { "type": "string" },
+            "sources": { "type": "array", "items": { "type": "string" } },
+            "sources_note": { "type": "string" },
+            "catima": { "type": "object" }
           }
         }
       }

@@ -44,8 +44,18 @@ class TestCatalog:
 
     def test_stopping_sources(self):
         sources = CATALOG["shared"]["stopping"]["sources"]
+        # NIST tables + catima master after #137; ICRU73/MSTAR were never real.
         assert "PSTAR" in sources
         assert "ASTAR" in sources
+        assert "ESTAR" in sources
+        assert "catima" in sources
+
+    def test_stopping_has_per_source_files(self):
+        """Post-#143 the aggregate stopping.parquet is deleted; per-source only."""
+        files = CATALOG["shared"]["stopping"]["files"]
+        for label in ("PSTAR", "ASTAR", "ESTAR", "dSTAR", "tSTAR", "catima"):
+            assert label in files, f"{label} not advertised in stopping files"
+        assert "stopping" not in files, "old stopping.parquet aggregate must not be advertised"
 
 
 class TestUrlConstruction:

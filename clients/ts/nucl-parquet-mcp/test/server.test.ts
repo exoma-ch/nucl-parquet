@@ -31,8 +31,20 @@ describe("catalog", () => {
   });
 
   it("shared stopping has sources", () => {
+    // NIST tables + catima master after #137; ICRU73/MSTAR were never real.
     expect(catalog.shared.stopping.sources).toContain("PSTAR");
     expect(catalog.shared.stopping.sources).toContain("ASTAR");
+    expect(catalog.shared.stopping.sources).toContain("ESTAR");
+    expect(catalog.shared.stopping.sources).toContain("catima");
+  });
+
+  it("shared stopping advertises per-source files (not deleted aggregate)", () => {
+    const files = catalog.shared.stopping.files;
+    expect(files).toHaveProperty("PSTAR");
+    expect(files).toHaveProperty("ASTAR");
+    expect(files).toHaveProperty("ESTAR");
+    expect(files).toHaveProperty("catima");
+    expect(files).not.toHaveProperty("stopping"); // aggregate deleted in #143
   });
 });
 
@@ -50,9 +62,11 @@ describe("URL construction", () => {
     expect(path).toBe("meta/decay.parquet");
   });
 
-  it("builds correct stopping path", () => {
-    const path = catalog.shared.stopping.path + catalog.shared.stopping.files.stopping;
-    expect(path).toBe("stopping/stopping.parquet");
+  it("builds correct per-source stopping paths", () => {
+    const f = catalog.shared.stopping.files;
+    expect(catalog.shared.stopping.path + f.PSTAR).toBe("stopping/PSTAR.parquet");
+    expect(catalog.shared.stopping.path + f.ASTAR).toBe("stopping/ASTAR.parquet");
+    expect(catalog.shared.stopping.path + f.catima).toBe("stopping/catima/catima.parquet");
   });
 
   it("builds correct manifest path from library path", () => {

@@ -21,6 +21,21 @@ Usage:
 
     # Decay chain (recursive):
     db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
+
+    # Photon-matter interaction (v0.12+, G4EMLOW8.8):
+    db.sql("SELECT * FROM photon_pe WHERE Z=82 AND shell=0")        # Pb K σ_PE
+    db.sql("SELECT * FROM photon_compton WHERE Z=29")               # Cu σ_C
+    db.sql("SELECT * FROM photon_pair WHERE channel='total'")       # σ_pair
+    db.sql("SELECT * FROM atomic_relaxation WHERE Z=53")            # I cascade
+    db.sql("SELECT * FROM fluorescence WHERE Z=82 AND vacancy_shell='K'")
+
+    # Detailed nuclear data — NUDEX (v0.14+, G4NUDEXLIB1.0):
+    db.sql("SELECT * FROM nudex_levels WHERE Z=27 AND A=60")        # Co-60 full level scheme
+    db.sql("SELECT * FROM nudex_level_gammas WHERE Z=82 AND A=208") # Pb-208 transitions
+    db.sql("SELECT * FROM capture_gammas WHERE Z=27 AND A=60")      # 59Co(n,γ)60Co
+    db.sql("SELECT alpha FROM icc_factors WHERE Z=82 AND shell='K' AND multipolarity='E1'")
+    db.sql("SELECT * FROM psf_e1 WHERE Z=82 AND A=208")             # IAEA SMLO E1 GDR
+    db.sql("SELECT * FROM level_density_bfm WHERE Z=82 AND A=208")  # BFM params
 """
 
 from __future__ import annotations
@@ -164,6 +179,12 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     lib_views: list[str] = []
 
     for lib_key, lib_info in catalog.get("libraries", {}).items():
+        # Some catalog entries (e.g. strata-data-nuclear) are build-time
+        # provenance records, not queryable cross-section directories — they
+        # have no `path`. Skip them here; the loader's job is to mount
+        # queryable libraries, not enumerate every catalog entry.
+        if "path" not in lib_info:
+            continue
         lib_dir = data_dir / lib_info["path"]
         if not lib_dir.exists() or not list(lib_dir.glob("*.parquet")):
             continue
@@ -193,8 +214,11 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     # --- Stopping powers ---
     # Per-source files: stopping/PSTAR.parquet, ASTAR.parquet, ESTAR.parquet,
-    # dSTAR.parquet, tSTAR.parquet, He3STAR.parquet, catima_*.parquet
-    # catima.parquet (92×92 MeV/u table, different schema) lives in stopping/catima/
+    # dSTAR.parquet, tSTAR.parquet, catima_*.parquet — all reproducible from
+    # nucl_parquet/build_stopping.py (NIST CGI) + build_light_ions.py + the
+    # pycatima-based build_heavy_ions.py.
+    # catima.parquet (92×92 MeV/u table, different schema) lives in stopping/catima/.
+    # ³He routes through catima (no NIST table); α through NIST ASTAR (#137).
     _register_glob(db, data_dir / "stopping", "stopping")
     _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
 
@@ -210,6 +234,44 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "levels", "ensdf_levels")
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
+
+    # --- NUDEX neutron-capture primary gammas (v0.14 epic #115) ---
+    _register_parquet(db, data_dir / "meta" / "capture_gammas.parquet", "capture_gammas")
+    _register_parquet(
+        db,
+        data_dir / "meta" / "capture_gammas_summary.parquet",
+        "capture_gammas_summary",
+    )
+
+    # --- NUDEX per-shell internal-conversion factors (v0.14 epic #115) ---
+    _register_parquet(db, data_dir / "meta" / "icc_factors.parquet", "icc_factors")
+
+    # --- NUDEX level-density parameters (v0.14 epic #115) ---
+    _register_parquet(db, data_dir / "meta" / "level_density_bfm.parquet", "level_density_bfm")
+    _register_parquet(db, data_dir / "meta" / "level_density_ctm.parquet", "level_density_ctm")
+    _register_parquet(
+        db,
+        data_dir / "meta" / "level_density_params.parquet",
+        "level_density_params",
+    )
+
+    # --- NUDEX photon strength functions (v0.14 epic #115) ---
+    # `psf_e1` is the IAEA-recommended modern default; the others are alternates
+    # for systematic-uncertainty studies.
+    _register_parquet(db, data_dir / "meta" / "psf_e1.parquet", "psf_e1")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_lor.parquet", "psf_gdr_lor")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_mlo.parquet", "psf_gdr_mlo")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_slo.parquet", "psf_gdr_slo")
+    _register_parquet(db, data_dir / "meta" / "psf_gdr_theor.parquet", "psf_gdr_theor")
+    _register_parquet(db, data_dir / "meta" / "psf_photonuclear.parquet", "psf_photonuclear")
+
+    # --- NUDEX full ENSDF level schemes (v0.14 epic #115) ---
+    # `nudex_levels` (richer ENSDF source) coexists with `ensdf_levels` (the
+    # PhotonEvaporation summary used by G4 transport). Pick by query class:
+    # ensdf_levels for transport-aligned queries; nudex_levels for spectroscopy.
+    _register_parquet(db, data_dir / "meta" / "nudex_levels.parquet", "nudex_levels")
+    _register_parquet(db, data_dir / "meta" / "nudex_level_gammas.parquet", "nudex_level_gammas")
+    _register_parquet(db, data_dir / "meta" / "nudex_isotopes.parquet", "nudex_isotopes")
 
     # --- Spectrum-averaged cross-sections ---
     _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
@@ -235,10 +297,46 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "epdl97" / "subshell_pe", "epdl_subshell_pe")
 
     # --- EADL atomic relaxation / fluorescence ---
-    _register_glob(db, data_dir / "meta" / "eadl", "eadl_transitions")
+    # Canonical name: atomic_relaxation. eadl_transitions kept as an alias for
+    # callers from v0.11 and earlier. fluorescence is the radiative subset;
+    # Auger lines stay in atomic_relaxation, query `WHERE transition_type='auger'`.
+    eadl_dir = data_dir / "meta" / "eadl"
+    if eadl_dir.exists() and list(eadl_dir.glob("*.parquet")):
+        _register_glob(db, eadl_dir, "atomic_relaxation")
+        db.execute("CREATE VIEW eadl_transitions AS SELECT * FROM atomic_relaxation")
+        db.execute("CREATE VIEW fluorescence AS SELECT * FROM atomic_relaxation WHERE transition_type = 'radiative'")
 
     # --- EEDL electron interaction data ---
     _register_glob(db, data_dir / "meta" / "eedl", "eedl_electron_xs")
+
+    # --- G4EMLOW photon-matter cross-sections (v0.12 epic #95) ---
+    _register_parquet(db, data_dir / "em" / "photon_pair.parquet", "photon_pair")
+    _register_parquet(db, data_dir / "em" / "photon_rayleigh_cdf.parquet", "photon_rayleigh_cdf")
+    _register_parquet(db, data_dir / "em" / "xray_form_factor.parquet", "xray_form_factor")
+    _register_parquet(db, data_dir / "em" / "photon_compton.parquet", "photon_compton")
+    _register_parquet(
+        db,
+        data_dir / "em" / "compton_scattering_function.parquet",
+        "compton_scattering_function",
+    )
+    _register_parquet(
+        db,
+        data_dir / "em" / "compton_doppler_profiles.parquet",
+        "compton_doppler_profiles",
+    )
+    _register_parquet(db, data_dir / "em" / "photon_pe.parquet", "photon_pe")
+    _register_parquet(
+        db,
+        data_dir / "em" / "photon_pe_high_z_params.parquet",
+        "photon_pe_high_z_params",
+    )
+    _register_parquet(db, data_dir / "em" / "photon_pe_angular.parquet", "photon_pe_angular")
+    # Total photoelectric XS (per strata#600 fix) — preferred over photon_pe
+    # for attenuation queries; photon_pe stays for K-shell/L-shell breakdown.
+    _register_parquet(db, data_dir / "em" / "photon_pe_total.parquet", "photon_pe_total")
+
+    # --- G4EMLOW electron-matter cross-sections (v0.13 epic #114) ---
+    _register_parquet(db, data_dir / "em" / "electron_brem.parquet", "electron_brem")
 
     return db
 
@@ -510,8 +608,11 @@ _PROJECTILES: dict[str, tuple[int, int, str]] = {
     "p": (1, 1, "PSTAR"),
     "d": (2, 1, "PSTAR"),
     "t": (3, 1, "PSTAR"),
-    "h": (3, 2, "ASTAR"),  # 3He
-    "he3": (3, 2, "ASTAR"),
+    # α uses NIST ASTAR (ICRU-49 reference; reproducible via build_stopping.py).
+    # ³He has no NIST table — routes through catima. Both pre-#137 paths used
+    # the broken ASTAR.parquet that was Z²-scaled from PSTAR at the wrong axis.
+    "h": (3, 2, "catima"),  # 3He
+    "he3": (3, 2, "catima"),
     "a": (4, 2, "ASTAR"),
     "he4": (4, 2, "ASTAR"),
     "e": (0, -1, "ESTAR"),  # electron
@@ -608,11 +709,15 @@ def elemental_dedx(
 ) -> np.ndarray:
     """Mass stopping power [MeV cm2/g] for a projectile in a pure element.
 
-    Supports all projectiles:
-    - Light ions via NIST tables: p, d, t, h/he3, a/he4, e/e-
-    - Any heavy ion via catima: 'c12', 'pb208', 'xe132', 'fe56', etc.
-      Any isotope of a given element works — catima stores data in MeV/u
-      and the lookup divides total energy by A automatically.
+    Source routing (post-#137):
+    - p, d, t          → NIST PSTAR (ICRU-49); d/t velocity-scaled (E_p = E/A)
+    - α (a, he4)       → NIST ASTAR (ICRU-49)
+    - ³He (h, he3)     → catima (no NIST ³He table)
+    - e, e-            → NIST ESTAR (ICRU-37)
+    - heavy ions       → catima (any isotope of Z=1-92)
+
+    NIST PSTAR/ASTAR only publishes 25 elemental materials; for target_Z not
+    in NIST's table (e.g. Tc, Pm, Po, Rn), the loader falls back to catima.
 
     Args:
         db: DuckDB connection from connect().
@@ -637,9 +742,8 @@ def elemental_dedx(
 
     log_E, log_S = _get_stopping_table(db, ref_source, target_Z)
     if len(log_E) == 0:
-        # NIST PSTAR/ASTAR only covers 74 predefined materials; fall back to
-        # CatIMA (Bethe-Bloch) for elements not in the NIST table (e.g. Ra, Rn,
-        # Ac, Po, Fr, At, Tc, Pm and many others).
+        # NIST tables only cover 25 elemental materials; fall back to catima
+        # (Bethe-Bloch) for elements NIST doesn't publish (Tc, Pm, Po, Rn, …).
         if ref_source in ("PSTAR", "ASTAR"):
             log_E_c, log_S_c = _get_catima_table(db, proj_Z, target_Z)
             if len(log_E_c) > 0:
@@ -648,12 +752,11 @@ def elemental_dedx(
 
     if ref_source == "ESTAR":
         return _interp_loglog(log_E, log_S, energy_MeV)
-    elif ref_source == "PSTAR":
-        # velocity-scale for d/t: same velocity → E_p = E_proj / A
-        return _interp_loglog(log_E, log_S, energy_MeV / proj_A)
-    else:
-        # ASTAR for alpha (A=4); velocity-scale for 3He: E_alpha = E_proj * (4/A)
-        return _interp_loglog(log_E, log_S, energy_MeV * (4.0 / proj_A))
+    if ref_source == "ASTAR":
+        # ASTAR is keyed on total α kinetic energy (A=4); no rescaling needed.
+        return _interp_loglog(log_E, log_S, energy_MeV)
+    # PSTAR: velocity-scale for d/t (same velocity → E_p = E / A_proj).
+    return _interp_loglog(log_E, log_S, energy_MeV / proj_A)
 
 
 def compound_dedx(
@@ -668,7 +771,8 @@ def compound_dedx(
 
     Args:
         db: DuckDB connection from connect().
-        projectile: Projectile type ('p', 'd', 't', 'h', 'a').
+        projectile: Projectile name. Light ions: 'p','d','t','h','a','e'.
+                    Heavy ions: e.g. 'c12','pb208','xe132' (any isotope of Z=1-92).
         composition: List of (Z, mass_fraction) pairs. Should sum to ~1.0.
         energy_MeV: Projectile energy [MeV].
 

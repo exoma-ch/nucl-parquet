@@ -1,0 +1,79 @@
+name: Auto-tag data release
+
+# When a push to main changes `data/catalog.json::data_version`, automatically
+# create + push the matching `data-<version>` tag. That tag push fires
+# release-data.yml, which validates the tag-vs-catalog match and publishes
+# the tarball to a GitHub Release. The PR review is the human gate; this
+# workflow removes the manual `git tag` step entirely — `data/catalog.json`
+# is the single source of truth.
+#
+# Belt-and-suspenders: release-data.yml re-validates tag CalVer vs catalog
+# at build time. If this workflow ever produces a mismatched tag (it
+# shouldn't — it derives the tag from catalog.json itself), release-data.yml
+# fails loudly rather than publishing the bad tarball.
+
+on:
+  push:
+    branches: [main]
+    paths: [data/catalog.json]
+  # Manual-trigger escape hatch: if a catalog change merged without
+  # firing this workflow (e.g. the workflow itself was being updated in
+  # the same merge), an admin can dispatch from the Actions UI to retry.
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  auto-tag:
+    name: Auto-tag data release on data_version change
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - id: detect
+        name: Detect data_version change
+        run: |
+          OLD=$(git show HEAD~1:data/catalog.json 2>/dev/null | jq -r '.data_version // empty')
+          NEW=$(jq -r '.data_version // empty' data/catalog.json)
+
+          if [ -z "$NEW" ]; then
+            echo "ERROR: data/catalog.json::data_version is empty on HEAD" >&2
+            exit 1
+          fi
+
+          if [ "$OLD" = "$NEW" ]; then
+            echo "data_version unchanged ($NEW) — nothing to tag"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! [[ "$NEW" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: new data_version ($NEW) is not valid CalVer YYYY.MM.MICRO" >&2
+            exit 1
+          fi
+
+          echo "data_version: $OLD -> $NEW"
+          echo "tag=data-${NEW}" >> "$GITHUB_OUTPUT"
+          echo "version=${NEW}" >> "$GITHUB_OUTPUT"
+
+      - name: Push data tag
+        if: steps.detect.outputs.tag != ''
+        env:
+          TAG: ${{ steps.detect.outputs.tag }}
+        run: |
+          # Fail loudly if the tag already exists — never silently overwrite.
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "ERROR: tag ${TAG} already exists; refusing to re-tag" >&2
+            exit 1
+          fi
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}"; then
+            echo "ERROR: tag ${TAG} already exists on origin; refusing to re-tag" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Auto-tagged from data/catalog.json::data_version on merge"
+          git push origin "${TAG}"

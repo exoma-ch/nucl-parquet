@@ -1,37 +1,80 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "plugins": ["sentence-case"],
   "packages": {
     ".": {
       "release-type": "python",
       "package-name": "nucl-parquet",
-      "include-component-in-tag": false,
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "clients/rs/nucl-parquet/Cargo.toml",
-          "jsonpath": "$.package.version"
-        },
-        {
-          "type": "toml",
-          "path": "clients/rs/nucl-parquet-mcp/Cargo.toml",
-          "jsonpath": "$.package.version"
-        },
-        {
-          "type": "toml",
-          "path": "clients/py/nucl-parquet-mcp/pyproject.toml",
-          "jsonpath": "$.project.version"
-        },
-        {
-          "type": "json",
-          "path": "clients/ts/nucl-parquet/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "clients/ts/nucl-parquet-mcp/package.json",
-          "jsonpath": "$.version"
-        }
+      "component": "nucl-parquet-py",
+      "include-component-in-tag": true,
+      "tag-separator": "-",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "exclude-paths": [
+        "clients/py/nucl-parquet-mcp",
+        "clients/rs/nucl-parquet",
+        "clients/rs/nucl-parquet-mcp",
+        "clients/ts/nucl-parquet",
+        "clients/ts/nucl-parquet-mcp",
+        "clients/go/nucl-parquet"
       ]
+    },
+    "clients/py/nucl-parquet-mcp": {
+      "release-type": "python",
+      "package-name": "nucl-parquet-mcp",
+      "component": "nucl-parquet-mcp-py",
+      "include-component-in-tag": true,
+      "tag-separator": "-",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    },
+    "clients/rs/nucl-parquet": {
+      "release-type": "rust",
+      "package-name": "nucl-parquet",
+      "component": "nucl-parquet-rs",
+      "include-component-in-tag": true,
+      "tag-separator": "-",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    },
+    "clients/rs/nucl-parquet-mcp": {
+      "release-type": "rust",
+      "package-name": "nucl-parquet-mcp",
+      "component": "nucl-parquet-mcp-rs",
+      "include-component-in-tag": true,
+      "tag-separator": "-",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    },
+    "clients/ts/nucl-parquet": {
+      "release-type": "node",
+      "package-name": "@nucl-parquet/core",
+      "component": "nucl-parquet-ts",
+      "include-component-in-tag": true,
+      "tag-separator": "-",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    },
+    "clients/ts/nucl-parquet-mcp": {
+      "release-type": "node",
+      "package-name": "@nucl-parquet/mcp",
+      "component": "nucl-parquet-mcp-ts",
+      "include-component-in-tag": true,
+      "tag-separator": "-",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
+    },
+    "clients/go/nucl-parquet": {
+      "release-type": "go",
+      "package-name": "github.com/exoma-ch/nucl-parquet/clients/go/nucl-parquet",
+      "component": "clients/go/nucl-parquet",
+      "include-component-in-tag": true,
+      "tag-separator": "/",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
     }
   },
   "changelog-sections": [

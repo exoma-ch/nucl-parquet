@@ -11,7 +11,7 @@
 //! - **EADL**: Atomic relaxation (fluorescence X-ray and Auger transition probabilities)
 //! - **EEDL**: Electron cross-sections (elastic, bremsstrahlung, ionization)
 //! - **XCOM**: Total mass attenuation coefficients (µ/ρ, µ_en/ρ)
-//! - **Stopping**: NIST PSTAR/ASTAR/ESTAR and CatIMA mass stopping power tables
+//! - **Stopping**: NIST PSTAR/ASTAR/ESTAR + dSTAR/tSTAR and CatIMA mass stopping power tables
 //! - **Meta**: Isotopic abundances, radioactive decay chains, and dose rate constants
 //! - **XS**: Nuclear reaction cross-sections (TENDL and other evaluated libraries)
 //!

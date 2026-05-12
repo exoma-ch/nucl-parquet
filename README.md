@@ -13,8 +13,14 @@ The pip package is a thin loader (~50 KB). Data files are either cloned from the
 ```python
 import nucl_parquet
 
-# Download data to ~/.nucl-parquet/ (first time only)
+# Download the latest data tarball to ~/.nucl-parquet/ (first time only)
 nucl_parquet.download()
+
+# Or pin a specific CalVer release
+nucl_parquet.download(data_version="2026.05.11")
+
+# Inspect which data version a checkout pins
+nucl_parquet.data_version()  # → "2026.05.11"
 ```
 
 Or clone the repo directly for the full dataset:
@@ -23,6 +29,17 @@ Or clone the repo directly for the full dataset:
 git clone https://github.com/exoma-ch/nucl-parquet.git
 export NUCL_PARQUET_DATA=/path/to/nucl-parquet/data
 ```
+
+### Release scheme — data on CalVer, code on semver
+
+Data tarballs and code packages release on independent cadences. Data refreshes when upstream sources (NIST/Geant4/strata) update — tracked as `data-YYYY.MM.DD` tags on GitHub. Code releases follow conventional-commit semver via release-please as `vX.Y.Z` tags. The active data version a checkout pins lives at `data/catalog.json::data_version`.
+
+| Release | Tag form | Trigger | Cadence |
+|---|---|---|---|
+| Data tarball | `data-2026.05.11` | manual push of CalVer tag matching `catalog.json::data_version` | upstream refreshes |
+| Code (PyPI, crates, npm, Go) | `v0.14.0` | release-please PR merge | conventional-commit semver |
+
+Per-package code semver (split MCP from core, etc.) is tracked in #150.
 
 ## Usage
 
@@ -40,8 +57,9 @@ db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_A=63 AND residual
 # Decay chain
 db.sql(nucl_parquet.DECAY_CHAIN_SQL, params={"parent_z": 92, "parent_a": 238})
 
-# Stopping power — light ions (NIST PSTAR/ASTAR/ESTAR)
+# Stopping power — light ions (NIST PSTAR/ASTAR/ESTAR; catima for ³He)
 nucl_parquet.elemental_dedx(db, "p", 29, 10.0)     # protons in Cu at 10 MeV
+nucl_parquet.elemental_dedx(db, "a", 29, 5.0)      # α in Cu at 5 MeV (NIST ASTAR)
 nucl_parquet.elemental_dedx(db, "e", 29, 1.0)      # electrons in Cu at 1 MeV
 nucl_parquet.compound_dedx(db, "p", [(29, 0.5), (30, 0.5)], 10.0)
 
@@ -65,6 +83,31 @@ db.sql("""
     WHERE target_Z=29 AND library='hi-xs-prod'
     ORDER BY residual_Z, residual_A, energy_MeV
 """)  # all C-12 fragmentation products on Cu
+
+# Nuclear structure & decay (v0.11+ — Geant4-derived from strata HF dataset)
+db.sql("SELECT * FROM nuclides WHERE Z=43 AND A=99")            # Tc-99g + Tc-99m
+db.sql("SELECT * FROM radiation WHERE Z=63 AND A=152 AND state=''")  # Eu-152 lines
+db.sql("SELECT * FROM coincidences WHERE Z=27 AND A=60")        # Co-60 cascade pairs
+db.sql("SELECT * FROM decay_detailed WHERE Z=43 AND A=99")      # per-shell EC fractions
+
+# Photon-matter interaction (v0.12+ — Geant4 G4EMLOW8.8)
+db.sql("SELECT * FROM photon_pe WHERE Z=82 AND shell=0")        # Pb K-shell σ_PE(E)
+db.sql("SELECT * FROM photon_compton WHERE Z=29")               # Cu Compton σ(E)
+db.sql("SELECT * FROM photon_pair WHERE Z=82 AND channel='total'")  # Pb pair σ(E)
+db.sql("SELECT * FROM photon_rayleigh_cdf WHERE Z=82")          # angular sampling CDF
+db.sql("SELECT * FROM atomic_relaxation WHERE Z=53 AND vacancy_shell='K'")  # I K-vacancy
+db.sql("SELECT * FROM fluorescence WHERE Z=82")                 # Pb fluorescence yields
+
+# Electron-matter interaction (v0.13+ — Geant4 G4EMLOW8.8)
+db.sql("SELECT * FROM electron_brem WHERE Z=82")                # Pb bremsstrahlung σ_brem(E)
+
+# NUDEX detailed nuclear data (v0.14+ — Geant4 G4NUDEXLIB1.0)
+db.sql("SELECT * FROM nudex_levels WHERE Z=27 AND A=60")        # Co-60 full level scheme
+db.sql("SELECT * FROM nudex_level_gammas WHERE Z=82 AND A=208") # Pb-208 transitions
+db.sql("SELECT * FROM capture_gammas WHERE Z=27 AND A=60")      # 59Co(n,γ)60Co primaries
+db.sql("SELECT * FROM icc_factors WHERE Z=82 AND shell='K'")    # Pb K-shell BrIcc
+db.sql("SELECT * FROM psf_e1 WHERE Z=82 AND A=208")             # Pb-208 SMLO E1 GDR
+db.sql("SELECT * FROM level_density_bfm WHERE Z=82 AND A=208")  # Pb-208 BFM params
 ```
 
 ### Data resolution
@@ -150,14 +193,14 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 
 | Column | Type | Description |
 |--------|------|-------------|
-| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR`, `dSTAR`, `tSTAR`, `He3STAR`, `catima_C12`, … |
+| source | Utf8 | `PSTAR`, `ASTAR`, `ESTAR`, `dSTAR`, `tSTAR`, `catima_C12`, … |
 | target_Z | Int32 | Target element Z (1–92) |
 | energy_MeV | Float64 | Projectile kinetic energy (MeV, total) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
 
-Files: `PSTAR.parquet`, `ASTAR.parquet`, `ESTAR.parquet`, `dSTAR.parquet`, `tSTAR.parquet`, `He3STAR.parquet`, and `catima_{beam}.parquet` for C12/O16/Ne20/Si28/Ar40/Fe56. The full 92×92 CaTiMA matrix (MeV/u units) lives separately at `stopping/catima/catima.parquet`.
+Files: `PSTAR.parquet`, `ASTAR.parquet`, `ESTAR.parquet`, `dSTAR.parquet`, `tSTAR.parquet`, and `catima_{beam}.parquet` for C12/O16/Ne20/Si28/Ar40/Fe56. The full 92×92 CaTiMA matrix (MeV/u units) lives separately at `stopping/catima/catima.parquet`.
 
-`dSTAR`, `tSTAR`, and `He3STAR` are velocity-scaled from PSTAR/ASTAR — exact for electronic stopping since Z_proj and velocity fully determine dE/dx. For elements not in the NIST table (e.g. Ra, Rn, Ac, Po, Fr, At, Tc, Pm), `elemental_dedx()` automatically falls back to CaTiMA (Bethe-Bloch), which covers all Z=1–92.
+All three NIST programs (PSTAR, ASTAR, ESTAR) are reproducible from NIST CGI via `uv run python -m nucl_parquet.build_stopping`. `dSTAR` and `tSTAR` are velocity-scaled from PSTAR (exact, same Z=1, just relabel energy axis) by `build_light_ions.py`. ³He has no published NIST table; α and ³He earlier shipped via wrong-by-4× files that have been removed (#137) — α now uses NIST ASTAR (ICRU-49 reference), ³He uses CaTiMA. NIST PSTAR/ASTAR only publish 25 elemental targets; for elements outside that list (e.g. Tc, Pm, Po, Rn), `elemental_dedx()` falls back to CaTiMA (Bethe-Bloch), which covers all Z=1–92.
 
 **Heavy-ion total reaction cross-sections** (`hi-xs/xs/{proj}_{target}.parquet`):
 
@@ -195,6 +238,92 @@ Full 92×92 matrix — all projectile elements Z=1–92 against all target eleme
 | target_Z | Int32 | Target atomic number (1–92) |
 | energy_MeV_u | Float64 | Kinetic energy per nucleon (MeV/u) |
 | dedx | Float64 | Mass stopping power (MeV cm²/g) |
+
+## Nuclear structure & decay (v0.11+, Geant4-derived)
+
+Sourced from the [strata project's HuggingFace dataset](https://huggingface.co/datasets/gerchowl/strata-data), which republishes G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 as Parquet. Replaces the v0.10.x IAEA-LiveChart pipeline; six bug classes eliminated by construction (see [ADR-0002](docs/adr/0002-g4-migration-schema.md)). Stable isotopes ship `half_life_s = +inf` (use `is_finite(half_life_s)` to test).
+
+| View | Source | What's in it |
+|---|---|---|
+| `nuclides` | `meta/ensdf/nuclides.parquet` | All known states (ground + isomers) with half-life, J^π, decay modes, AME2020 mass excess, IUPAC composition |
+| `ground_states` | `nuclides WHERE state = ''` | Compatibility view |
+| `decay` / `decay_detailed` | `meta/decay{,_detailed}.parquet` | Decay branches per `(Z, A, state)`. `decay_detailed` adds `parent_ex_kev`, `daughter_ex_kev`, `q_value_kev`, `forbiddenness`, and **per-shell EC fractions** (`KshellEC`/`LshellEC`/`MshellEC`/`NshellEC`) |
+| `radiation` | `meta/ensdf/radiation/{Symbol}.parquet` | Per-element gamma + X-ray + Auger lines, unioned by `rad_type` discriminator |
+| `coincidences` | `meta/ensdf/coincidences/{Symbol}.parquet` | Gamma cascade pairs (~600k pairs, 104 element files) |
+| `levels` | `meta/ensdf/levels/{Symbol}.parquet` | Excited-state level schemes |
+
+## Photon-matter interaction (v0.12+, G4EMLOW8.8)
+
+Per-process cross-sections + sampling kernels for "photon hits material" queries. Lets users break down `xcom`'s integrated µ/ρ into the dominant processes (PE / Compton / Rayleigh / pair / atomic relaxation). All views live under `data/em/`; epic [#95](https://github.com/exoma-ch/nucl-parquet/issues/95).
+
+| View | Process | Use case |
+|---|---|---|
+| `photon_pe` | Photoelectric per-shell σ | "After K-shell ionization in iodine at 33 keV…" |
+| `photon_pe_high_z_params` | Analytic fit coefficients | High-Z extrapolation near edges |
+| `photon_pe_angular` | Photoelectron emission angle kernel | Monte Carlo angular sampling |
+| `photon_compton` | Compton σ_C(E, Z) | Bound-electron Klein-Nishina total |
+| `compton_scattering_function` | S(x, Z) | Differential dσ/dΩ via S(x,Z) × Klein-Nishina |
+| `compton_doppler_profiles` | Per-shell f(p) | Doppler broadening of scattered energy |
+| `photon_rayleigh_cdf` | Coherent-scattering CDF | Inverse-CDF angular sampling |
+| `xray_form_factor` | Anomalous f1, f2 (Henke/CXRO) | Low-energy Rayleigh corrections |
+| `photon_pair` | Pair + triplet σ | Per-channel breakdown above 1.022 MeV (`channel ∈ {nuclear, triplet, total}`) |
+| `atomic_relaxation` | Full vacancy cascade | Radiative + Auger transitions per shell |
+| `fluorescence` | Radiative subset | K_α / K_β / L_α yields per Z |
+
+**Worked example — "what fraction of 511 keV photons in lead Compton-scatter vs photoelectric-absorb?"**
+
+```sql
+WITH pe_total AS (
+    SELECT Z, energy_MeV, SUM(sigma_b) AS sigma_pe
+      FROM photon_pe
+     WHERE Z = 82 AND ABS(energy_MeV - 0.511) < 1e-3
+     GROUP BY Z, energy_MeV
+)
+SELECT 'PE' AS process, sigma_pe AS sigma_b FROM pe_total
+UNION ALL
+SELECT 'Compton', sigma_b FROM photon_compton
+ WHERE Z = 82 AND ABS(energy_MeV - 0.511) < 1e-3;
+```
+
+## Electron-matter interaction (v0.13+, G4EMLOW8.8)
+
+Per-process electron transport cross-sections — companion to the v0.12 photon-matter views. Epic [#114](https://github.com/exoma-ch/nucl-parquet/issues/114) tracks the full electron-matter rollout (bremsstrahlung shipped; Seltzer-Berger DCS, MSC, DPWA, ESTAR migration in progress).
+
+| View | Process | Use case |
+|---|---|---|
+| `electron_brem` | Bremsstrahlung total σ_brem(Z, T) | Photon-emission rate from electron transport |
+
+## Detailed nuclear data — NUDEX (v0.14+, G4NUDEXLIB1.0)
+
+Where `nuclides` / `radiation` / `coincidences` ship the *summary* G4 PhotonEvaporation tables, the NUDEX views below import the **fully-detailed** ENSDF source — every known nuclear level, every measured gamma transition, full BrIcc internal-conversion tables, neutron-capture primary spectra, photon strength functions, and statistical-model level density parameters. Epic [#115](https://github.com/exoma-ch/nucl-parquet/issues/115) (5/5 sub-issues complete).
+
+| View | Rows | What's in it |
+|---|---|---|
+| `nudex_levels` | 158,900 | Per-level: energy, J^π, half-life, decay modes (3,331 isotopes) |
+| `nudex_level_gammas` | 245,975 | Per-transition: source/dest level, γ energy, intensity, uncertainty |
+| `nudex_isotopes` | 3,331 | Per-isotope summary: level/gamma counts, mass excess, S_n |
+| `capture_gammas` | 39,157 | Neutron-capture primary γ spectra (PGAA / activation analysis) |
+| `capture_gammas_summary` | 982 | Per (target, daughter): reaction, S_n, multiplicity |
+| `icc_factors` | 579,380 | Per-shell BrIcc factors (35 shells × 10 multipolarities × 117 Z) |
+| `psf_e1` | 8,980 | **IAEA SMLO E1 (recommended modern default)** |
+| `psf_gdr_lor` / `mlo` / `slo` | 145 / 178 / 180 | Experimental GDR Lorentzian / Modified-Lorentzian / Standard-Lorentzian |
+| `psf_gdr_theor` | 5,986 | Goriely theoretical PSF systematics |
+| `psf_photonuclear` | 1,912 | Photonuclear (γ,abs)/(γ,sn)/(γ,xn) experimental peaks |
+| `level_density_bfm` | 289 | Back-shifted Fermi-gas effective parameters |
+| `level_density_ctm` | 289 | Constant-temperature effective parameters |
+| `level_density_params` | 3,353 | Per-nuclide T, U_cutoff, N_levels |
+
+**Schema overlap with v0.11**: `nudex_levels` and `ensdf_levels` coexist by design. Use `ensdf_levels` for transport-aligned queries (matches G4's bundled level set); use `nudex_levels` for high-fidelity gamma spectroscopy and statistical decay calculations.
+
+**Worked example — "predict the prompt-gamma signature of a neutron-irradiated Co-59 sample"**
+
+```sql
+SELECT energy_keV, intensity_pct
+  FROM capture_gammas
+ WHERE Z = 27 AND A = 60 AND variant = 'default'
+ ORDER BY intensity_pct DESC
+ LIMIT 10;
+```
 
 ## Development
 

@@ -1,6 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
+  "data_version": "2026.5.0",
+  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -232,6 +234,25 @@
       "data_type": "total_reaction_cross_sections",
       "version": "tripathi-1997",
       "path": "hi-xs/xs/"
+    },
+    "strata-data-nuclear": {
+      "name": "Geant4-derived nuclear structure (via strata-data)",
+      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project. Source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward — replaces the v0.10.x IAEA-LiveChart pipeline. See ADR-0002.",
+      "source_url": "https://huggingface.co/datasets/gerchowl/strata-data",
+      "revision": "ae6bc9751058e1e5d95982c78f2ee5b08093433d",
+      "fetcher": "scripts/fetch_strata_nuclear.py",
+      "data_type": "nuclear_structure",
+      "files": [
+        "nuclear/ensdfstate.parquet",
+        "nuclear/photon_evap_levels.parquet",
+        "nuclear/photon_evap_gammas.parquet",
+        "nuclear/radioactive_decay.parquet"
+      ],
+      "upstream_g4_versions": {
+        "G4ENSDFSTATE": "3.0",
+        "PhotonEvaporation": "6.1.2",
+        "RadioactiveDecay": "6.1.2"
+      }
     }
   },
   "shared": {
@@ -255,7 +276,6 @@
         "ESTAR",
         "dSTAR",
         "tSTAR",
-        "He3STAR",
         "catima_C12",
         "catima_O16",
         "catima_Ne20",
@@ -263,7 +283,7 @@
         "catima_Ar40",
         "catima_Fe56"
       ],
-      "sources_note": "dSTAR/tSTAR/He3STAR are velocity-scaled from PSTAR/ASTAR (exact for electronic stopping). catima_* are pycatima tables for common heavy-ion beams.",
+      "sources_note": "PSTAR/ASTAR/ESTAR are NIST ICRU-49/37 tables (reproducible via nucl_parquet.build_stopping). dSTAR/tSTAR are velocity-scaled from PSTAR (exact for electronic stopping). ³He has no NIST table — routes through catima in the loader. catima_* are pycatima tables for common heavy-ion beams; the full 92×92 MeV/u matrix is at catima_full_matrix.",
       "catima": {
         "proj_Z_range": [
           1,
