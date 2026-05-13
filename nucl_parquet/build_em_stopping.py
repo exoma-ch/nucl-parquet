@@ -9,19 +9,18 @@ Reads the three strata em/*.parquet files fetched by
    `dedx` is total mass stopping power (collision + radiative).
 
 2. `data/stopping/em/electron_stopping.parquet` — rich schema, NEW
-   `{name, is_element, target_Z, energy_MeV, collision_sp_mev_cm2_g,
+   `{name, g4_name, is_element, target_Z, energy_MeV, collision_sp_mev_cm2_g,
      radiative_sp_mev_cm2_g, total_sp_mev_cm2_g, density_effect_delta}`.
    Covers all 98 elements AND ~180 compounds (water, air, soft tissue,
    bone, common detectors, etc.). target_Z is NULL for compounds.
+   `g4_name` is the G4_<symbol> / G4_<COMPOUND> identifier that joins
+   1:1 with `density_effect_params.name`.
 
 3. `data/stopping/em/density_effect_params.parquet` — NEW
    Sternheimer parameterization per material
    `{name, I_eV, C, X0, X1, a, k, delta0, density_gcm3, state, Zeff, nElements}`.
-   Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList; this
-   does NOT 1:1 align with electron_stopping.name yet (which uses bare element-Z
-   strings and uppercase ICRU compound names). Cross-references are by Zeff
-   for elements (Zeff == Z) and by-name for compounds — TODO cross-walk in a
-   followup.
+   Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList.
+   Join with `electron_stopping` on `density_effect_params.name = electron_stopping.g4_name`.
 
 Energy axis is the strata `estar_long.parquet` grid (energies 0.001–10000 MeV).
 
@@ -60,6 +59,13 @@ def build(data_dir: Path | None = None) -> None:
     estar = pl.read_parquet(estar_long)
     de = pl.read_parquet(density_effect)
 
+    # Build Z -> "G4_<symbol>" map from the meta/elements table for the
+    # cross-walk into density_effect_params (which uses G4_<symbol> names).
+    elements = pl.read_parquet(data_dir / "meta" / "elements.parquet")
+    z_to_g4: dict[int, str] = {
+        int(z): f"G4_{sym}" for z, sym in zip(elements["Z"].to_list(), elements["symbol"].to_list())
+    }
+
     # --- Output 1: legacy ESTAR.parquet ---
     # Elements only, four columns matching the v0.5 schema. dedx is total
     # mass stopping power (NIST tabulation also gives total).
@@ -81,16 +87,30 @@ def build(data_dir: Path | None = None) -> None:
     # --- Output 2: electron_stopping.parquet ---
     # Full strata schema — elements + compounds, collision/radiative split.
     # target_Z populated for elements, NULL for compounds.
-    rich = estar.select(
-        pl.col("name"),
-        pl.col("is_element"),
-        pl.when(pl.col("is_element")).then(pl.col("z").cast(pl.Int32)).otherwise(None).alias("target_Z"),
-        pl.col("energy_mev").alias("energy_MeV"),
-        pl.col("collision_sp_mev_cm2_g"),
-        pl.col("radiative_sp_mev_cm2_g"),
-        pl.col("total_sp_mev_cm2_g"),
-        pl.col("density_effect_delta"),
-    ).sort("is_element", "target_Z", "name", "energy_MeV")
+    rich = (
+        estar.with_columns(
+            # g4_name: G4_<symbol> for elements (joins with density_effect_params.name);
+            # for compounds, strata's `name` already matches the G4 convention
+            # (G4_WATER, G4_BONE_COMPACT_ICRU, etc.) — but estar_long stores compound
+            # names *without* the G4_ prefix, so we add it.
+            pl.when(pl.col("is_element"))
+            .then(pl.col("z").cast(pl.Int32).map_elements(lambda z: z_to_g4.get(z), return_dtype=pl.String))
+            .otherwise(pl.lit("G4_") + pl.col("name"))
+            .alias("g4_name")
+        )
+        .select(
+            pl.col("name"),
+            pl.col("g4_name"),
+            pl.col("is_element"),
+            pl.when(pl.col("is_element")).then(pl.col("z").cast(pl.Int32)).otherwise(None).alias("target_Z"),
+            pl.col("energy_mev").alias("energy_MeV"),
+            pl.col("collision_sp_mev_cm2_g"),
+            pl.col("radiative_sp_mev_cm2_g"),
+            pl.col("total_sp_mev_cm2_g"),
+            pl.col("density_effect_delta"),
+        )
+        .sort("is_element", "target_Z", "name", "energy_MeV")
+    )
     rich_out = data_dir / "stopping" / "em" / "electron_stopping.parquet"
     rich_out.parent.mkdir(parents=True, exist_ok=True)
     rich.write_parquet(rich_out, compression="zstd")

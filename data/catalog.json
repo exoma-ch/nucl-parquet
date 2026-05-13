@@ -2,7 +2,7 @@
   "$schema": "./catalog.schema.json",
   "version": 1,
   "data_version": "2026.5.1",
-  "data_sha256": "6076aa2c0ec13a72cef2066b51d4e39221a09b865dfcd1b42c854e62c0d1bc13",
+  "data_sha256": "b4b945f0329afb0a0fcc3792847b80a30d75c88ae3428dda9b7da668a56eacc4",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -301,7 +301,7 @@
       },
       "electron_stopping": {
         "path": "stopping/em/electron_stopping.parquet",
-        "schema": ["name", "is_element", "target_Z", "energy_MeV", "collision_sp_mev_cm2_g", "radiative_sp_mev_cm2_g", "total_sp_mev_cm2_g", "density_effect_delta"],
+        "schema": ["name", "g4_name", "is_element", "target_Z", "energy_MeV", "collision_sp_mev_cm2_g", "radiative_sp_mev_cm2_g", "total_sp_mev_cm2_g", "density_effect_delta"],
         "source": "gerchowl/strata-data em/estar_long.parquet (Geant4 EM data \u2192 ESTAR-equivalent)",
         "coverage": "98 elements (Z=1..98) + ~183 compounds (ICRU tissue/detector materials, water, air, etc.)",
         "energy_range_MeV": [0.001, 10000.0],

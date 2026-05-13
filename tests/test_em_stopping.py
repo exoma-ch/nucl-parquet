@@ -52,6 +52,7 @@ def test_electron_stopping_rich_schema(data_dir_path: Path) -> None:
     df = pl.read_parquet(data_dir_path / "stopping" / "em" / "electron_stopping.parquet")
     expected = {
         "name",
+        "g4_name",
         "is_element",
         "target_Z",
         "energy_MeV",
@@ -125,6 +126,61 @@ def test_estar_anchors_match_nist(data_dir_path: Path, target_Z: int, energy_MeV
     dedx = float(row["dedx"][0])
     rel = abs(dedx - expected) / expected
     assert rel < 1e-3, f"Z={target_Z} @ {energy_MeV} MeV: got {dedx}, expected NIST {expected}, |Δ|/E = {rel:.4f}"
+
+
+@pytest.mark.data
+def test_collision_plus_radiative_equals_total(data_dir_path: Path) -> None:
+    """Physics invariant: collision_sp + radiative_sp == total_sp on every row."""
+    import polars as pl
+
+    df = pl.read_parquet(data_dir_path / "stopping" / "em" / "electron_stopping.parquet")
+    diff = (df["collision_sp_mev_cm2_g"] + df["radiative_sp_mev_cm2_g"] - df["total_sp_mev_cm2_g"]).abs()
+    rel = (diff / df["total_sp_mev_cm2_g"]).max()
+    # Tabulated to 4 sig figs in NIST, so ≤2e-3 is within rounding.
+    assert rel < 3e-3, f"collision + radiative != total on some rows; max rel residual = {rel:.2e}"
+
+
+@pytest.mark.data
+def test_density_effect_delta_monotone_and_finite(data_dir_path: Path) -> None:
+    """δ(E) must be finite, non-negative, and monotone non-decreasing in energy for any material."""
+    import polars as pl
+
+    df = pl.read_parquet(data_dir_path / "stopping" / "em" / "electron_stopping.parquet")
+    # Check on a load-bearing material set: water + a couple of metals
+    for material_name in ["WATER_LIQUID", "AIR_DRY_NEAR_SEA_LEVEL", "29", "82"]:
+        rows = df.filter(pl.col("name") == material_name).sort("energy_MeV")
+        if rows.height == 0:
+            continue
+        delta = rows["density_effect_delta"].to_list()
+        assert all(d == d for d in delta), f"NaN in {material_name} density_effect_delta"  # NaN check
+        assert all(d >= 0 for d in delta), f"negative δ in {material_name}"
+        for i in range(len(delta) - 1):
+            # Allow tiny non-monotonicity at the rounding floor
+            assert delta[i + 1] >= delta[i] - 1e-9, (
+                f"{material_name} δ decreased between {rows['energy_MeV'][i]:.4f} and {rows['energy_MeV'][i + 1]:.4f}: "
+                f"{delta[i]} -> {delta[i + 1]}"
+            )
+
+
+@pytest.mark.data
+def test_g4_name_joins_with_density_effect_params(data_dir_path: Path) -> None:
+    """electron_stopping.g4_name joins 1:1 with density_effect_params.name for Z=1..92.
+
+    density_effect_params (sourced from Geant4 PhysicsList) covers Z=1..92.
+    The transuranic elements Np-Cf (Z=93..98) are in electron_stopping (from
+    strata's estar_long) but absent from density_effect_params — consumers
+    needing density-effect correction for transuranics must derive Sternheimer
+    params manually or fall back to a scaling formula.
+    """
+    import polars as pl
+
+    es = pl.read_parquet(data_dir_path / "stopping" / "em" / "electron_stopping.parquet")
+    de = pl.read_parquet(data_dir_path / "stopping" / "em" / "density_effect_params.parquet")
+
+    element_g4_names = set(es.filter(pl.col("is_element") & (pl.col("target_Z") <= 92))["g4_name"].unique().to_list())
+    de_names = set(de["name"].to_list())
+    missing = sorted(element_g4_names - de_names)
+    assert not missing, f"Z=1..92 elements without density_effect_params row: {missing}"
 
 
 @pytest.mark.data
