@@ -100,10 +100,15 @@ def test_dcs_is_scaled_form(data_dir_path: Path) -> None:
     df = pl.read_parquet(data_dir_path / _PARQUET)
 
     def _value_at(z: int, e_kev_target: float, kappa_target: float) -> float:
-        rows = df.filter(pl.col("target_Z") == z).sort(
-            (pl.col("electron_kev") - e_kev_target).abs() + 1000 * (pl.col("kappa") - kappa_target).abs()
-        )
-        return float(rows["dcs"][0])
+        # Nearest in (electron_kev, kappa) — snap each axis independently
+        # to avoid axis-weighting fragility (energy spacing >> κ spacing in
+        # absolute terms, so a single combined L1 distance would over-weight
+        # energy if either axis shifts).
+        df_z = df.filter(pl.col("target_Z") == z)
+        nearest_e = float(df_z.sort((pl.col("electron_kev") - e_kev_target).abs())["electron_kev"][0])
+        df_e = df_z.filter(pl.col("electron_kev") == nearest_e)
+        nearest_k = float(df_e.sort((pl.col("kappa") - kappa_target).abs())["kappa"][0])
+        return float(df_e.filter(pl.col("kappa") == nearest_k)["dcs"][0])
 
     pb = _value_at(82, 100.0, 0.5)
     h = _value_at(1, 100.0, 0.5)

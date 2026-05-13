@@ -19,8 +19,8 @@ Output schema:
                                Z² is factored out so values are O(1-10) across
                                all Z. To recover the raw dσ/dκ, multiply by Z²/β².)
 
-Energy grid: 32 incident energies (1 keV .. 10 GeV log-spaced); 32 κ values.
-Total rows: Z=1..99 × ~32 × ~32 ≈ 100k.
+Energy grid: 57 incident energies (1 keV .. 10 GeV log-spaced); 32 κ values.
+Total rows: Z=1..92 × 57 × 32 = 167,808.
 
 Companion to:
 - `data/em/electron_brem.parquet` (integrated σ(Z, T_electron); already shipped)
