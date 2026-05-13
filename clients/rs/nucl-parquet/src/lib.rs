@@ -54,7 +54,10 @@ mod xs;
 pub use data_dir::DataDir;
 pub use electron::{ElectronDb, ElectronProcess};
 pub use error::Error;
-pub use meta::{AbundanceEntry, AbundancesDb, DecayDb, DecayEntry, DoseDb};
+pub use meta::{
+    AbundanceEntry, AbundancesDb, CoincidenceEntry, CoincidenceFilter, CoincidencesDb, DecayDb,
+    DecayEntry, DoseDb, Emission, EmissionEntry, GammaCandidate, RadiationDb,
+};
 pub use photon::{PhotonDb, Process};
 pub use relaxation::{RelaxationDb, Transition, TransitionType};
 pub use stopping::StoppingDb;
