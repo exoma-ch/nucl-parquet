@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
+  "data_version": "2026.5.1",
+  "data_sha256": "14fca5d7d16d08f8de1863ecaa37bd7b82557e2465cf31cd5831379c2e0398d6",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -296,6 +296,14 @@
         "energy_unit": "MeV/u",
         "note": "Any isotope of proj_Z \u2014 divide total MeV by A to get MeV/u"
       }
+    },
+    "beta_spectra": {
+      "path": "meta/ensdf/beta_spectra/",
+      "layout": "one file per parent element symbol \u2014 meta/ensdf/beta_spectra/{Symbol}.parquet",
+      "schema": ["Z", "A", "state", "transition_idx", "decay_mode", "forbiddenness", "endpoint_keV", "branching", "energy_keV", "dN_dE", "cumulative"],
+      "source": "Endpoint Q-values + forbiddenness from strata radioactive_decay.parquet; spectrum shape from Fermi function (relativistic, with shape factors for unique 1st/2nd forbidden)",
+      "coverage": "All \u03b2-minus and \u03b2+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions \u00d7 200 energy bins each",
+      "note": "dN/dE is normalized per transition: \u222b dN/dE \u00b7 dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions use S(E)=1 as approximation (small correction, documented caveat). Validated: P-32 mean energy = 694.9 keV (published 694.9). Y-90 ground-state \u03b2 endpoint = 2275.6 keV (uniqueFirstForbidden, mean energy ~945 keV)."
     }
   }
 }
