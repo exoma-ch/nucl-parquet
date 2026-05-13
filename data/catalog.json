@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
+  "data_version": "2026.5.1",
+  "data_sha256": "08a2dd67bfdf537d2252c6700663d30df03ee866f7b393dc6f31a27a2b8615f2",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -285,16 +285,20 @@
       ],
       "sources_note": "PSTAR/ASTAR/ESTAR are NIST ICRU-49/37 tables (reproducible via nucl_parquet.build_stopping). dSTAR/tSTAR are velocity-scaled from PSTAR (exact for electronic stopping). ³He has no NIST table — routes through catima in the loader. catima_* are pycatima tables for common heavy-ion beams; the full 92×92 MeV/u matrix is at catima_full_matrix.",
       "catima": {
+        "schema": ["proj_Z", "proj_A", "target_Z", "energy_MeV_u", "dedx", "straggling"],
         "proj_Z_range": [
           1,
-          92
+          99
         ],
         "target_Z_range": [
           1,
           92
         ],
         "energy_unit": "MeV/u",
-        "note": "Any isotope of proj_Z \u2014 divide total MeV by A to get MeV/u"
+        "n_isotopes": 399,
+        "n_rows": 7341600,
+        "isotope_inventory": "All stable + primordial isotopes (abundance > 0 in meta/abundances.parquet, 287 nuclides) \u222a all ground-state nuclides with T\u00bd > 1 year in meta/decay.parquet (covers Np/Pu/Am/Cm/Bk/Cf/Es transuranics up to Z=99, plus every long-lived radio-isotope of lower-Z elements) \u222a beam/medical allowlist (C-11, N-13, O-15, F-18, P-32). For Z values with no T\u00bd>1yr isotope (At, Rn, Fr), the longest-lived ground state is shipped as fallback.",
+        "isotope_note": "Rows are keyed on (proj_Z, proj_A). At E/A > 0.1 MeV/u dedx is isotope-agnostic to <0.1%; below ~0.01 MeV/u nuclear-stopping reduced-mass effects cause real (up to ~15%) isotope dependence, captured by the per-isotope rows. Querying (Z, A) outside the inventory raises KeyError \u2014 extend nucl_parquet.build_heavy_ions._BEAM_ALLOWLIST or lower _LONGLIVED_THRESHOLD_S and rebuild."
       }
     }
   }
