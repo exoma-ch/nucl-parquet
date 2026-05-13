@@ -225,8 +225,13 @@ export class RadiationDb {
 
   private async buildOrGetIndex(): Promise<GammaIndexEntry[]> {
     if (this.gammaIndex) return this.gammaIndex;
+    // Cache the in-flight promise so concurrent callers share one scan. On
+    // rejection (transient I/O blip, corrupt file, OOM during the
+    // full-corpus scan), clear the slot so the next call retries — caching
+    // a rejected promise would permanently poison identifyGamma for the
+    // lifetime of this RadiationDb instance.
     if (!this.gammaIndexPromise) {
-      this.gammaIndexPromise = (async () => {
+      const promise = (async () => {
         const idx: GammaIndexEntry[] = [];
         const files = await listParquetFiles(this.radDir);
         for (const file of files) {
@@ -246,6 +251,12 @@ export class RadiationDb {
         this.gammaIndex = idx;
         return idx;
       })();
+      promise.catch(() => {
+        if (this.gammaIndexPromise === promise) {
+          this.gammaIndexPromise = null;
+        }
+      });
+      this.gammaIndexPromise = promise;
     }
     return this.gammaIndexPromise;
   }

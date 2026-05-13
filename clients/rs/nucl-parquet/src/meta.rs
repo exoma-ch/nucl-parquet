@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use arrow::array::{Array, Float32Array, Float64Array, Int32Array, Int64Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -753,6 +753,11 @@ pub struct RadiationDb {
     rad_dir: PathBuf,
     cache: RwLock<HashMap<u32, Arc<Vec<EmissionEntry>>>>,
     gamma_index: OnceLock<Vec<GammaIndexEntry>>,
+    /// Serializes the γ-index build so concurrent first-callers don't each
+    /// scan all ~100 files. `OnceLock::get_or_init` would do this in one line
+    /// but its closure can't return `Result`; the manual lock-then-recheck
+    /// pattern below gives the same semantics for the fallible case.
+    gamma_index_build_lock: Mutex<()>,
 }
 
 unsafe impl Send for RadiationDb {}
@@ -772,6 +777,7 @@ impl RadiationDb {
             rad_dir,
             cache: RwLock::new(HashMap::new()),
             gamma_index: OnceLock::new(),
+            gamma_index_build_lock: Mutex::new(()),
         })
     }
 
@@ -949,12 +955,19 @@ impl RadiationDb {
     }
 
     fn gamma_index_or_build(&self) -> crate::Result<&[GammaIndexEntry]> {
+        // Fast path: index already built.
         if let Some(idx) = self.gamma_index.get() {
             return Ok(idx);
         }
-        // Race-safe: if two threads call simultaneously, both build, and
-        // OnceLock keeps the first. The duplicate work is rare and the cost
-        // is bounded.
+        // Slow path: hold the build lock for the entire build+set so
+        // concurrent first-callers don't each scan all ~100 files. Re-check
+        // after acquiring the lock — another thread may have completed the
+        // build while we were blocked. On build failure the OnceLock stays
+        // empty, so the next call retries (no failure-poisoning).
+        let _guard = self.gamma_index_build_lock.lock().unwrap();
+        if let Some(idx) = self.gamma_index.get() {
+            return Ok(idx);
+        }
         let built = self.build_gamma_index()?;
         let _ = self.gamma_index.set(built);
         Ok(self.gamma_index.get().expect("gamma_index just set"))
