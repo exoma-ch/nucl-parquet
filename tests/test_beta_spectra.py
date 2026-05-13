@@ -41,12 +41,14 @@ def test_schema(data_dir_path: Path) -> None:
         "energy_keV",
         "dN_dE",
         "cumulative",
+        "shape_factor_approx",
     }
     assert set(df.columns) == expected
     assert df["Z"].dtype == pl.Int32
     assert df["A"].dtype == pl.Int32
     assert df["energy_keV"].dtype == pl.Float32
     assert df["dN_dE"].dtype == pl.Float32
+    assert df["shape_factor_approx"].dtype == pl.Boolean
 
 
 @pytest.mark.data
@@ -140,6 +142,88 @@ def test_cumulative_monotone(data_dir_path: Path) -> None:
     assert abs(float(c[-1]) - 1.0) < 5e-3, f"cumulative endpoint = {c[-1]}"
     # Starts near 0
     assert float(c[0]) < 5e-3
+
+
+@pytest.mark.data
+def test_f18_beta_plus_anchor(data_dir_path: Path) -> None:
+    """F-18 β+: positron kinetic-energy endpoint 633.5 keV, mean ~250 keV.
+
+    Critical sign-bug test: a wrong sign of `z_signed` in BetaPlus path
+    would silently flip the Coulomb correction (suppression → enhancement)
+    and shift the mean energy noticeably away from 250 keV.
+
+    Also: strata's q_value_kev is the atomic Q, so the build must subtract
+    2·m_e c² = 1022 keV to get the positron kinetic-energy endpoint. If that
+    subtraction is missing, endpoint would read 1655.9 not ~633.
+    """
+    import numpy as np
+    import polars as pl
+
+    df = (
+        pl.read_parquet(data_dir_path / _DIR / "F.parquet")
+        .filter((pl.col("A") == 18) & (pl.col("decay_mode") == "BetaPlus"))
+        .sort("energy_keV")
+    )
+    assert df.height > 0, "F-18 β+ missing"
+    endpoint = float(df["endpoint_keV"][0])
+    assert 630.0 < endpoint < 640.0, f"F-18 β+ endpoint = {endpoint} keV (expected ~633.5)"
+    e = df["energy_keV"].to_numpy()
+    d = df["dN_dE"].to_numpy()
+    mean_e = float(np.trapezoid(e * d, e))
+    # NNDC publishes 249.8 keV mean kinetic energy for F-18 positrons.
+    assert 240.0 < mean_e < 260.0, f"F-18 β+ mean E = {mean_e} (expect ~250)"
+
+
+@pytest.mark.data
+def test_sn121m_isomer_present(data_dir_path: Path) -> None:
+    """Sn-121m isomer (parent_ex_kev = 6.31 keV) must be represented with state='m'.
+
+    Tests the state-inference path: strata's parent_level_flag is '-' for every
+    row; we must infer isomer from parent_ex_kev > 0.
+    """
+    import polars as pl
+
+    df = pl.read_parquet(data_dir_path / _DIR / "Sn.parquet").filter((pl.col("A") == 121) & (pl.col("state") == "m"))
+    assert df.height > 0, "Sn-121m β- (state='m') missing — state inference is broken"
+    # Sn-121m β- endpoint is 372.2 keV (to Sb-121 ground)
+    endpoint = float(df["endpoint_keV"].max())
+    assert 365.0 < endpoint < 380.0, f"Sn-121m endpoint = {endpoint} (expect ~372)"
+
+
+@pytest.mark.data
+def test_bi210_high_z_anchor(data_dir_path: Path) -> None:
+    """Bi-210 β- (Z=83): tests Fermi function at high Z where the (2p)^(2(γ₀-1))
+    factor matters. NNDC mean energy = 389 keV; endpoint 1162.2 keV.
+    """
+    import numpy as np
+    import polars as pl
+
+    df = (
+        pl.read_parquet(data_dir_path / _DIR / "Bi.parquet")
+        .filter((pl.col("A") == 210) & (pl.col("state") == "") & (pl.col("decay_mode") == "BetaMinus"))
+        .sort("energy_keV")
+    )
+    t = df.filter(pl.col("transition_idx") == 0).sort("energy_keV")
+    e = t["energy_keV"].to_numpy()
+    d = t["dN_dE"].to_numpy()
+    mean_e = float(np.trapezoid(e * d, e))
+    assert 380.0 < mean_e < 400.0, f"Bi-210 β- mean E = {mean_e} (expect ~389)"
+
+
+@pytest.mark.data
+def test_k40_non_unique_forbidden_flagged(data_dir_path: Path) -> None:
+    """K-40 has third-forbidden transitions; shape_factor_approx must be True."""
+    import polars as pl
+
+    df = pl.read_parquet(data_dir_path / _DIR / "K.parquet").filter(
+        (pl.col("A") == 40)
+        & (pl.col("forbiddenness") != "uniqueFirstForbidden")
+        & (pl.col("forbiddenness") != "uniqueSecondForbidden")
+        & (pl.col("forbiddenness") != "")
+    )
+    if df.height == 0:
+        pytest.skip("K-40 has no non-unique forbidden transitions in this build")
+    assert df["shape_factor_approx"].all(), "Non-unique-forbidden transitions must be flagged approx"
 
 
 @pytest.mark.data

@@ -2,7 +2,7 @@
   "$schema": "./catalog.schema.json",
   "version": 1,
   "data_version": "2026.5.1",
-  "data_sha256": "14fca5d7d16d08f8de1863ecaa37bd7b82557e2465cf31cd5831379c2e0398d6",
+  "data_sha256": "4b4b74a1facdd828ba00aa7369a368a4e9520b47875e54cf65cd3c376dda8ab6",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -300,10 +300,10 @@
     "beta_spectra": {
       "path": "meta/ensdf/beta_spectra/",
       "layout": "one file per parent element symbol \u2014 meta/ensdf/beta_spectra/{Symbol}.parquet",
-      "schema": ["Z", "A", "state", "transition_idx", "decay_mode", "forbiddenness", "endpoint_keV", "branching", "energy_keV", "dN_dE", "cumulative"],
+      "schema": ["Z", "A", "state", "transition_idx", "decay_mode", "forbiddenness", "endpoint_keV", "branching", "energy_keV", "dN_dE", "cumulative", "shape_factor_approx"],
       "source": "Endpoint Q-values + forbiddenness from strata radioactive_decay.parquet; spectrum shape from Fermi function (relativistic, with shape factors for unique 1st/2nd forbidden)",
       "coverage": "All \u03b2-minus and \u03b2+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions \u00d7 200 energy bins each",
-      "note": "dN/dE is normalized per transition: \u222b dN/dE \u00b7 dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions use S(E)=1 as approximation (small correction, documented caveat). Validated: P-32 mean energy = 694.9 keV (published 694.9). Y-90 ground-state \u03b2 endpoint = 2275.6 keV (uniqueFirstForbidden, mean energy ~945 keV)."
+      "note": "dN/dE is normalized per transition: \u222b dN/dE \u00b7 dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions (K-40, Tc-99, Re-187, Cl-36, etc.) use S(E)=1 as a documented approximation \u2014 filter on shape_factor_approx=True to find them. For \u03b2+ transitions, endpoint_keV is the positron kinetic-energy endpoint (strata's q_value_kev minus 2\u00b7m_e c\u00b2 = 1022 keV). State 'm' marks metastable parents (inferred from parent_ex_kev > 0). Validated: P-32 mean E = 694.9 (NNDC 694.9, exact); F-18 \u03b2+ mean E = 250 keV (NNDC 249.8); Bi-210 mean E = 390 (NNDC 389)."
     }
   }
 }

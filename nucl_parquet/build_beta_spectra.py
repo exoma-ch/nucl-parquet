@@ -19,6 +19,10 @@ Schema:
     energy_keV         float64 (kinetic-energy bin center)
     dN_dE              float64 (probability density, integrates to 1.0)
     cumulative         float64 (CDF — useful for inverse-CDF sampling)
+    shape_factor_approx bool   (True when forbiddenness is non-unique-forbidden,
+                                where we use S(E)=1 as an approximation;
+                                allowed and unique-forbidden are exact and have
+                                shape_factor_approx=False)
 
 Physics:
 - Allowed: N(E) ∝ F(±Z_daughter, E) · p · E_total · (E_max - E)²
@@ -51,6 +55,11 @@ from .download import data_dir as _resolve_data_dir
 # Constants (natural units where useful)
 _M_E_KEV = 510.998_950  # electron rest mass in keV
 _ALPHA = 7.297_352_5693e-3  # fine-structure constant
+
+# For β+ transitions, strata's `q_value_kev` is the atomic-mass Q-value
+# (M_parent - M_daughter)·c² ; the positron kinetic-energy endpoint is
+# E_max = Q - 2·m_e c². For β-, q_value_kev is already the endpoint.
+_TWO_M_E_KEV = 2.0 * _M_E_KEV
 
 # Energy grid: 200 linear bins from 0 to endpoint. Linear keeps the
 # (E_max - E)² near-endpoint cutoff well-resolved; 200 is plenty for
@@ -112,22 +121,29 @@ def _fermi_function(z_daughter_signed: int, e_kev: np.ndarray) -> np.ndarray:
     return np.exp(log_F)
 
 
-def _shape_factor(forbiddenness: str, p: np.ndarray, q: np.ndarray) -> np.ndarray:
+def _shape_factor(forbiddenness: str, p: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, bool]:
     """Multiplicative shape factor S(E) by forbiddenness class.
 
     Args:
         p: electron momentum (in m_e c units)
         q: neutrino momentum = E_max - E (in m_e c units)
+
+    Returns:
+        (shape, is_approx). is_approx=True iff we couldn't apply an exact
+        analytic shape factor and fell back to S=1. Consumers needing higher
+        accuracy on non-unique forbidden transitions should filter on this.
+        Affected isotopes include K-40, Tc-99, Cl-36, Re-187, Ca-41, Ar-39.
     """
     if forbiddenness in ("", None) or forbiddenness == "allowed":
-        return np.ones_like(p)
+        return np.ones_like(p), False
     if forbiddenness == "uniqueFirstForbidden":
-        return p * p + q * q
+        return p * p + q * q, False
     if forbiddenness == "uniqueSecondForbidden":
-        return q**4 + (10.0 / 3.0) * (p * q) ** 2 + p**4
-    # Non-unique 1st/2nd forbidden: small correction, treat as pure Fermi
-    # within the tabulation tolerance. Documented in the catalog.
-    return np.ones_like(p)
+        return q**4 + (10.0 / 3.0) * (p * q) ** 2 + p**4, False
+    # Non-unique 1st/2nd/3rd forbidden: shape factor is transition-specific
+    # (ξ-approximation gives departures of ~5-10% at low E for 1st-forbidden
+    # non-unique). We fall back to S=1 and flag the row.
+    return np.ones_like(p), True
 
 
 def _spectrum(
@@ -135,22 +151,28 @@ def _spectrum(
     decay_mode: str,
     endpoint_kev: float,
     forbiddenness: str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute (energy_keV, dN/dE, cumulative) for one transition.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, bool]:
+    """Compute (energy_keV, dN/dE, cumulative, shape_approx) for one transition.
 
     Spectrum is normalized so that ∫ dN/dE · dE = 1.
     """
     if not math.isfinite(endpoint_kev) or endpoint_kev <= 0:
-        return np.array([]), np.array([]), np.array([])
+        return np.array([]), np.array([]), np.array([]), False
 
-    # β-minus: emitted electron sees daughter Z = parent_Z + 1 (attractive)
-    # β-plus: emitted positron sees daughter Z = parent_Z - 1 (repulsive)
+    # β-minus: emitted electron sees daughter Z = parent_Z + 1 (attractive).
+    #   q_value_kev IS the kinetic-energy endpoint.
+    # β-plus: emitted positron sees daughter Z = parent_Z - 1 (repulsive).
+    #   q_value_kev is the atomic Q; positron kinetic-energy endpoint = Q - 2 m_e c².
     if decay_mode == "BetaMinus":
         z_signed = parent_z + 1
     elif decay_mode == "BetaPlus":
         z_signed = -(parent_z - 1)
+        endpoint_kev = endpoint_kev - _TWO_M_E_KEV
+        if endpoint_kev <= 0:
+            # Below pair-production threshold — only electron capture is energetically allowed.
+            return np.array([]), np.array([]), np.array([]), False
     else:
-        return np.array([]), np.array([]), np.array([])
+        return np.array([]), np.array([]), np.array([]), False
 
     # Linear energy grid from ε > 0 to endpoint
     eps = max(endpoint_kev * 1e-4, 0.1)  # avoid the E=0 singularity in F(Z,E)
@@ -162,18 +184,18 @@ def _spectrum(
     q = (endpoint_kev - energy_kev) / _M_E_KEV  # neutrino momentum (massless ν)
 
     fermi = _fermi_function(z_signed, energy_kev)
-    shape = _shape_factor(forbiddenness, p, q)
+    shape, shape_approx = _shape_factor(forbiddenness, p, q)
     dN_dE = fermi * p * w * (endpoint_kev - energy_kev) ** 2 * shape
 
     # Normalize to integrate to 1 over [0, endpoint_kev]
     integral = np.trapezoid(dN_dE, energy_kev)
     if integral <= 0 or not math.isfinite(integral):
-        return np.array([]), np.array([]), np.array([])
+        return np.array([]), np.array([]), np.array([]), False
     dN_dE = dN_dE / integral
 
     cumulative = np.zeros_like(dN_dE)
     cumulative[1:] = np.cumsum(0.5 * (dN_dE[1:] + dN_dE[:-1]) * np.diff(energy_kev))
-    return energy_kev, dN_dE, cumulative
+    return energy_kev, dN_dE, cumulative, shape_approx
 
 
 def build(data_dir: Path | None = None) -> None:
@@ -200,9 +222,12 @@ def build(data_dir: Path | None = None) -> None:
     )
     print(f"Building β-spectra for {beta.height:,} transitions across {beta['parent_z'].n_unique()} elements")
 
-    # Map parent_level_flag to project-conventional state column
-    def _state(level_flag: str | None) -> str:
-        return "m" if (level_flag and level_flag.upper().startswith("M")) else ""
+    # Map parent_ex_kev to project-conventional state column. strata stores
+    # parent_level_flag as "-" for every row regardless of state, so we infer
+    # isomers from a non-zero excitation energy instead. parent_ex_kev > 0
+    # is the metastable parent's level energy in keV (e.g. Tc-99m at 142.68 keV).
+    def _state(parent_ex_kev: float | None) -> str:
+        return "m" if (parent_ex_kev is not None and parent_ex_kev > 0) else ""
 
     # Group transitions by parent symbol → write one parquet per symbol
     out_root = data_dir / "meta" / "ensdf" / "beta_spectra"
@@ -225,13 +250,14 @@ def build(data_dir: Path | None = None) -> None:
         rows_energy: list[float] = []
         rows_dnde: list[float] = []
         rows_cum: list[float] = []
+        rows_approx: list[bool] = []
 
         # Counter resets per (A, state) — each combination has its own transition index
         prev_key: tuple[int, str] | None = None
         tidx = 0
 
         for row in slice_z.iter_rows(named=True):
-            state = _state(row.get("parent_level_flag"))
+            state = _state(row.get("parent_ex_kev"))
             key = (int(row["parent_a"]), state)
             if key != prev_key:
                 tidx = 0
@@ -239,7 +265,7 @@ def build(data_dir: Path | None = None) -> None:
             else:
                 tidx += 1
 
-            energy, dnde, cum = _spectrum(
+            energy, dnde, cum, shape_approx = _spectrum(
                 parent_z=parent_z,
                 decay_mode=row["decay_mode"],
                 endpoint_kev=float(row["q_value_kev"]),
@@ -248,6 +274,9 @@ def build(data_dir: Path | None = None) -> None:
             if len(energy) == 0:
                 continue
 
+            # For β+, endpoint stored is the corrected positron kinetic-energy
+            # endpoint (= q_value - 2 m_e c²), matching the energy_keV grid.
+            stored_endpoint = float(energy[-1])
             for e_v, d_v, c_v in zip(energy.tolist(), dnde.tolist(), cum.tolist()):
                 rows_z.append(int(parent_z))
                 rows_a.append(int(row["parent_a"]))
@@ -255,11 +284,12 @@ def build(data_dir: Path | None = None) -> None:
                 rows_tidx.append(tidx)
                 rows_mode.append(row["decay_mode"])
                 rows_forb.append(row.get("forbiddenness") or "")
-                rows_endpoint.append(float(row["q_value_kev"]))
+                rows_endpoint.append(stored_endpoint)
                 rows_branching.append(float(row["branching_ratio"]))
                 rows_energy.append(e_v)
                 rows_dnde.append(d_v)
                 rows_cum.append(c_v)
+                rows_approx.append(shape_approx)
             n_transitions += 1
 
         if not rows_z:
@@ -280,6 +310,7 @@ def build(data_dir: Path | None = None) -> None:
                 "energy_keV": pl.Series(rows_energy, dtype=pl.Float32),
                 "dN_dE": pl.Series(rows_dnde, dtype=pl.Float32),
                 "cumulative": pl.Series(rows_cum, dtype=pl.Float32),
+                "shape_factor_approx": pl.Series(rows_approx, dtype=pl.Boolean),
             }
         ).sort("A", "state", "transition_idx", "energy_keV")
 
