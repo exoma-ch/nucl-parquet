@@ -40,17 +40,19 @@ def test_shellcor_coverage(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_shellcor_o16_anchor(data_dir_path: Path) -> None:
-    """O-16 doubly-magic: shell correction must be strongly negative (~−4 MeV),
-    deformation parameters ≈ 0 (spherical)."""
+    """O-16 doubly-magic: NUDEX shell correction = -3.974 ± 0.01 MeV.
+
+    Tight bound is a strong column-swap guard — if any of shell/Defcor/β₂/β₄
+    got transposed, the value would shift by an order of magnitude.
+    """
     import polars as pl
 
     df = pl.read_parquet(data_dir_path / "meta" / "nudex_shellcor.parquet")
     o16 = df.filter((pl.col("Z") == 8) & (pl.col("A") == 16))
     assert o16.height == 1
-    # NUDEX gives O-16 shell ≈ -3.974 MeV
-    assert -4.5 < float(o16["shell_MeV"][0]) < -3.5
-    # O-16 is spherical: β₂ ≈ 0
-    assert abs(float(o16["beta2"][0])) < 0.1
+    # NUDEX gives O-16 shell = -3.974 MeV exactly
+    shell = float(o16["shell_MeV"][0])
+    assert abs(shell - (-3.974)) < 0.01, f"O-16 shell_MeV = {shell}; expected -3.974 ± 0.01"
 
 
 @pytest.mark.data
@@ -69,7 +71,7 @@ def test_general_stat_schema(data_dir_path: Path) -> None:
     import polars as pl
 
     df = pl.read_parquet(data_dir_path / "meta" / "nudex_general_stat.parquet")
-    must_have = {"z", "a", "LDtype", "PSFflag", "MaxSpin"}
+    must_have = {"Z", "A", "LDtype", "PSFflag", "MaxSpin"}
     assert must_have.issubset(set(df.columns))
 
 

@@ -70,6 +70,9 @@ def build(data_dir: Path | None = None) -> None:
                 .with_columns(pl.col("Z").cast(pl.Int32), pl.col("A").cast(pl.Int32))
                 .sort("Z", "A")
             )
+        elif src_name == "nudex_general_stat.parquet":
+            # Consistent (Z, A) capitalization with the rest of the meta tables.
+            df = df.rename({"z": "Z", "a": "A"}).with_columns(pl.col("Z").cast(pl.Int32), pl.col("A").cast(pl.Int32))
 
         out_path = out_dir / out_name
         df.write_parquet(out_path, compression="zstd")
