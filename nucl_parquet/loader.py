@@ -265,6 +265,15 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_parquet(db, data_dir / "meta" / "psf_gdr_theor.parquet", "psf_gdr_theor")
     _register_parquet(db, data_dir / "meta" / "psf_photonuclear.parquet", "psf_photonuclear")
 
+    # --- NUDEX shell corrections + runtime metadata (closes #77) ---
+    # `nudex_shellcor` carries microscopic shell corrections + ground-state
+    # deformation params (β₂, β₄) used by Hauser-Feshbach codes.
+    # `nudex_special_inputs` / `nudex_general_stat` are NUDEX runtime
+    # configuration overrides — ship for audit + completeness.
+    _register_parquet(db, data_dir / "meta" / "nudex_shellcor.parquet", "nudex_shellcor")
+    _register_parquet(db, data_dir / "meta" / "nudex_special_inputs.parquet", "nudex_special_inputs")
+    _register_parquet(db, data_dir / "meta" / "nudex_general_stat.parquet", "nudex_general_stat")
+
     # --- NUDEX full ENSDF level schemes (v0.14 epic #115) ---
     # `nudex_levels` (richer ENSDF source) coexists with `ensdf_levels` (the
     # PhotonEvaporation summary used by G4 transport). Pick by query class:

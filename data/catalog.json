@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
+  "data_version": "2026.5.1",
+  "data_sha256": "6d2bcb751839a7d4a8272b5da9c433ff6322f47f905d8b1bae716078abfcb057",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {

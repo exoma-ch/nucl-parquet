@@ -58,6 +58,11 @@ FILES = [
     "nuclear/photon_evap_levels.parquet",
     "nuclear/photon_evap_gammas.parquet",
     "nuclear/radioactive_decay.parquet",
+    # NUDEX shell corrections + runtime metadata — closes #77 (other NUDEX
+    # files were already in FILES via prior ports).
+    "nuclear/nudex_shellcor_ms.parquet",
+    "nuclear/nudex_special_inputs.parquet",
+    "nuclear/nudex_general_stat.parquet",
 ]
 
 
