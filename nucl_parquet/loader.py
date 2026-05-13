@@ -221,6 +221,11 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # ³He routes through catima (no NIST table); α through NIST ASTAR (#137).
     _register_glob(db, data_dir / "stopping", "stopping")
     _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
+    # Electron stopping with collision/radiative split + ~180 compounds (from
+    # strata-data em/, rebuilt by build_em_stopping.py). Legacy ESTAR.parquet
+    # in stopping/ keeps the four-column schema for backwards compatibility.
+    _register_parquet(db, data_dir / "stopping" / "em" / "electron_stopping.parquet", "electron_stopping")
+    _register_parquet(db, data_dir / "stopping" / "em" / "density_effect_params.parquet", "density_effect_params")
 
     # --- ENSDF data ---
     nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"

@@ -38,7 +38,8 @@
               "production_cross_sections",
               "total_reaction_cross_sections",
               "experimental_cross_sections",
-              "nuclear_structure"
+              "nuclear_structure",
+              "nuclear_structure_and_em"
             ]
           },
           "version": { "type": "string" },
