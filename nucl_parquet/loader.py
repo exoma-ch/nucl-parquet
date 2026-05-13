@@ -288,6 +288,10 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- XCOM photon attenuation ---
     _register_parquet(db, data_dir / "meta" / "xcom_elements.parquet", "xcom_elements")
     _register_parquet(db, data_dir / "meta" / "xcom_compounds.parquet", "xcom_compounds")
+    # Elemental compositions for the xcom_compounds materials (#113). Join
+    # on `material` to break a compound's photon attenuation into per-process
+    # σ via Bragg additivity.
+    _register_parquet(db, data_dir / "meta" / "compound_compositions.parquet", "compound_compositions")
 
     # --- EPDL97 photon interaction data ---
     _register_glob(db, data_dir / "meta" / "epdl97" / "photon_xs", "epdl_photon_xs")

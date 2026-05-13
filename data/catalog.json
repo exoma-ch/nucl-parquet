@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
+  "data_version": "2026.5.1",
+  "data_sha256": "28d7097b751f355ffe766f9d3f5ca7b35042ee18f3cf04b6c8cdf726e5718eb1",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -262,9 +262,11 @@
         "abundances": "abundances.parquet",
         "decay": "decay.parquet",
         "elements": "elements.parquet",
-        "spectrum_xs": "spectrum_xs.parquet"
+        "spectrum_xs": "spectrum_xs.parquet",
+        "compound_compositions": "compound_compositions.parquet"
       },
-      "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs."
+      "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs.",
+      "compound_compositions_note": "Elemental compositions (Z, weight_fraction) for the 33 NIST XCOM standard materials (water, air, tissue, bone, plastics, glasses, …). One row per (material, Z); weight fractions sum to 1.0 ± 1e-6 per material. Source: NIST XCOM Table 4 + ICRU-44. Join on `material` to xcom_compounds (integrated µ/ρ) or to photon_pe_total/photon_compton/photon_pair for Bragg-additive per-process σ. Built by nucl_parquet.build_compound_compositions."
     },
     "stopping": {
       "path": "stopping/",
