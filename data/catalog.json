@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
+  "data_version": "2026.5.1",
+  "data_sha256": "5c1d2bfafff301c9b6739f656d3dab45cf49be609fc003463d8aba0f05bfe4f2",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -295,6 +295,19 @@
         ],
         "energy_unit": "MeV/u",
         "note": "Any isotope of proj_Z \u2014 divide total MeV by A to get MeV/u"
+      }
+    },
+    "em": {
+      "path": "em/",
+      "files": {
+        "electron_brem": "electron_brem.parquet",
+        "electron_brem_sb_dcs": "electron_brem_sb_dcs.parquet"
+      },
+      "electron_brem_sb_dcs": {
+        "schema": ["target_Z", "electron_kev", "kappa", "dcs"],
+        "source": "gerchowl/strata-data em/brem_sb_dcs.parquet (republishes G4EMLOW brem_SB.dat \u2192 Seltzer-Berger 1985)",
+        "coverage": "Z=1..92, 57 incident-electron energies (1 keV..10 GeV log-spaced), 32 \u03ba values",
+        "note": "SCALED differential cross section per Berger & Seltzer (1985): dcs = (d\u03c3/d\u03ba) \u00d7 \u03b2\u00b2 / Z\u00b2, where \u03ba = E_\u03b3 / T_electron and \u03b2 is the electron velocity. The Z\u00b2 is factored out so values are O(1-10) across all Z. To recover the raw d\u03c3/d\u03ba multiply by Z\u00b2/\u03b2\u00b2. Companion to electron_brem (integrated \u03c3). Cite Seltzer & Berger, Nucl. Instrum. Meth. B12 (1985) 95."
       }
     }
   }
