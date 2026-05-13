@@ -126,6 +126,27 @@ def test_astar_water_anchors_match_nist(data_dir_path: Path, energy_MeV: float, 
 
 
 @pytest.mark.data
+def test_pstar_non_water_anchors_match_nist(data_dir_path: Path) -> None:
+    """Catch column-bleed by anchoring a high-Z compound where nuclear stopping is larger.
+
+    Water is dominated by collision (low-Z); a misnamed-column bug (e.g. swapping
+    electronic↔nuclear in a future parser refactor) would slide past on water but
+    show up on CESIUM_IODIDE where Z is large.
+    """
+    import polars as pl
+
+    df = pl.read_parquet(data_dir_path / "stopping" / "compounds" / "PSTAR_compounds.parquet")
+    # NIST PSTAR Cesium Iodide (matno 141): 1 MeV proton total = 87.29 MeV·cm²/g
+    csi = df.filter((pl.col("compound") == "CESIUM_IODIDE") & (pl.col("energy_MeV") == 1.0))
+    assert csi.height == 1
+    assert abs(float(csi["dedx"][0]) - 87.29) / 87.29 < 1e-3, f"p/CsI @ 1 MeV: {float(csi['dedx'][0])}"
+    # NIST PSTAR Lithium Fluoride (matno 185): 10 MeV proton total = 36.49 MeV·cm²/g
+    lif = df.filter((pl.col("compound") == "LITHIUM_FLUORIDE") & (pl.col("energy_MeV") == 10.0))
+    assert lif.height == 1
+    assert abs(float(lif["dedx"][0]) - 36.49) / 36.49 < 1e-3, f"p/LiF @ 10 MeV: {float(lif['dedx'][0])}"
+
+
+@pytest.mark.data
 def test_views_registered_in_loader(data_dir_path: Path) -> None:
     """connect() must expose pstar_compounds + astar_compounds as queryable views."""
     from nucl_parquet import loader as np_lib

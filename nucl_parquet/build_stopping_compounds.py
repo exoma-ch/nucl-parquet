@@ -46,20 +46,44 @@ from .download import data_dir as _resolve_data_dir
 _MATNO_MIN = 99
 _MATNO_MAX = 280
 _THROTTLE_S = 0.3
+# Retry transient HTTP failures so a single 5xx doesn't silently drop a matno.
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF_S = 1.0
 
 
 def _extract_name(html: str) -> str | None:
     """Return the compound name from a NIST CGI response, or None if matno is empty.
 
     NIST puts the material name in the second <h*> tag of a successful response;
-    failed lookups return a short page with only the program-title <h*>.
+    failed lookups return a short "no data" page with only the program-title <h*>.
+    The `len < 5000` check is a fast-path; the `len(hs) < 2` guard below is the
+    load-bearing one and would catch a future NIST layout change correctly.
     """
-    if len(html) < 5000:  # heuristic: short pages are "no such matno"
+    if len(html) < 5000:
         return None
     hs = re.findall(r"<h[1-3][^>]*>([^<]+)</h[1-3]>", html, re.I)
     if len(hs) < 2:
         return None
     return hs[1].strip()
+
+
+def _fetch_with_retry(prog: str, matno: int) -> str:
+    """Fetch one matno, retrying transient HTTP failures with backoff.
+
+    Real NIST CGI flakes occasionally (5xx mid-run, connection reset). Retrying
+    eliminates the silent-drop-on-flake annoyance without making the build
+    significantly slower in the common case.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            return _fetch_apstar(_APSTAR_CGI, prog, matno)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt + 1 < _RETRY_ATTEMPTS:
+                time.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
 
 
 def _normalize_compound_name(name: str) -> str:
@@ -98,9 +122,9 @@ def build(data_dir: Path | None = None) -> None:
 
         for matno in range(_MATNO_MIN, _MATNO_MAX + 1):
             try:
-                html = _fetch_apstar(_APSTAR_CGI, prog, matno)
+                html = _fetch_with_retry(prog, matno)
             except Exception as exc:  # noqa: BLE001
-                print(f"  matno={matno:3d}: FAILED ({exc})")
+                print(f"  matno={matno:3d}: FAILED after retries ({exc})")
                 time.sleep(_THROTTLE_S)
                 continue
 
