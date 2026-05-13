@@ -250,9 +250,12 @@ def build(data_dir: Path | None = None) -> None:
     for material in sorted(_COMPOSITIONS):
         weights = _COMPOSITIONS[material]
         total = sum(weights.values())
-        if abs(total - 1.0) > 5e-3:
-            raise ValueError(f"{material} weight fractions sum to {total}, expected 1.0 ± 5e-3")
-        # Renormalize to remove the documented rounding noise (≤5e-4 typically)
+        # All entries sum to unity to ≤1e-6 in practice (NIST/ICRU rounding).
+        # A 1e-4 guard catches a transcription typo (e.g. 0.158 vs 0.156 on a
+        # multi-element mix) without flagging any real entry.
+        if abs(total - 1.0) > 1e-4:
+            raise ValueError(f"{material} weight fractions sum to {total}, expected 1.0 ± 1e-4")
+        # Renormalize to remove the tiny residual (≤1e-6) so downstream consumers
         for z, w in sorted(weights.items()):
             rows_material.append(material)
             rows_z.append(int(z))

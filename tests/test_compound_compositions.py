@@ -96,25 +96,49 @@ def test_polyethylene_composition(data_dir_path: Path) -> None:
 
 
 @pytest.mark.data
+@pytest.mark.parametrize(
+    ("material", "energy_MeV", "tolerance"),
+    [
+        # Compton-dominated low-Z: tightest agreement
+        ("water", 0.1, 0.05),
+        # PE-dominated low-Z compound (carbon-rich) at low energy
+        ("polyethylene", 0.05, 0.05),
+        # High-Z mix (lead glass) at 1 MeV — Compton regime, screening corrections
+        # are still well-approximated by Bragg additivity here
+        ("glass", 1.0, 0.05),
+    ],
+)
+def test_bragg_reconstruction_anchors(data_dir_path: Path, material: str, energy_MeV: float, tolerance: float) -> None:
+    """Bragg-additive ∑ wᵢ × xcom_elements.mu_rho reconstructs xcom_compounds.mu_rho
+    for multiple representative materials across the periodic table."""
+    from nucl_parquet import loader as np_lib
+
+    db = np_lib.connect(data_dir_path)
+    bragg = float(
+        db.sql(
+            """
+            SELECT SUM(c.weight_fraction * x.mu_rho_cm2_g) AS bragg_sum
+            FROM compound_compositions c
+            JOIN xcom_elements x ON c.Z = x.Z
+            WHERE c.material = ? AND x.energy_MeV = ?
+            """,
+            params=[material, energy_MeV],
+        ).fetchall()[0][0]
+    )
+    direct = float(
+        db.sql(
+            "SELECT mu_rho_cm2_g FROM xcom_compounds WHERE material = ? AND energy_MeV = ?",
+            params=[material, energy_MeV],
+        ).fetchall()[0][0]
+    )
+    rel = abs(bragg - direct) / direct
+    assert rel < tolerance, f"{material} @ {energy_MeV} MeV: Bragg {bragg} vs direct {direct}, rel {rel:.3f}"
+
+
+@pytest.mark.data
 def test_view_registered(data_dir_path: Path) -> None:
     from nucl_parquet import loader as np_lib
 
     db = np_lib.connect(data_dir_path)
     n = db.sql("SELECT COUNT(*) FROM compound_compositions").fetchall()[0][0]
     assert n > 100, f"compound_compositions has only {n} rows"
-    # Bragg-additive query test: water at 100 keV — sum w_i × elemental σ
-    # (Compton-dominated regime; H+O alone reconstruct to <5%)
-    rows = db.sql(
-        """
-        SELECT SUM(c.weight_fraction * x.mu_rho_cm2_g) AS bragg_sum
-        FROM compound_compositions c
-        JOIN xcom_elements x ON c.Z = x.Z
-        WHERE c.material = 'water' AND x.energy_MeV = 0.1
-        """
-    ).fetchall()
-    bragg_sum = float(rows[0][0])
-    water_direct = float(
-        db.sql("SELECT mu_rho_cm2_g FROM xcom_compounds WHERE material = 'water' AND energy_MeV = 0.1").fetchall()[0][0]
-    )
-    rel = abs(bragg_sum - water_direct) / water_direct
-    assert rel < 0.05, f"water Bragg sum {bragg_sum} vs xcom_compounds direct {water_direct}, rel diff {rel:.3f}"
