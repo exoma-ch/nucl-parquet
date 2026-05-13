@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
+  "data_version": "2026.5.1",
+  "data_sha256": "0ccda73243988129cae5bec97ffafc730c2abd52aee5e1240b8fc84e9525255d",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -295,6 +295,14 @@
         ],
         "energy_unit": "MeV/u",
         "note": "Any isotope of proj_Z \u2014 divide total MeV by A to get MeV/u"
+      },
+      "compounds": {
+        "path": "stopping/compounds/",
+        "schema": ["source", "matno", "compound", "energy_MeV", "dedx"],
+        "sources": ["PSTAR_compounds", "ASTAR_compounds"],
+        "source_url": "https://physics.nist.gov/PhysRefData/Star/Text/method.html",
+        "fetcher": "nucl_parquet/build_stopping_compounds.py",
+        "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
       }
     }
   }

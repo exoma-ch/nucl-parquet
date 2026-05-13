@@ -221,6 +221,11 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # ³He routes through catima (no NIST table); α through NIST ASTAR (#137).
     _register_glob(db, data_dir / "stopping", "stopping")
     _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
+    # NIST compound tables for protons and α (matno 99-279). Different schema
+    # from the elemental `stopping` glob — keyed on (matno, compound) — so they
+    # ship under stopping/compounds/ and are registered as separate views.
+    _register_parquet(db, data_dir / "stopping" / "compounds" / "PSTAR_compounds.parquet", "pstar_compounds")
+    _register_parquet(db, data_dir / "stopping" / "compounds" / "ASTAR_compounds.parquet", "astar_compounds")
 
     # --- ENSDF data ---
     nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
