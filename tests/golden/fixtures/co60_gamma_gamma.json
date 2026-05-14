@@ -1,0 +1,18 @@
+[
+  {
+    "A": 60,
+    "Z": 28,
+    "daughter_ex_keV": 2505.753,
+    "emission1_energy_keV": 1173.239,
+    "emission1_intensity": 100.0,
+    "emission1_rad_type": "gamma",
+    "emission1_shell": null,
+    "emission2_energy_keV": 1332.514,
+    "emission2_intensity": 100.0,
+    "emission2_rad_type": "gamma",
+    "emission2_shell": null,
+    "pair_intensity": 100.0,
+    "parent_decay_mode": "beta-",
+    "parent_state": ""
+  }
+]
