@@ -2,12 +2,20 @@ name: Release Data
 
 # Data releases follow CalVer (YYYY.MM.MICRO) on their own tag namespace,
 # decoupled from the code semver release pipeline (.github/workflows/release.yml).
-# Trigger by pushing a tag like `data-2026.5.0` (or via auto-tag-data.yml on
-# merge to main when data/catalog.json::data_version changes).
+# Triggers:
+#   1. Tag push (manual `git push origin data-X.Y.Z`)
+#   2. workflow_dispatch from auto-tag-data.yml (GITHUB_TOKEN tags don't
+#      fire push events — this is the normal path after PR merge)
 
 on:
   push:
     tags: ["data-*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Data tag to release (e.g. data-2026.5.1)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -20,13 +28,24 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install zstd
         run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Checkout tag (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
       - name: Build tarball
         run: |
           # Tag form: data-YYYY.MM.MICRO → strip the `data-` prefix to get CalVer.
-          CALVER=${GITHUB_REF#refs/tags/data-}
+          # workflow_dispatch passes the tag via inputs.tag; push events via GITHUB_REF.
+          if [ -n "${{ inputs.tag }}" ]; then
+            CALVER="${{ inputs.tag }}"
+            CALVER=${CALVER#data-}
+          else
+            CALVER=${GITHUB_REF#refs/tags/data-}
+          fi
           # Sanity-check the tag actually matches CalVer.
           if ! [[ "${CALVER}" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]]; then
-            echo "ERROR: tag ${GITHUB_REF} does not match data-YYYY.MM.MICRO" >&2
+            echo "ERROR: tag does not match data-YYYY.MM.MICRO (got CalVer='${CALVER}')" >&2
             exit 1
           fi
           # Sanity-check catalog.json::data_version matches the tag.
@@ -41,6 +60,7 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: ${{ env.ASSET_PATH }}
           fail_on_unmatched_files: true
           generate_release_notes: true
