@@ -9,14 +9,12 @@ over the client library, not a re-implementation of parquet I/O.
 from __future__ import annotations
 
 import json
-import os
+import re
+import threading
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
-
-import re
-import threading
 
 import duckdb
 from mcp.server.fastmcp import FastMCP
@@ -142,10 +140,7 @@ async def list_isotopes(library: str, projectile: str) -> str:
     if lib is None:
         raise ValueError(f"Unknown library: {library}. Use list_libraries to see options.")
     if projectile not in lib.get("projectiles", []):
-        raise ValueError(
-            f"Projectile '{projectile}' not in {library}. "
-            f"Available: {', '.join(lib.get('projectiles', []))}"
-        )
+        raise ValueError(f"Projectile '{projectile}' not in {library}. Available: {', '.join(lib.get('projectiles', []))}")
     # Manifests are JSON files alongside the parquet data — read from disk.
     data_path = nucl_parquet.data_dir()
     lib_path = lib["path"]

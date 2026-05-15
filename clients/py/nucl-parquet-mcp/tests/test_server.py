@@ -17,6 +17,7 @@ from nucl_parquet_mcp.server import (
     get_decay_data,
     get_electron_stopping,
     get_radiation,
+    get_stopping_power,
     list_libraries,
     list_isotopes,
     list_tables,
