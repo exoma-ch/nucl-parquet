@@ -57,9 +57,8 @@ fn resolve_data_dir() -> Result<PathBuf, String> {
         }
     }
     // 3. nucl-parquet crate's DataDir resolution
-    match nucl_parquet::DataDir::resolve() {
-        Ok(dd) => return Ok(dd.root().to_path_buf()),
-        Err(_) => {}
+    if let Ok(dd) = nucl_parquet::DataDir::resolve() {
+        return Ok(dd.root().to_path_buf());
     }
     Err(
         "Cannot find nucl-parquet data directory. Set NUCL_PARQUET_DATA env var \
@@ -146,7 +145,7 @@ async fn load_parquet_rows(
         return Err(format!("File not found: {file_path}"));
     }
     let data = fs::read(&path).map_err(|e| format!("Read error: {e}"))?;
-    let rows = parse_parquet_bytes(data.into())?;
+    let rows = parse_parquet_bytes(data)?;
 
     let mut c = cache.lock().await;
     c.insert(file_path.to_string(), rows.clone());
