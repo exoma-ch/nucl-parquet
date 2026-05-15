@@ -560,9 +560,11 @@ async fn handle_tool_call(
                 "dSTAR" => data_dir.join("stopping/dSTAR.parquet"),
                 "tSTAR" => data_dir.join("stopping/tSTAR.parquet"),
                 "catima" => data_dir.join("stopping/catima/catima.parquet"),
-                other => return Err(format!(
-                    "Unknown source {other:?}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima"
-                )),
+                other => {
+                    return Err(format!(
+                        "Unknown source {other:?}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima"
+                    ))
+                }
             };
             let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
             let filtered: Vec<_> = rows
