@@ -8,7 +8,10 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
-use arrow::array::{Array, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, StringArray, UInt8Array};
+use arrow::array::{
+    Array, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
+    StringArray, UInt8Array,
+};
 use bytes::Bytes;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde::{Deserialize, Serialize};
@@ -205,6 +208,7 @@ fn catalog() -> HashMap<String, Library> {
 // Z → element symbol
 // ---------------------------------------------------------------------------
 
+#[rustfmt::skip]
 static Z_TO_SYMBOL: [&str; 100] = [
     "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
     "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
