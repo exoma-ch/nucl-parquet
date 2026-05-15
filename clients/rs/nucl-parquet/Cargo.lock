@@ -1014,6 +1014,8 @@ dependencies = [
  "arrow",
  "parquet",
  "reqwest",
+ "serde",
+ "serde_json",
  "tar",
  "thiserror",
  "zstd",
