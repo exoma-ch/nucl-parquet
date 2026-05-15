@@ -8,7 +8,10 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
-use arrow::array::{Array, Float64Array, Int32Array, StringArray};
+use arrow::array::{
+    Array, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
+    StringArray, UInt8Array,
+};
 use bytes::Bytes;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use serde::{Deserialize, Serialize};
@@ -202,6 +205,32 @@ fn catalog() -> HashMap<String, Library> {
 }
 
 // ---------------------------------------------------------------------------
+// Z → element symbol
+// ---------------------------------------------------------------------------
+
+#[rustfmt::skip]
+static Z_TO_SYMBOL: [&str; 100] = [
+    "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+    "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
+];
+
+fn z_to_symbol(z: i64) -> Option<&'static str> {
+    if z < 1 || z as usize >= Z_TO_SYMBOL.len() {
+        None
+    } else {
+        Some(Z_TO_SYMBOL[z as usize])
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Parquet fetch + cache
 // ---------------------------------------------------------------------------
 
@@ -278,8 +307,21 @@ fn column_value_to_json(col: &dyn Array, idx: usize) -> serde_json::Value {
         serde_json::Value::Number(
             serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0)),
         )
+    } else if let Some(a) = col.as_any().downcast_ref::<Float32Array>() {
+        let v = a.value(idx) as f64;
+        serde_json::Value::Number(
+            serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0)),
+        )
+    } else if let Some(a) = col.as_any().downcast_ref::<Int64Array>() {
+        serde_json::Value::Number(a.value(idx).into())
     } else if let Some(a) = col.as_any().downcast_ref::<Int32Array>() {
         serde_json::Value::Number(a.value(idx).into())
+    } else if let Some(a) = col.as_any().downcast_ref::<Int16Array>() {
+        serde_json::Value::Number((a.value(idx) as i64).into())
+    } else if let Some(a) = col.as_any().downcast_ref::<UInt8Array>() {
+        serde_json::Value::Number((a.value(idx) as i64).into())
+    } else if let Some(a) = col.as_any().downcast_ref::<BooleanArray>() {
+        serde_json::Value::Bool(a.value(idx))
     } else if let Some(a) = col.as_any().downcast_ref::<StringArray>() {
         serde_json::Value::String(a.value(idx).to_string())
     } else {
@@ -408,6 +450,69 @@ fn tool_definitions() -> serde_json::Value {
                         "target_z": { "type": "integer", "description": "Target atomic number" }
                     },
                     "required": ["source", "target_z"]
+                }
+            },
+            {
+                "name": "get_radiation",
+                "description": "Get radiation emissions (gammas, X-rays, Auger, conversion electrons) for a nuclide",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "z": { "type": "integer", "description": "Atomic number" },
+                        "a": { "type": "integer", "description": "Mass number (omit for all isotopes)" },
+                        "max_rows": { "type": "integer", "description": "Max rows (default 500)" }
+                    },
+                    "required": ["z"]
+                }
+            },
+            {
+                "name": "get_coincidences",
+                "description": "Get gamma-gamma and mixed-emission coincidence pairs for a nuclide",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "z": { "type": "integer", "description": "Atomic number" },
+                        "a": { "type": "integer", "description": "Mass number (omit for all isotopes)" },
+                        "max_rows": { "type": "integer", "description": "Max rows (default 500)" }
+                    },
+                    "required": ["z"]
+                }
+            },
+            {
+                "name": "get_beta_spectrum",
+                "description": "Get continuous beta-decay kinetic-energy spectrum (Fermi function, dN/dE normalized to 1)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "z": { "type": "integer", "description": "Atomic number" },
+                        "a": { "type": "integer", "description": "Mass number" },
+                        "max_rows": { "type": "integer", "description": "Max rows (default 500)" }
+                    },
+                    "required": ["z", "a"]
+                }
+            },
+            {
+                "name": "get_compound_compositions",
+                "description": "Get elemental compositions (weight fractions) for NIST XCOM standard materials",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "material": { "type": "string", "description": "Material name (e.g. 'Water, Liquid'). Omit to list all." }
+                    },
+                    "required": []
+                }
+            },
+            {
+                "name": "get_electron_stopping",
+                "description": "Get electron stopping power with collision/radiative split (~183 compounds + Z=1..98)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target": { "type": "string", "description": "Compound name (e.g. 'G4_WATER')" },
+                        "target_z": { "type": "integer", "description": "Atomic number for elements" },
+                        "max_rows": { "type": "integer", "description": "Max rows (default 500)" }
+                    },
+                    "required": []
                 }
             }
         ]
@@ -583,6 +688,130 @@ async fn handle_tool_call(
                 serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
             )
         }
+        "get_radiation" | "get_coincidences" => {
+            let z = args
+                .get("z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'z'")?;
+            let a = args.get("a").and_then(|v| v.as_i64());
+            let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
+            let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
+            let subdir = if name == "get_radiation" {
+                "radiation"
+            } else {
+                "coincidences"
+            };
+            let path = format!("meta/ensdf/{subdir}/{symbol}.parquet");
+            let rows = fetch_parquet_rows(client, cache, &path).await?;
+            let filtered: Vec<_> = if let Some(av) = a {
+                rows.into_iter()
+                    .filter(|r| r.get("A").and_then(|v| v.as_i64()) == Some(av))
+                    .collect()
+            } else {
+                rows
+            };
+            let total = filtered.len();
+            let truncated = total > max_rows;
+            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
+            let result = serde_json::json!({ "z": z, "a": a, "symbol": symbol, "total": total, "truncated": truncated, "rows": display });
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
+        }
+        "get_beta_spectrum" => {
+            let z = args
+                .get("z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'z'")?;
+            let a = args
+                .get("a")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'a'")?;
+            let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
+            let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
+            let path = format!("meta/ensdf/beta_spectra/{symbol}.parquet");
+            let rows = fetch_parquet_rows(client, cache, &path).await?;
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|r| {
+                    r.get("Z").and_then(|v| v.as_i64()) == Some(z)
+                        && r.get("A").and_then(|v| v.as_i64()) == Some(a)
+                })
+                .collect();
+            let total = filtered.len();
+            let truncated = total > max_rows;
+            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
+            let result = serde_json::json!({ "z": z, "a": a, "symbol": symbol, "total": total, "truncated": truncated, "rows": display });
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
+        }
+        "get_compound_compositions" => {
+            let material = args.get("material").and_then(|v| v.as_str());
+            let rows =
+                fetch_parquet_rows(client, cache, "meta/compound_compositions.parquet").await?;
+            if let Some(mat) = material {
+                let filtered: Vec<_> = rows
+                    .into_iter()
+                    .filter(|r| r.get("material").and_then(|v| v.as_str()) == Some(mat))
+                    .collect();
+                if filtered.is_empty() {
+                    return Err(format!("Unknown material: {mat:?}"));
+                }
+                let result = serde_json::json!({ "material": mat, "count": filtered.len(), "composition": filtered });
+                Ok(
+                    serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+                )
+            } else {
+                let mut materials: Vec<String> = rows
+                    .iter()
+                    .filter_map(|r| {
+                        r.get("material")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect();
+                materials.sort();
+                materials.dedup();
+                let result =
+                    serde_json::json!({ "count": materials.len(), "materials": materials });
+                Ok(
+                    serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+                )
+            }
+        }
+        "get_electron_stopping" => {
+            let target = args.get("target").and_then(|v| v.as_str());
+            let target_z = args.get("target_z").and_then(|v| v.as_i64());
+            let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
+            if target.is_none() && target_z.is_none() {
+                return Err(
+                    "Provide target (compound name) or target_z (atomic number)".to_string()
+                );
+            }
+            let rows =
+                fetch_parquet_rows(client, cache, "stopping/em/electron_stopping.parquet").await?;
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|r| {
+                    if let Some(tz) = target_z {
+                        r.get("target_Z").and_then(|v| v.as_i64()) == Some(tz)
+                    } else if let Some(t) = target {
+                        r.get("name").and_then(|v| v.as_str()) == Some(t)
+                            || r.get("g4_name").and_then(|v| v.as_str()) == Some(t)
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+            let total = filtered.len();
+            let truncated = total > max_rows;
+            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
+            let result = serde_json::json!({ "target": target, "target_z": target_z, "total": total, "truncated": truncated, "rows": display });
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
@@ -722,7 +951,7 @@ mod tests {
     fn tool_definitions_valid() {
         let defs = tool_definitions();
         let tools = defs.get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 11);
         for tool in tools {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());
@@ -789,7 +1018,7 @@ mod tests {
         let resp = handle_request(&client, &cache, req).await.unwrap();
         let result = resp.result.unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 11);
     }
 
     #[tokio::test]
