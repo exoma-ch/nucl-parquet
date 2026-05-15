@@ -372,3 +372,177 @@ async def get_stopping_power(source: str, target_z: int) -> str:
     import json
 
     return json.dumps({"source": source, "target_z": target_z, "count": len(filtered), "rows": filtered}, indent=2)
+
+
+# Z → element-symbol lookup for per-element parquet files.
+_Z_TO_SYMBOL = [
+    "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+    "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
+]
+
+
+def _z_to_symbol(z: int) -> str:
+    if z < 1 or z >= len(_Z_TO_SYMBOL):
+        raise ValueError(f"Z={z} out of range (1-{len(_Z_TO_SYMBOL) - 1})")
+    return _Z_TO_SYMBOL[z]
+
+
+@mcp.tool()
+async def get_radiation(z: int, a: int | None = None, max_rows: int = 500) -> str:
+    """Get radiation emissions (gammas, X-rays, Auger electrons, conversion electrons) for a nuclide.
+
+    Args:
+        z: Atomic number of the parent nuclide.
+        a: Mass number (optional — omit to get all isotopes of element Z).
+        max_rows: Maximum rows to return (default 500).
+    """
+    symbol = _z_to_symbol(z)
+    path = f"meta/ensdf/radiation/{symbol}.parquet"
+    rows = await fetch_parquet_rows(path)
+
+    if a is not None:
+        rows = [r for r in rows if r.get("A") == a]
+
+    truncated = len(rows) > max_rows
+    import json
+
+    return json.dumps(
+        {"z": z, "a": a, "symbol": symbol, "total": len(rows), "truncated": truncated, "rows": rows[:max_rows]},
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def get_coincidences(z: int, a: int | None = None, max_rows: int = 500) -> str:
+    """Get gamma-gamma and mixed-emission coincidence pairs for a nuclide.
+
+    Returns pairs of emissions that occur in the same cascade (useful for
+    coincidence gating in spectroscopy). Includes gamma-gamma pairs and
+    mixed pairs (beta/EC/X-ray/Auger/511 keV annihilation paired with gammas).
+
+    Args:
+        z: Atomic number of the parent nuclide.
+        a: Mass number (optional — omit for all isotopes of element Z).
+        max_rows: Maximum rows to return (default 500).
+    """
+    symbol = _z_to_symbol(z)
+    path = f"meta/ensdf/coincidences/{symbol}.parquet"
+    rows = await fetch_parquet_rows(path)
+
+    if a is not None:
+        rows = [r for r in rows if r.get("A") == a]
+
+    truncated = len(rows) > max_rows
+    import json
+
+    return json.dumps(
+        {"z": z, "a": a, "symbol": symbol, "total": len(rows), "truncated": truncated, "rows": rows[:max_rows]},
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def get_beta_spectrum(z: int, a: int, max_rows: int = 500) -> str:
+    """Get the continuous beta-decay kinetic-energy spectrum for a nuclide.
+
+    Returns pre-tabulated Fermi-function spectra (dN/dE, normalized to 1)
+    for all beta-minus and beta-plus transitions of the nuclide.
+
+    Args:
+        z: Atomic number of the parent nuclide.
+        a: Mass number of the parent nuclide.
+        max_rows: Maximum rows to return (default 500).
+    """
+    symbol = _z_to_symbol(z)
+    path = f"meta/ensdf/beta_spectra/{symbol}.parquet"
+    rows = await fetch_parquet_rows(path)
+    rows = [r for r in rows if r.get("Z") == z and r.get("A") == a]
+
+    truncated = len(rows) > max_rows
+    import json
+
+    return json.dumps(
+        {"z": z, "a": a, "symbol": symbol, "total": len(rows), "truncated": truncated, "rows": rows[:max_rows]},
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def get_compound_compositions(material: str | None = None) -> str:
+    """Get elemental compositions (weight fractions) for NIST XCOM standard materials.
+
+    Returns Z and weight_fraction for each element in the compound.
+    Useful for Bragg-additive cross-section calculations.
+
+    Args:
+        material: Material name (e.g. 'Water, Liquid', 'Air, Dry'). Omit to list all materials.
+    """
+    path = "meta/compound_compositions.parquet"
+    rows = await fetch_parquet_rows(path)
+
+    if material is not None:
+        rows = [r for r in rows if r.get("material") == material]
+        if not rows:
+            all_materials = sorted({r.get("material", "") for r in await fetch_parquet_rows(path)})
+            raise ValueError(f"Unknown material: {material!r}. Available: {all_materials}")
+
+    import json
+
+    if material is None:
+        materials = sorted({r.get("material", "") for r in rows})
+        return json.dumps({"count": len(materials), "materials": materials}, indent=2)
+
+    return json.dumps(
+        {"material": material, "count": len(rows), "composition": rows},
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def get_electron_stopping(
+    target: str | None = None,
+    target_z: int | None = None,
+    max_rows: int = 500,
+) -> str:
+    """Get electron stopping power with collision/radiative split.
+
+    Richer than ESTAR — includes ~183 compounds plus all elements Z=1..98.
+    Filter by element (target_z) or compound name (target).
+
+    Args:
+        target: Compound name (e.g. 'G4_WATER', 'G4_AIR'). For elements use target_z instead.
+        target_z: Atomic number for elemental targets.
+        max_rows: Maximum rows to return (default 500).
+    """
+    if target is None and target_z is None:
+        raise ValueError("Provide target (compound name) or target_z (atomic number).")
+
+    path = "stopping/em/electron_stopping.parquet"
+    rows = await fetch_parquet_rows(path)
+
+    if target_z is not None:
+        rows = [r for r in rows if r.get("target_Z") == target_z]
+    elif target is not None:
+        rows = [r for r in rows if r.get("name") == target or r.get("g4_name") == target]
+
+    truncated = len(rows) > max_rows
+    import json
+
+    return json.dumps(
+        {
+            "target": target,
+            "target_z": target_z,
+            "total": len(rows),
+            "truncated": truncated,
+            "rows": rows[:max_rows],
+        },
+        indent=2,
+    )

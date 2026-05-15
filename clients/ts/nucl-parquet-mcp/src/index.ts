@@ -305,6 +305,168 @@ server.tool(
 );
 
 // ---------------------------------------------------------------------------
+// Z → element symbol lookup
+// ---------------------------------------------------------------------------
+
+const Z_TO_SYMBOL = [
+  "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+  "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+  "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+  "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+  "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+  "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+  "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+  "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+  "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+  "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
+] as const;
+
+function zToSymbol(zNum: number): string {
+  if (zNum < 1 || zNum >= Z_TO_SYMBOL.length) throw new Error(`Z=${zNum} out of range (1-${Z_TO_SYMBOL.length - 1})`);
+  return Z_TO_SYMBOL[zNum];
+}
+
+// ---------------------------------------------------------------------------
+// New data tools
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "get_radiation",
+  "Get radiation emissions (gammas, X-rays, Auger electrons, conversion electrons) for a nuclide.",
+  {
+    z: z.number().describe("Atomic number of the parent nuclide"),
+    a: z.number().optional().describe("Mass number (omit for all isotopes of element Z)"),
+    max_rows: z.number().optional().describe("Max rows to return (default 500)"),
+  },
+  async ({ z: zNum, a: aNum, max_rows }) => {
+    const symbol = zToSymbol(zNum);
+    const rows = await fetchParquetRows(`meta/ensdf/radiation/${symbol}.parquet`);
+    const filtered = aNum !== undefined ? rows.filter((r) => r["A"] === aNum) : rows;
+    const result = truncateRows(filtered, max_rows ?? 500);
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ z: zNum, a: aNum, symbol, ...result }, null, 2),
+      }],
+    };
+  },
+);
+
+server.tool(
+  "get_coincidences",
+  "Get gamma-gamma and mixed-emission coincidence pairs for a nuclide. Includes beta/EC/X-ray/Auger/511 keV annihilation paired with gammas.",
+  {
+    z: z.number().describe("Atomic number of the parent nuclide"),
+    a: z.number().optional().describe("Mass number (omit for all isotopes of element Z)"),
+    max_rows: z.number().optional().describe("Max rows to return (default 500)"),
+  },
+  async ({ z: zNum, a: aNum, max_rows }) => {
+    const symbol = zToSymbol(zNum);
+    const rows = await fetchParquetRows(`meta/ensdf/coincidences/${symbol}.parquet`);
+    const filtered = aNum !== undefined ? rows.filter((r) => r["A"] === aNum) : rows;
+    const result = truncateRows(filtered, max_rows ?? 500);
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ z: zNum, a: aNum, symbol, ...result }, null, 2),
+      }],
+    };
+  },
+);
+
+server.tool(
+  "get_beta_spectrum",
+  "Get the continuous beta-decay kinetic-energy spectrum for a nuclide. Returns pre-tabulated Fermi-function spectra (dN/dE normalized to 1).",
+  {
+    z: z.number().describe("Atomic number of the parent nuclide"),
+    a: z.number().describe("Mass number of the parent nuclide"),
+    max_rows: z.number().optional().describe("Max rows to return (default 500)"),
+  },
+  async ({ z: zNum, a: aNum, max_rows }) => {
+    const symbol = zToSymbol(zNum);
+    const rows = await fetchParquetRows(`meta/ensdf/beta_spectra/${symbol}.parquet`);
+    const filtered = rows.filter((r) => r["Z"] === zNum && r["A"] === aNum);
+    const result = truncateRows(filtered, max_rows ?? 500);
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ z: zNum, a: aNum, symbol, ...result }, null, 2),
+      }],
+    };
+  },
+);
+
+server.tool(
+  "get_compound_compositions",
+  "Get elemental compositions (weight fractions) for NIST XCOM standard materials. Useful for Bragg-additive cross-section calculations.",
+  {
+    material: z.string().optional().describe("Material name (e.g. 'Water, Liquid'). Omit to list all materials."),
+  },
+  async ({ material }) => {
+    const rows = await fetchParquetRows("meta/compound_compositions.parquet");
+
+    if (material === undefined) {
+      const materials = [...new Set(rows.map((r) => r["material"] as string))].sort();
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({ count: materials.length, materials }, null, 2),
+        }],
+      };
+    }
+
+    const filtered = rows.filter((r) => r["material"] === material);
+    if (filtered.length === 0) {
+      const all = [...new Set(rows.map((r) => r["material"] as string))].sort();
+      throw new Error(`Unknown material: '${material}'. Available: ${all.join(", ")}`);
+    }
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ material, count: filtered.length, composition: filtered }, null, 2),
+      }],
+    };
+  },
+);
+
+server.tool(
+  "get_electron_stopping",
+  "Get electron stopping power with collision/radiative split. Richer than ESTAR — includes ~183 compounds plus all elements Z=1..98.",
+  {
+    target: z.string().optional().describe("Compound name (e.g. 'G4_WATER'). For elements use target_z instead."),
+    target_z: z.number().optional().describe("Atomic number for elemental targets"),
+    max_rows: z.number().optional().describe("Max rows to return (default 500)"),
+  },
+  async ({ target, target_z, max_rows }) => {
+    if (target === undefined && target_z === undefined) {
+      throw new Error("Provide target (compound name) or target_z (atomic number).");
+    }
+
+    const rows = await fetchParquetRows("stopping/em/electron_stopping.parquet");
+    let filtered: typeof rows;
+
+    if (target_z !== undefined) {
+      filtered = rows.filter((r) => r["target_Z"] === target_z);
+    } else {
+      filtered = rows.filter((r) => r["name"] === target || r["g4_name"] === target);
+    }
+
+    const result = truncateRows(filtered, max_rows ?? 500);
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ target, target_z, ...result }, null, 2),
+      }],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
