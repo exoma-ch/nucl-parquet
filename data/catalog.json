@@ -2,7 +2,7 @@
   "$schema": "./catalog.schema.json",
   "version": 1,
   "data_version": "2026.5.1",
-  "data_sha256": "0ccda73243988129cae5bec97ffafc730c2abd52aee5e1240b8fc84e9525255d",
+  "data_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -236,17 +236,20 @@
       "path": "hi-xs/xs/"
     },
     "strata-data-nuclear": {
-      "name": "Geant4-derived nuclear structure (via strata-data)",
-      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project. Source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward — replaces the v0.10.x IAEA-LiveChart pipeline. See ADR-0002.",
+      "name": "Geant4-derived nuclear structure + EM (via strata-data)",
+      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project — source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward (replaces the v0.10.x IAEA-LiveChart pipeline). v0.13+ also pulls the em/ subdir for ESTAR + Sternheimer density-effect data (issue #121). See ADR-0002.",
       "source_url": "https://huggingface.co/datasets/gerchowl/strata-data",
       "revision": "ae6bc9751058e1e5d95982c78f2ee5b08093433d",
       "fetcher": "scripts/fetch_strata_nuclear.py",
-      "data_type": "nuclear_structure",
+      "data_type": "nuclear_structure_and_em",
       "files": [
         "nuclear/ensdfstate.parquet",
         "nuclear/photon_evap_levels.parquet",
         "nuclear/photon_evap_gammas.parquet",
-        "nuclear/radioactive_decay.parquet"
+        "nuclear/radioactive_decay.parquet",
+        "em/estar_basic.parquet",
+        "em/estar_long.parquet",
+        "em/density_effect.parquet"
       ],
       "upstream_g4_versions": {
         "G4ENSDFSTATE": "3.0",
@@ -285,16 +288,35 @@
       ],
       "sources_note": "PSTAR/ASTAR/ESTAR are NIST ICRU-49/37 tables (reproducible via nucl_parquet.build_stopping). dSTAR/tSTAR are velocity-scaled from PSTAR (exact for electronic stopping). ³He has no NIST table — routes through catima in the loader. catima_* are pycatima tables for common heavy-ion beams; the full 92×92 MeV/u matrix is at catima_full_matrix.",
       "catima": {
+        "schema": ["proj_Z", "proj_A", "target_Z", "energy_MeV_u", "dedx", "straggling"],
         "proj_Z_range": [
           1,
-          92
+          99
         ],
         "target_Z_range": [
           1,
           92
         ],
         "energy_unit": "MeV/u",
-        "note": "Any isotope of proj_Z \u2014 divide total MeV by A to get MeV/u"
+        "n_isotopes": 399,
+        "n_rows": 7341600,
+        "isotope_inventory": "All stable + primordial isotopes (abundance > 0 in meta/abundances.parquet, 287 nuclides) \u222a all ground-state nuclides with T\u00bd > 1 year in meta/decay.parquet (covers Np/Pu/Am/Cm/Bk/Cf/Es transuranics up to Z=99, plus every long-lived radio-isotope of lower-Z elements) \u222a beam/medical allowlist (C-11, N-13, O-15, F-18, P-32). For Z values with no T\u00bd>1yr isotope (At, Rn, Fr), the longest-lived ground state is shipped as fallback.",
+        "isotope_note": "Rows are keyed on (proj_Z, proj_A). At E/A > 0.1 MeV/u dedx is isotope-agnostic to <0.1%; below ~0.01 MeV/u nuclear-stopping reduced-mass effects cause real (up to ~15%) isotope dependence, captured by the per-isotope rows. Querying (Z, A) outside the inventory raises KeyError \u2014 extend nucl_parquet.build_heavy_ions._BEAM_ALLOWLIST or lower _LONGLIVED_THRESHOLD_S and rebuild."
+      },
+      "electron_stopping": {
+        "path": "stopping/em/electron_stopping.parquet",
+        "schema": ["name", "g4_name", "is_element", "target_Z", "energy_MeV", "collision_sp_mev_cm2_g", "radiative_sp_mev_cm2_g", "total_sp_mev_cm2_g", "density_effect_delta"],
+        "source": "gerchowl/strata-data em/estar_long.parquet (Geant4 EM data \u2192 ESTAR-equivalent)",
+        "coverage": "98 elements (Z=1..98) + ~183 compounds (ICRU tissue/detector materials, water, air, etc.)",
+        "energy_range_MeV": [0.001, 10000.0],
+        "note": "target_Z is NULL for compounds; query elements by target_Z, compounds by name. Both collision + radiative + total stopping power columns are populated."
+      },
+      "density_effect_params": {
+        "path": "stopping/em/density_effect_params.parquet",
+        "schema": ["name", "I_eV", "C", "X0", "X1", "a", "k", "delta0", "density_gcm3", "state", "Zeff", "nElements"],
+        "source": "gerchowl/strata-data em/density_effect.parquet (Sternheimer parameterization)",
+        "coverage": "278 materials covering the standard Geant4 NIST_MATERIAL set (elements with G4_ prefix, plus ICRU compounds)",
+        "note": "Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList. For elements Zeff equals Z. Use these params to evaluate the density-effect correction \u03b4 above the validity range of tabulated dedx."
       },
       "compounds": {
         "path": "stopping/compounds/",
