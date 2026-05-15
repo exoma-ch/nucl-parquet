@@ -354,6 +354,59 @@ async def get_coincidences(z: int, a: int | None = None, max_rows: int = 500) ->
 
 
 @mcp.tool()
+async def get_summing_partners(
+    z: int,
+    a: int,
+    primary_energy_keV: float | None = None,
+    tolerance_keV: float = 0.5,
+    emission1_rad_type: str | None = None,
+    max_rows: int = 500,
+) -> str:
+    """Get ICC-corrected summing partners for HPGe true-coincidence-summing (TCS).
+
+    Returns all emission pairs that can sum in a close-geometry HPGe detector.
+    Each row carries ``icc_correction_factor`` and ``pure_emission_joint_intensity``
+    pre-computed. Includes gamma-gamma pairs and X-ray/Auger-gamma pairs.
+
+    Args:
+        z: Atomic number of the daughter nuclide (filing convention).
+        a: Mass number.
+        primary_energy_keV: Filter to pairs matching this energy (either side).
+        tolerance_keV: Energy match tolerance in keV (default 0.5).
+        emission1_rad_type: Filter emission side 1 ('gamma', 'xray', 'auger').
+        max_rows: Maximum rows to return (default 500).
+    """
+    conditions = ["Z = $z", "A = $a"]
+    params: dict[str, Any] = {"z": z, "a": a}
+    if primary_energy_keV is not None:
+        conditions.append(
+            "(ABS(emission1_energy_keV - $energy) < $tol OR ABS(emission2_energy_keV - $energy) < $tol)"
+        )
+        params["energy"] = primary_energy_keV
+        params["tol"] = tolerance_keV
+    if emission1_rad_type is not None:
+        conditions.append("emission1_rad_type = $e1type")
+        params["e1type"] = emission1_rad_type
+    where = " AND ".join(conditions)
+    result = _query(
+        f"SELECT * FROM summing_partners WHERE {where} ORDER BY pure_emission_joint_intensity DESC",
+        params,
+        max_rows,
+    )
+    return json.dumps(
+        {
+            "z": z,
+            "a": a,
+            "primary_energy_keV": primary_energy_keV,
+            "total": result["total"],
+            "truncated": result["truncated"],
+            "rows": result["rows"],
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
 async def get_beta_spectrum(z: int, a: int, max_rows: int = 500) -> str:
     """Get the continuous beta-decay kinetic-energy spectrum for a nuclide.
 

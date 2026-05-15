@@ -147,6 +147,7 @@ function registerViews(db: duckdb.Database, dataDir: string): void {
   registerGlob(db, join(dataDir, "meta", "ensdf", "levels"), "ensdf_levels");
   registerGlob(db, join(dataDir, "meta", "ensdf", "radiation"), "radiation");
   registerGlob(db, join(dataDir, "meta", "ensdf", "coincidences"), "coincidences");
+  registerGlob(db, join(dataDir, "meta", "ensdf", "summing_partners"), "summing_partners");
   registerGlob(db, join(dataDir, "meta", "ensdf", "beta_spectra"), "beta_spectra");
 
   // --- NUDEX data ---
@@ -551,6 +552,45 @@ server.tool(
       content: [{
         type: "text" as const,
         text: safeStringify({ z: zNum, a: aNum, ...result }, 2),
+      }],
+    };
+  },
+);
+
+server.tool(
+  "get_summing_partners",
+  "Get ICC-corrected summing partners for HPGe true-coincidence-summing (TCS) corrections. Returns emission pairs with pre-computed icc_correction_factor and pure_emission_joint_intensity.",
+  {
+    z: z.number().describe("Atomic number of the daughter nuclide (filing convention)"),
+    a: z.number().describe("Mass number"),
+    primary_energy_keV: z.number().optional().describe("Filter to pairs matching this energy on either side"),
+    tolerance_keV: z.number().optional().describe("Energy match tolerance in keV (default 0.5)"),
+    emission1_rad_type: z.string().optional().describe("Filter side 1: 'gamma', 'xray', 'auger'"),
+    max_rows: z.number().optional().describe("Max rows to return (default 500)"),
+  },
+  async ({ z: zNum, a: aNum, primary_energy_keV, tolerance_keV, emission1_rad_type, max_rows }) => {
+    const conditions = ["Z = ?", "A = ?"];
+    const params: unknown[] = [zNum, aNum];
+    const tol = tolerance_keV ?? 0.5;
+
+    if (primary_energy_keV !== undefined) {
+      conditions.push("(ABS(emission1_energy_keV - ?) < ? OR ABS(emission2_energy_keV - ?) < ?)");
+      params.push(primary_energy_keV, tol, primary_energy_keV, tol);
+    }
+    if (emission1_rad_type !== undefined) {
+      conditions.push("emission1_rad_type = ?");
+      params.push(emission1_rad_type);
+    }
+
+    const result = await query(
+      `SELECT * FROM summing_partners WHERE ${conditions.join(" AND ")} ORDER BY pure_emission_joint_intensity DESC`,
+      params,
+      max_rows ?? 500,
+    );
+    return {
+      content: [{
+        type: "text" as const,
+        text: safeStringify({ z: zNum, a: aNum, primary_energy_keV, ...result }, 2),
       }],
     };
   },

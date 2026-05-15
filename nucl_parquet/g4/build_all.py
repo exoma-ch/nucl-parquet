@@ -56,6 +56,7 @@ from nucl_parquet.g4 import (
     photon_evap_gammas,
     photon_evap_levels,
     radioactive_decay,
+    summing_partners,
     xray_auger,
 )
 
@@ -331,6 +332,16 @@ def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, me
         data_dir / "meta" / "ensdf" / "radiation",
         data_dir / "meta" / "ensdf" / "coincidences",
     )
+
+    # Materialize summing_partners/ from augmented coincidences/ — ICC-corrected
+    # pairs for HPGe TCS corrections. Runs after mixed_coincidences so both γ-γ
+    # and X-ray/Auger ⊗ γ pairs are present. Per issue #177.
+    logger.info("[summing] materialize summing_partners/ from coincidences/ (#177)")
+    sp_paths = summing_partners.build(
+        data_dir / "meta" / "ensdf" / "coincidences",
+        data_dir / "meta" / "ensdf" / "summing_partners",
+    )
+    logger.info("wrote %d summing-partner files", len(sp_paths))
 
     logger.info("[invariants] sweeping the rebuilt dataset")
     _check_invariants(data_dir)
