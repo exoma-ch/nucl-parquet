@@ -657,7 +657,7 @@ server.tool(
 // Patterns that indicate file-access functions — blocked in user SQL to prevent
 // read_parquet('/etc/passwd') style attacks. The pre-registered DuckDB views
 // already expose all nuclear data; there's no legitimate need for raw file access.
-const BLOCKED_FUNCTIONS = /\b(read_parquet|read_csv|read_csv_auto|read_json|read_json_auto|read_text|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate)\b/i;
+const BLOCKED_FUNCTIONS = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
 
 const ALLOWED_FIRST_WORDS = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
 
@@ -681,17 +681,20 @@ server.tool(
     }
 
     const db = getDb();
+    const limit = max_rows ?? 10000;
+    let total: number;
     let rows: Record<string, unknown>[];
     try {
-      rows = await dbAll(db, stripped);
+      // Get total count first, then fetch limited rows
+      const countRows = await dbAll(db, `SELECT CAST(COUNT(*) AS INTEGER) AS n FROM (${stripped})`);
+      total = (countRows[0]?.n as number) ?? 0;
+      rows = await dbAll(db, `SELECT * FROM (${stripped}) LIMIT ${limit}`);
     } catch (e) {
       throw new Error(`SQL error: ${(e as Error).message}`);
     }
 
-    const total = rows.length;
-    const limit = max_rows ?? 10000;
     const truncated = total > limit;
-    const display = truncated ? rows.slice(0, limit) : rows;
+    const display = rows;
 
     return {
       content: [{

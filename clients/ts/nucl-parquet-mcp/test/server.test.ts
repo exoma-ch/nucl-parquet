@@ -185,13 +185,25 @@ describe("SQL security", () => {
 
   it("blocks COPY", () => {
     const sql = "COPY radiation TO '/tmp/exfil.csv'";
-    const blocked = /\b(read_parquet|read_csv|read_csv_auto|read_json|read_json_auto|read_text|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate)\b/i;
+    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
     expect(blocked.test(sql)).toBe(true);
   });
 
   it("blocks read_parquet in SELECT", () => {
     const sql = "SELECT * FROM read_parquet('/etc/passwd')";
-    const blocked = /\b(read_parquet|read_csv|read_csv_auto|read_json|read_json_auto|read_text|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate)\b/i;
+    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
+    expect(blocked.test(sql)).toBe(true);
+  });
+
+  it("blocks parquet_scan alias", () => {
+    const sql = "SELECT * FROM parquet_scan('/etc/passwd')";
+    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
+    expect(blocked.test(sql)).toBe(true);
+  });
+
+  it("blocks read_blob", () => {
+    const sql = "SELECT * FROM read_blob('/etc/passwd')";
+    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
     expect(blocked.test(sql)).toBe(true);
   });
 
