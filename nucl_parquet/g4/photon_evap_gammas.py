@@ -11,7 +11,9 @@ Input schema (strata)
 
     z UInt8, a UInt16, parent_level UInt16, daughter_level UInt16,
     gamma_energy_kev Float64, intensity Float32, multipolarity UInt16,
-    mixing_ratio Float32, icc_total Float32
+    mixing_ratio Float32, icc_total Float32,
+    icc_frac_K Float32, icc_frac_L1..L3 Float32, icc_frac_M1..M5 Float32,
+    icc_frac_outer Float32  (nullable; present when icc_total > 0)
 
 Output schema (per element ``meta/ensdf/radiation/{Symbol}.parquet``)
 ---------------------------------------------------------------------
@@ -289,6 +291,14 @@ def transform(
         pl.col("multipolarity").cast(pl.Int32),
         pl.col("mixing_ratio").cast(pl.Float32),
         pl.col("icc_total").cast(pl.Float32),
+        # Per-shell ICC fractions (BrIcc-precomputed in PhotonEvaporation6.1.2).
+        # Nullable Float32; present when icc_total > 0. Consumed by xray_auger.py
+        # to partition IC vacancies across atomic shells (#193).
+        *[pl.col(c).cast(pl.Float32) for c in [
+            "icc_frac_K", "icc_frac_L1", "icc_frac_L2", "icc_frac_L3",
+            "icc_frac_M1", "icc_frac_M2", "icc_frac_M3", "icc_frac_M4",
+            "icc_frac_M5", "icc_frac_outer",
+        ] if c in with_state.columns],
     ).sort(["Z", "A", "parent_level_keV", "energy_keV"])
 
 

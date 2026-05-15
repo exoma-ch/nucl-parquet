@@ -550,6 +550,31 @@ class TestSpotChecks:
         # X-ray line (≈ 4–6 % per decay).
         assert 3.0 <= ba["intensity_pct"][0] <= 8.0
 
+    def test_au197m_l_xrays_present(self, emissions: pl.DataFrame) -> None:
+        """Au-197m 130 keV M4: L-shell IC dominates K-shell. Per-shell ICC
+        fractions (icc_frac_K=0, icc_frac_L1..L3 large) must produce L
+        X-ray lines. Before #193, all IC was attributed to K-shell and
+        L X-rays were completely absent."""
+        au = emissions.filter(
+            (pl.col("Z") == 79) & (pl.col("A") == 197) & (pl.col("rad_type") == "xray")
+        )
+        l_xrays = au.filter(pl.col("rad_subtype").str.starts_with("L"))
+        k_xrays = au.filter(pl.col("rad_subtype").str.starts_with("K"))
+        l_total = l_xrays["intensity_pct"].sum()
+        k_total = k_xrays["intensity_pct"].sum()
+        # L X-rays must be present and substantial (α_L >> α_K for 130 keV M4).
+        # Before #193, L was 0% and K was ~96%. With per-shell ICC, L should
+        # be comparable to K (~20-75% depending on state-assignment filtering).
+        assert l_total > 0.0, "Au-197m L X-rays absent — per-shell ICC not wired"
+        assert l_total > 10.0, (
+            f"Au-197m L X-ray total ({l_total:.1f}%) too low — "
+            f"per-shell ICC fractions may not be propagating"
+        )
+        # Lα1 at ~9.7 keV should be one of the top lines.
+        la1 = au.filter(pl.col("rad_subtype") == "Lα1")
+        assert la1.height >= 1, "Au-197m Lα1 line missing"
+        assert 9.0 <= la1["energy_keV"][0] <= 10.5
+
     def test_co57_energy_conservation_K_shell(self, emissions: pl.DataFrame) -> None:
         """Σ(K X-rays + K Augers) ≈ K-vacancy rate × 100 within 5%."""
         co = emissions.filter((pl.col("Z") == 27) & (pl.col("A") == 57) & (pl.col("state") == ""))
