@@ -607,7 +607,7 @@ async fn handle_request(
             serde_json::json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "nucl-parquet", "version": "0.3.8" }
+                "serverInfo": { "name": "nucl-parquet", "version": env!("CARGO_PKG_VERSION") }
             }),
         )),
         "tools/list" => Some(JsonRpcResponse::success(id, tool_definitions())),
@@ -770,6 +770,10 @@ mod tests {
         let resp = handle_request(&client, &cache, req).await.unwrap();
         let result = resp.result.unwrap();
         assert_eq!(result["serverInfo"]["name"], "nucl-parquet");
+        assert_eq!(
+            result["serverInfo"]["version"].as_str().unwrap(),
+            env!("CARGO_PKG_VERSION"),
+        );
     }
 
     #[tokio::test]

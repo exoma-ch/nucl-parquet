@@ -182,11 +182,10 @@ def test_alpha_dedx_matches_nist_astar_exactly(
 def test_he3_dispatches_through_catima(data_dir_path: Path, energy_MeV_per_u: float) -> None:
     """³He via the loader must equal a direct catima lookup at the same MeV/u.
 
-    Goes through `_get_catima_table(2, target_Z)` and `_interp_loglog(.../A)`
+    Goes through `_get_catima_table(2, 3, target_Z)` and `_interp_loglog(.../A)`
     independently to assert the dispatch is reading the right row and dividing
     by proj_A=3. Note this only validates the *dispatch arithmetic* — pycatima's
-    actual ³He physics isn't anchored against a published reference here. The
-    physics anchor is via α (same proj_Z=2, same row).
+    actual ³He physics isn't anchored against a published reference here.
     """
     import numpy as np
 
@@ -194,7 +193,7 @@ def test_he3_dispatches_through_catima(data_dir_path: Path, energy_MeV_per_u: fl
 
     db = np_lib.connect(data_dir_path)
     he3 = float(np_lib.elemental_dedx(db, "he3", 29, energy_MeV_per_u * 3.0)[0])
-    log_E, log_S = _get_catima_table(db, proj_Z=2, target_Z=29)
+    log_E, log_S = _get_catima_table(db, proj_Z=2, proj_A=3, target_Z=29)
     expected = float(_interp_loglog(log_E, log_S, np.atleast_1d(energy_MeV_per_u))[0])
     assert he3 == pytest.approx(expected, rel=1e-9), (
         f"³He dispatch at {energy_MeV_per_u} MeV/u: got {he3}, direct catima lookup {expected}"
@@ -285,7 +284,7 @@ def test_alpha_falls_back_to_catima_for_non_nist_element(data_dir_path: Path) ->
 
     db = np_lib.connect(data_dir_path)
     got = float(np_lib.elemental_dedx(db, "a", 43, 5.0)[0])
-    log_E_c, log_S_c = _get_catima_table(db, proj_Z=2, target_Z=43)
+    log_E_c, log_S_c = _get_catima_table(db, proj_Z=2, proj_A=4, target_Z=43)
     expected = float(_interp_loglog(log_E_c, log_S_c, np.atleast_1d(5.0 / 4.0))[0])
     assert got == pytest.approx(expected, rel=1e-9), (
         f"Tc α fallback returned {got}, but direct catima lookup is {expected}"

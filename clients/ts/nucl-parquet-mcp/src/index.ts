@@ -1,8 +1,12 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { parquetRead } from "hyparquet";
 import { compressors } from "hyparquet-compressors";
 import { z } from "zod";
+
+const require = createRequire(import.meta.url);
+export const { version: PKG_VERSION } = require("../package.json") as { version: string };
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -129,7 +133,7 @@ function truncateRows(rows: Record<string, unknown>[], limit: number): { rows: R
 
 const server = new McpServer({
   name: "nucl-parquet",
-  version: "0.3.7",
+  version: PKG_VERSION,
 });
 
 server.tool(
