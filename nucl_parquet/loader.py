@@ -703,8 +703,11 @@ def _resolve_projectile(name: str) -> tuple[int, int, str]:
 # Cache: (source, target_Z) -> (log_E, log_S) arrays
 _stopping_cache: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
 
-# Cache: (proj_Z, target_Z) -> (log_E_MeV_u, log_S) arrays
-_catima_cache: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
+# Cache: (proj_Z, proj_A, target_Z) -> (log_E_MeV_u, log_S) arrays
+_catima_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
+
+# Cache: proj_Z -> sorted list of available proj_A values (for error messages)
+_catima_isotopes_cache: dict[int, list[int]] = {}
 
 
 def _get_stopping_table(
@@ -728,17 +731,34 @@ def _get_stopping_table(
     return _stopping_cache[key]
 
 
+def _get_catima_isotopes(
+    db: duckdb.DuckDBPyConnection,
+    proj_Z: int,
+) -> list[int]:
+    """Return sorted list of proj_A values available in catima_stopping for proj_Z."""
+    if proj_Z not in _catima_isotopes_cache:
+        result = db.sql(
+            "SELECT DISTINCT proj_A FROM catima_stopping WHERE proj_Z = $pz ORDER BY proj_A",
+            params={"pz": proj_Z},
+        ).fetchall()
+        _catima_isotopes_cache[proj_Z] = [int(row[0]) for row in result]
+    return _catima_isotopes_cache[proj_Z]
+
+
 def _get_catima_table(
     db: duckdb.DuckDBPyConnection,
     proj_Z: int,
+    proj_A: int,
     target_Z: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Get log-log catima stopping arrays (energy in MeV/u), cached."""
-    key = (proj_Z, target_Z)
+    """Get log-log catima stopping arrays (energy in MeV/u) for a specific isotope, cached."""
+    key = (proj_Z, proj_A, target_Z)
     if key not in _catima_cache:
         result = db.sql(
-            "SELECT energy_MeV_u, dedx FROM catima_stopping WHERE proj_Z = $pz AND target_Z = $tz ORDER BY energy_MeV_u",
-            params={"pz": proj_Z, "tz": target_Z},
+            "SELECT energy_MeV_u, dedx FROM catima_stopping "
+            "WHERE proj_Z = $pz AND proj_A = $pa AND target_Z = $tz "
+            "ORDER BY energy_MeV_u",
+            params={"pz": proj_Z, "pa": proj_A, "tz": target_Z},
         ).fetchnumpy()
         E = result["energy_MeV_u"]
         S = result["dedx"]
@@ -776,22 +796,41 @@ def elemental_dedx(
     NIST PSTAR/ASTAR only publishes 25 elemental materials; for target_Z not
     in NIST's table (e.g. Tc, Pm, Po, Rn), the loader falls back to catima.
 
+    Catima tables are tabulated per-isotope (proj_Z, proj_A): the energy axis
+    is MeV/u, but the rows differ between isotopes of the same Z at low energy
+    where nuclear stopping (reduced-mass-dependent) dominates. Above ~0.1 MeV/u
+    isotope differences are <0.1%; below ~0.01 MeV/u they reach up to ~15% for
+    light projectiles. Querying an A not present in the table raises KeyError.
+
     Args:
         db: DuckDB connection from connect().
         projectile: Projectile name. Light ions: 'p','d','t','h','a','e'.
                     Heavy ions: element symbol + mass number, e.g. 'c12',
-                    'pb208', 'xe132' (any isotope of Z=1-92).
+                    'pb208', 'xe132'. Must be a tabulated isotope; see
+                    nucl_parquet.build_heavy_ions for the inventory.
         target_Z: Target element atomic number (1-92).
         energy_MeV: Total projectile kinetic energy [MeV].
 
     Returns:
         Mass stopping power [MeV cm2/g].
+
+    Raises:
+        KeyError: if `projectile` is unknown or its (Z, A) is not in the
+            catima table.
     """
     energy_MeV = np.atleast_1d(np.asarray(energy_MeV, dtype=float))
     proj_A, proj_Z, ref_source = _resolve_projectile(projectile)
 
     if ref_source == "catima":
-        log_E, log_S = _get_catima_table(db, proj_Z, target_Z)
+        available_As = _get_catima_isotopes(db, proj_Z)
+        if proj_A not in available_As:
+            raise KeyError(
+                f"catima table has no row for Z={proj_Z} A={proj_A}. "
+                f"Available isotopes for Z={proj_Z}: {available_As}. "
+                "Use a tabulated isotope or rebuild via build_heavy_ions.py "
+                "with an extended allowlist."
+            )
+        log_E, log_S = _get_catima_table(db, proj_Z, proj_A, target_Z)
         if len(log_E) == 0:
             return np.full_like(energy_MeV, np.nan)
         # catima table is in MeV/u — convert total MeV by dividing by A
@@ -802,9 +841,11 @@ def elemental_dedx(
         # NIST tables only cover 25 elemental materials; fall back to catima
         # (Bethe-Bloch) for elements NIST doesn't publish (Tc, Pm, Po, Rn, …).
         if ref_source in ("PSTAR", "ASTAR"):
-            log_E_c, log_S_c = _get_catima_table(db, proj_Z, target_Z)
-            if len(log_E_c) > 0:
-                return _interp_loglog(log_E_c, log_S_c, energy_MeV / proj_A)
+            available_As = _get_catima_isotopes(db, proj_Z)
+            if proj_A in available_As:
+                log_E_c, log_S_c = _get_catima_table(db, proj_Z, proj_A, target_Z)
+                if len(log_E_c) > 0:
+                    return _interp_loglog(log_E_c, log_S_c, energy_MeV / proj_A)
         return np.full_like(energy_MeV, np.nan)
 
     if ref_source == "ESTAR":
