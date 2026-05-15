@@ -13,7 +13,22 @@ from nucl_parquet_mcp.server import (
     get_decay_data,
     list_isotopes,
     list_libraries,
+    mcp,
 )
+
+# ---------------------------------------------------------------------------
+# Version tests
+# ---------------------------------------------------------------------------
+
+
+class TestVersion:
+    def test_server_version_from_metadata(self):
+        import importlib.metadata
+
+        expected = importlib.metadata.version("nucl-parquet-mcp")
+        assert mcp.settings.version == expected
+        assert expected  # not empty
+
 
 # ---------------------------------------------------------------------------
 # Catalog tests (no network)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import os
+from importlib.metadata import version as _pkg_version
 from typing import Any
 
 import httpx
@@ -214,7 +215,7 @@ async def _fetch_manifest(library_id: str) -> dict[str, Any]:
 # MCP Server
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("nucl-parquet")
+mcp = FastMCP("nucl-parquet", version=_pkg_version("nucl-parquet-mcp"))
 
 
 @mcp.tool()
