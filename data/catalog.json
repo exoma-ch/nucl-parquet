@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
+  "data_version": "2026.5.1",
+  "data_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -236,17 +236,20 @@
       "path": "hi-xs/xs/"
     },
     "strata-data-nuclear": {
-      "name": "Geant4-derived nuclear structure (via strata-data)",
-      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project. Source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward — replaces the v0.10.x IAEA-LiveChart pipeline. See ADR-0002.",
+      "name": "Geant4-derived nuclear structure + EM (via strata-data)",
+      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project — source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward (replaces the v0.10.x IAEA-LiveChart pipeline). v0.13+ also pulls the em/ subdir for ESTAR + Sternheimer density-effect data (issue #121). See ADR-0002.",
       "source_url": "https://huggingface.co/datasets/gerchowl/strata-data",
       "revision": "ae6bc9751058e1e5d95982c78f2ee5b08093433d",
       "fetcher": "scripts/fetch_strata_nuclear.py",
-      "data_type": "nuclear_structure",
+      "data_type": "nuclear_structure_and_em",
       "files": [
         "nuclear/ensdfstate.parquet",
         "nuclear/photon_evap_levels.parquet",
         "nuclear/photon_evap_gammas.parquet",
-        "nuclear/radioactive_decay.parquet"
+        "nuclear/radioactive_decay.parquet",
+        "em/estar_basic.parquet",
+        "em/estar_long.parquet",
+        "em/density_effect.parquet"
       ],
       "upstream_g4_versions": {
         "G4ENSDFSTATE": "3.0",
@@ -262,9 +265,16 @@
         "abundances": "abundances.parquet",
         "decay": "decay.parquet",
         "elements": "elements.parquet",
-        "spectrum_xs": "spectrum_xs.parquet"
+        "spectrum_xs": "spectrum_xs.parquet",
+        "compound_compositions": "compound_compositions.parquet",
+        "nudex_shellcor": "nudex_shellcor.parquet",
+        "nudex_special_inputs": "nudex_special_inputs.parquet",
+        "nudex_general_stat": "nudex_general_stat.parquet"
       },
-      "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs."
+      "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs.",
+      "compound_compositions_note": "Elemental compositions (Z, weight_fraction) for the 33 NIST XCOM standard materials (water, air, tissue, bone, plastics, glasses, …). One row per (material, Z); weight fractions sum to 1.0 ± 1e-6 per material. Source: NIST XCOM Table 4 + ICRU-44. Join on `material` to xcom_compounds (integrated µ/ρ) or to photon_pe_total/photon_compton/photon_pair for Bragg-additive per-process σ. Built by nucl_parquet.build_compound_compositions.",
+      "nudex_shellcor_note": "Microscopic shell corrections + ground-state β₂/β₄ deformation parameters per (Z, A) from strata's NUDEX nudex_shellcor_ms. Schema: Z/A/symbol/shell_MeV/deformation_correction_MeV/beta2/beta4. Used by Hauser-Feshbach codes. Closes #77.",
+      "nudex_runtime_config_note": "nudex_special_inputs and nudex_general_stat are NUDEX runtime configuration tables (per-isotope overrides + defaults) shipped for audit/completeness — not load-bearing for typical consumers."
     },
     "stopping": {
       "path": "stopping/",
@@ -285,16 +295,64 @@
       ],
       "sources_note": "PSTAR/ASTAR/ESTAR are NIST ICRU-49/37 tables (reproducible via nucl_parquet.build_stopping). dSTAR/tSTAR are velocity-scaled from PSTAR (exact for electronic stopping). ³He has no NIST table — routes through catima in the loader. catima_* are pycatima tables for common heavy-ion beams; the full 92×92 MeV/u matrix is at catima_full_matrix.",
       "catima": {
+        "schema": ["proj_Z", "proj_A", "target_Z", "energy_MeV_u", "dedx", "straggling"],
         "proj_Z_range": [
           1,
-          92
+          99
         ],
         "target_Z_range": [
           1,
           92
         ],
         "energy_unit": "MeV/u",
-        "note": "Any isotope of proj_Z \u2014 divide total MeV by A to get MeV/u"
+        "n_isotopes": 399,
+        "n_rows": 7341600,
+        "isotope_inventory": "All stable + primordial isotopes (abundance > 0 in meta/abundances.parquet, 287 nuclides) \u222a all ground-state nuclides with T\u00bd > 1 year in meta/decay.parquet (covers Np/Pu/Am/Cm/Bk/Cf/Es transuranics up to Z=99, plus every long-lived radio-isotope of lower-Z elements) \u222a beam/medical allowlist (C-11, N-13, O-15, F-18, P-32). For Z values with no T\u00bd>1yr isotope (At, Rn, Fr), the longest-lived ground state is shipped as fallback.",
+        "isotope_note": "Rows are keyed on (proj_Z, proj_A). At E/A > 0.1 MeV/u dedx is isotope-agnostic to <0.1%; below ~0.01 MeV/u nuclear-stopping reduced-mass effects cause real (up to ~15%) isotope dependence, captured by the per-isotope rows. Querying (Z, A) outside the inventory raises KeyError \u2014 extend nucl_parquet.build_heavy_ions._BEAM_ALLOWLIST or lower _LONGLIVED_THRESHOLD_S and rebuild."
+      },
+      "electron_stopping": {
+        "path": "stopping/em/electron_stopping.parquet",
+        "schema": ["name", "g4_name", "is_element", "target_Z", "energy_MeV", "collision_sp_mev_cm2_g", "radiative_sp_mev_cm2_g", "total_sp_mev_cm2_g", "density_effect_delta"],
+        "source": "gerchowl/strata-data em/estar_long.parquet (Geant4 EM data \u2192 ESTAR-equivalent)",
+        "coverage": "98 elements (Z=1..98) + ~183 compounds (ICRU tissue/detector materials, water, air, etc.)",
+        "energy_range_MeV": [0.001, 10000.0],
+        "note": "target_Z is NULL for compounds; query elements by target_Z, compounds by name. Both collision + radiative + total stopping power columns are populated."
+      },
+      "density_effect_params": {
+        "path": "stopping/em/density_effect_params.parquet",
+        "schema": ["name", "I_eV", "C", "X0", "X1", "a", "k", "delta0", "density_gcm3", "state", "Zeff", "nElements"],
+        "source": "gerchowl/strata-data em/density_effect.parquet (Sternheimer parameterization)",
+        "coverage": "278 materials covering the standard Geant4 NIST_MATERIAL set (elements with G4_ prefix, plus ICRU compounds)",
+        "note": "Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList. For elements Zeff equals Z. Use these params to evaluate the density-effect correction \u03b4 above the validity range of tabulated dedx."
+      },
+      "compounds": {
+        "path": "stopping/compounds/",
+        "schema": ["source", "matno", "compound", "energy_MeV", "dedx"],
+        "sources": ["PSTAR_compounds", "ASTAR_compounds"],
+        "source_url": "https://physics.nist.gov/PhysRefData/Star/Text/method.html",
+        "fetcher": "nucl_parquet/build_stopping_compounds.py",
+        "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
+      }
+    },
+    "beta_spectra": {
+      "path": "meta/ensdf/beta_spectra/",
+      "layout": "one file per parent element symbol \u2014 meta/ensdf/beta_spectra/{Symbol}.parquet",
+      "schema": ["Z", "A", "state", "transition_idx", "decay_mode", "forbiddenness", "endpoint_keV", "branching", "energy_keV", "dN_dE", "cumulative", "shape_factor_approx"],
+      "source": "Endpoint Q-values + forbiddenness from strata radioactive_decay.parquet; spectrum shape from Fermi function (relativistic, with shape factors for unique 1st/2nd forbidden)",
+      "coverage": "All \u03b2-minus and \u03b2+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions \u00d7 200 energy bins each",
+      "note": "dN/dE is normalized per transition: \u222b dN/dE \u00b7 dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions (K-40, Tc-99, Re-187, Cl-36, etc.) use S(E)=1 as a documented approximation \u2014 filter on shape_factor_approx=True to find them. For \u03b2+ transitions, endpoint_keV is the positron kinetic-energy endpoint (strata's q_value_kev minus 2\u00b7m_e c\u00b2 = 1022 keV). State 'm' marks metastable parents (inferred from parent_ex_kev > 0). Validated: P-32 mean E = 694.9 (NNDC 694.9, exact); F-18 \u03b2+ mean E = 250 keV (NNDC 249.8); Bi-210 mean E = 390 (NNDC 389)."
+    },
+    "em": {
+      "path": "em/",
+      "files": {
+        "electron_brem": "electron_brem.parquet",
+        "electron_brem_sb_dcs": "electron_brem_sb_dcs.parquet"
+      },
+      "electron_brem_sb_dcs": {
+        "schema": ["target_Z", "electron_kev", "kappa", "dcs"],
+        "source": "gerchowl/strata-data em/brem_sb_dcs.parquet (republishes G4EMLOW brem_SB.dat \u2192 Seltzer-Berger 1985)",
+        "coverage": "Z=1..92, 57 incident-electron energies (1 keV..10 GeV log-spaced), 32 \u03ba values",
+        "note": "SCALED differential cross section per Berger & Seltzer (1985): dcs = (d\u03c3/d\u03ba) \u00d7 \u03b2\u00b2 / Z\u00b2, where \u03ba = E_\u03b3 / T_electron and \u03b2 is the electron velocity. The Z\u00b2 is factored out so values are O(1-10) across all Z. To recover the raw d\u03c3/d\u03ba multiply by Z\u00b2/\u03b2\u00b2. Companion to electron_brem (integrated \u03c3). Cite Seltzer & Berger, Nucl. Instrum. Meth. B12 (1985) 95."
       }
     }
   }

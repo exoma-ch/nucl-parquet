@@ -9,11 +9,31 @@ from nucl_parquet_mcp.server import (
     CATALOG,
     fetch_parquet_rows,
     get_abundances,
+    get_beta_spectrum,  # noqa: F401
+    get_coincidences,  # noqa: F401
+    get_compound_compositions,  # noqa: F401
     get_cross_sections,
     get_decay_data,
+    get_electron_stopping,  # noqa: F401
+    get_radiation,  # noqa: F401
     list_isotopes,
     list_libraries,
+    mcp,
 )
+
+# ---------------------------------------------------------------------------
+# Version tests
+# ---------------------------------------------------------------------------
+
+
+class TestVersion:
+    def test_server_version_from_metadata(self):
+        import importlib.metadata
+
+        expected = importlib.metadata.version("nucl-parquet-mcp")
+        assert mcp.settings.version == expected
+        assert expected  # not empty
+
 
 # ---------------------------------------------------------------------------
 # Catalog tests (no network)

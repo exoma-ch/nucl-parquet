@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-py-v0.13.1...nucl-parquet-mcp-py-v0.13.2) (2026-05-15)
+
+
+### Bug Fixes
+
+* **mcp:** Replace hardcoded version strings with package metadata ([#186](https://github.com/exoma-ch/nucl-parquet/issues/186)) ([05b352a](https://github.com/exoma-ch/nucl-parquet/commit/05b352a1443b41d944f8891d223f4545a8413c89))
+
 ## [0.13.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-py-v0.13.0...nucl-parquet-mcp-py-v0.13.1) (2026-05-12)
 
 

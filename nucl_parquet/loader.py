@@ -221,6 +221,16 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # ³He routes through catima (no NIST table); α through NIST ASTAR (#137).
     _register_glob(db, data_dir / "stopping", "stopping")
     _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
+    # NIST compound tables for protons and α (matno 99-279). Different schema
+    # from the elemental `stopping` glob — keyed on (matno, compound) — so they
+    # ship under stopping/compounds/ and are registered as separate views.
+    _register_parquet(db, data_dir / "stopping" / "compounds" / "PSTAR_compounds.parquet", "pstar_compounds")
+    _register_parquet(db, data_dir / "stopping" / "compounds" / "ASTAR_compounds.parquet", "astar_compounds")
+    # Electron stopping with collision/radiative split + ~180 compounds (from
+    # strata-data em/, rebuilt by build_em_stopping.py). Legacy ESTAR.parquet
+    # in stopping/ keeps the four-column schema for backwards compatibility.
+    _register_parquet(db, data_dir / "stopping" / "em" / "electron_stopping.parquet", "electron_stopping")
+    _register_parquet(db, data_dir / "stopping" / "em" / "density_effect_params.parquet", "density_effect_params")
 
     # --- ENSDF data ---
     nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
@@ -234,6 +244,11 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "levels", "ensdf_levels")
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
+    # Pre-tabulated β-decay continuous spectra per transition (#78). Companion
+    # to `radiation` (which has discrete γ/X-ray/Auger lines): `beta_spectra`
+    # has the continuous β kinetic-energy distribution sampled on 200 bins
+    # per transition, normalized so ∫ dN/dE = 1.
+    _register_glob(db, data_dir / "meta" / "ensdf" / "beta_spectra", "beta_spectra")
 
     # --- NUDEX neutron-capture primary gammas (v0.14 epic #115) ---
     _register_parquet(db, data_dir / "meta" / "capture_gammas.parquet", "capture_gammas")
@@ -265,6 +280,15 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_parquet(db, data_dir / "meta" / "psf_gdr_theor.parquet", "psf_gdr_theor")
     _register_parquet(db, data_dir / "meta" / "psf_photonuclear.parquet", "psf_photonuclear")
 
+    # --- NUDEX shell corrections + runtime metadata (closes #77) ---
+    # `nudex_shellcor` carries microscopic shell corrections + ground-state
+    # deformation params (β₂, β₄) used by Hauser-Feshbach codes.
+    # `nudex_special_inputs` / `nudex_general_stat` are NUDEX runtime
+    # configuration overrides — ship for audit + completeness.
+    _register_parquet(db, data_dir / "meta" / "nudex_shellcor.parquet", "nudex_shellcor")
+    _register_parquet(db, data_dir / "meta" / "nudex_special_inputs.parquet", "nudex_special_inputs")
+    _register_parquet(db, data_dir / "meta" / "nudex_general_stat.parquet", "nudex_general_stat")
+
     # --- NUDEX full ENSDF level schemes (v0.14 epic #115) ---
     # `nudex_levels` (richer ENSDF source) coexists with `ensdf_levels` (the
     # PhotonEvaporation summary used by G4 transport). Pick by query class:
@@ -288,6 +312,10 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- XCOM photon attenuation ---
     _register_parquet(db, data_dir / "meta" / "xcom_elements.parquet", "xcom_elements")
     _register_parquet(db, data_dir / "meta" / "xcom_compounds.parquet", "xcom_compounds")
+    # Elemental compositions for the xcom_compounds materials (#113). Join
+    # on `material` to break a compound's photon attenuation into per-process
+    # σ via Bragg additivity.
+    _register_parquet(db, data_dir / "meta" / "compound_compositions.parquet", "compound_compositions")
 
     # --- EPDL97 photon interaction data ---
     _register_glob(db, data_dir / "meta" / "epdl97" / "photon_xs", "epdl_photon_xs")
@@ -337,6 +365,10 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     # --- G4EMLOW electron-matter cross-sections (v0.13 epic #114) ---
     _register_parquet(db, data_dir / "em" / "electron_brem.parquet", "electron_brem")
+    # Seltzer-Berger differential cross section dσ/dκ for bremsstrahlung
+    # photon emission. Companion to electron_brem (integrated σ): the DCS
+    # lets MC samplers draw photon energies, not just total σ. See #118.
+    _register_parquet(db, data_dir / "em" / "electron_brem_sb_dcs.parquet", "electron_brem_sb_dcs")
 
     return db
 
@@ -703,8 +735,11 @@ def _resolve_projectile(name: str) -> tuple[int, int, str]:
 # Cache: (source, target_Z) -> (log_E, log_S) arrays
 _stopping_cache: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
 
-# Cache: (proj_Z, target_Z) -> (log_E_MeV_u, log_S) arrays
-_catima_cache: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
+# Cache: (proj_Z, proj_A, target_Z) -> (log_E_MeV_u, log_S) arrays
+_catima_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
+
+# Cache: proj_Z -> sorted list of available proj_A values (for error messages)
+_catima_isotopes_cache: dict[int, list[int]] = {}
 
 
 def _get_stopping_table(
@@ -728,17 +763,34 @@ def _get_stopping_table(
     return _stopping_cache[key]
 
 
+def _get_catima_isotopes(
+    db: duckdb.DuckDBPyConnection,
+    proj_Z: int,
+) -> list[int]:
+    """Return sorted list of proj_A values available in catima_stopping for proj_Z."""
+    if proj_Z not in _catima_isotopes_cache:
+        result = db.sql(
+            "SELECT DISTINCT proj_A FROM catima_stopping WHERE proj_Z = $pz ORDER BY proj_A",
+            params={"pz": proj_Z},
+        ).fetchall()
+        _catima_isotopes_cache[proj_Z] = [int(row[0]) for row in result]
+    return _catima_isotopes_cache[proj_Z]
+
+
 def _get_catima_table(
     db: duckdb.DuckDBPyConnection,
     proj_Z: int,
+    proj_A: int,
     target_Z: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Get log-log catima stopping arrays (energy in MeV/u), cached."""
-    key = (proj_Z, target_Z)
+    """Get log-log catima stopping arrays (energy in MeV/u) for a specific isotope, cached."""
+    key = (proj_Z, proj_A, target_Z)
     if key not in _catima_cache:
         result = db.sql(
-            "SELECT energy_MeV_u, dedx FROM catima_stopping WHERE proj_Z = $pz AND target_Z = $tz ORDER BY energy_MeV_u",
-            params={"pz": proj_Z, "tz": target_Z},
+            "SELECT energy_MeV_u, dedx FROM catima_stopping "
+            "WHERE proj_Z = $pz AND proj_A = $pa AND target_Z = $tz "
+            "ORDER BY energy_MeV_u",
+            params={"pz": proj_Z, "pa": proj_A, "tz": target_Z},
         ).fetchnumpy()
         E = result["energy_MeV_u"]
         S = result["dedx"]
@@ -776,22 +828,41 @@ def elemental_dedx(
     NIST PSTAR/ASTAR only publishes 25 elemental materials; for target_Z not
     in NIST's table (e.g. Tc, Pm, Po, Rn), the loader falls back to catima.
 
+    Catima tables are tabulated per-isotope (proj_Z, proj_A): the energy axis
+    is MeV/u, but the rows differ between isotopes of the same Z at low energy
+    where nuclear stopping (reduced-mass-dependent) dominates. Above ~0.1 MeV/u
+    isotope differences are <0.1%; below ~0.01 MeV/u they reach up to ~15% for
+    light projectiles. Querying an A not present in the table raises KeyError.
+
     Args:
         db: DuckDB connection from connect().
         projectile: Projectile name. Light ions: 'p','d','t','h','a','e'.
                     Heavy ions: element symbol + mass number, e.g. 'c12',
-                    'pb208', 'xe132' (any isotope of Z=1-92).
+                    'pb208', 'xe132'. Must be a tabulated isotope; see
+                    nucl_parquet.build_heavy_ions for the inventory.
         target_Z: Target element atomic number (1-92).
         energy_MeV: Total projectile kinetic energy [MeV].
 
     Returns:
         Mass stopping power [MeV cm2/g].
+
+    Raises:
+        KeyError: if `projectile` is unknown or its (Z, A) is not in the
+            catima table.
     """
     energy_MeV = np.atleast_1d(np.asarray(energy_MeV, dtype=float))
     proj_A, proj_Z, ref_source = _resolve_projectile(projectile)
 
     if ref_source == "catima":
-        log_E, log_S = _get_catima_table(db, proj_Z, target_Z)
+        available_As = _get_catima_isotopes(db, proj_Z)
+        if proj_A not in available_As:
+            raise KeyError(
+                f"catima table has no row for Z={proj_Z} A={proj_A}. "
+                f"Available isotopes for Z={proj_Z}: {available_As}. "
+                "Use a tabulated isotope or rebuild via build_heavy_ions.py "
+                "with an extended allowlist."
+            )
+        log_E, log_S = _get_catima_table(db, proj_Z, proj_A, target_Z)
         if len(log_E) == 0:
             return np.full_like(energy_MeV, np.nan)
         # catima table is in MeV/u — convert total MeV by dividing by A
@@ -802,9 +873,11 @@ def elemental_dedx(
         # NIST tables only cover 25 elemental materials; fall back to catima
         # (Bethe-Bloch) for elements NIST doesn't publish (Tc, Pm, Po, Rn, …).
         if ref_source in ("PSTAR", "ASTAR"):
-            log_E_c, log_S_c = _get_catima_table(db, proj_Z, target_Z)
-            if len(log_E_c) > 0:
-                return _interp_loglog(log_E_c, log_S_c, energy_MeV / proj_A)
+            available_As = _get_catima_isotopes(db, proj_Z)
+            if proj_A in available_As:
+                log_E_c, log_S_c = _get_catima_table(db, proj_Z, proj_A, target_Z)
+                if len(log_E_c) > 0:
+                    return _interp_loglog(log_E_c, log_S_c, energy_MeV / proj_A)
         return np.full_like(energy_MeV, np.nan)
 
     if ref_source == "ESTAR":
