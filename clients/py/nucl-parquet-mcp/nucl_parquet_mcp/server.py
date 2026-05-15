@@ -140,7 +140,9 @@ async def list_isotopes(library: str, projectile: str) -> str:
     if lib is None:
         raise ValueError(f"Unknown library: {library}. Use list_libraries to see options.")
     if projectile not in lib.get("projectiles", []):
-        raise ValueError(f"Projectile '{projectile}' not in {library}. Available: {', '.join(lib.get('projectiles', []))}")
+        raise ValueError(
+            f"Projectile '{projectile}' not in {library}. Available: {', '.join(lib.get('projectiles', []))}"
+        )
     # Manifests are JSON files alongside the parquet data — read from disk.
     data_path = nucl_parquet.data_dir()
     lib_path = lib["path"]
@@ -472,9 +474,7 @@ async def sql_query(sql: str, max_rows: int = 10000) -> str:
         raise ValueError("Empty SQL query")
     first_word = stripped.split()[0].upper()
     if first_word not in {"SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"}:
-        raise ValueError(
-            f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got: {first_word}"
-        )
+        raise ValueError(f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got: {first_word}")
 
     db = _get_db()
     try:
