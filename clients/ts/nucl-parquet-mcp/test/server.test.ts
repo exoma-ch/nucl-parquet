@@ -1,5 +1,15 @@
+import { createRequire } from "node:module";
 import { describe, it, expect } from "vitest";
-import { getCatalog } from "../src/index.js";
+import { getCatalog, PKG_VERSION } from "../src/index.js";
+
+const require = createRequire(import.meta.url);
+
+describe("version", () => {
+  it("PKG_VERSION matches package.json", () => {
+    const { version } = require("../package.json") as { version: string };
+    expect(PKG_VERSION).toBe(version);
+  });
+});
 
 describe("catalog", () => {
   const catalog = getCatalog();
