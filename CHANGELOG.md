@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.14.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.14.0...nucl-parquet-py-v0.14.1) (2026-05-15)
+
+
+### Features
+
+* **coincidences:** Mixed-emission pairs (β/EC X-ray/Auger/511 keV ⊗ γ) — closes [#170](https://github.com/exoma-ch/nucl-parquet/issues/170) ([#172](https://github.com/exoma-ch/nucl-parquet/issues/172)) ([bd106dd](https://github.com/exoma-ch/nucl-parquet/commit/bd106ddb2c61e6d9d73fe42bf0222e8989e5b5a4))
+* **em:** Port last 3 NUDEX tables (shell corrections + runtime config) — closes [#77](https://github.com/exoma-ch/nucl-parquet/issues/77) ([#185](https://github.com/exoma-ch/nucl-parquet/issues/185)) ([3456935](https://github.com/exoma-ch/nucl-parquet/commit/34569352adf60699d8b0aff5f075903badb44da0))
+* **em:** Pre-tabulate β-decay continuous spectra — closes [#78](https://github.com/exoma-ch/nucl-parquet/issues/78) ([#183](https://github.com/exoma-ch/nucl-parquet/issues/183)) ([d4c0c29](https://github.com/exoma-ch/nucl-parquet/commit/d4c0c2981c1cb51df6f3c477296946a2f7b8234a))
+* **em:** Rebuild ESTAR from strata + Sternheimer density-effect params — closes [#121](https://github.com/exoma-ch/nucl-parquet/issues/121) ([#174](https://github.com/exoma-ch/nucl-parquet/issues/174)) ([ed6c03c](https://github.com/exoma-ch/nucl-parquet/commit/ed6c03c3621a0f456c60f8387a7c7ec1f6383591))
+* **em:** Ship NIST XCOM compound elemental compositions — refs [#113](https://github.com/exoma-ch/nucl-parquet/issues/113) ([#184](https://github.com/exoma-ch/nucl-parquet/issues/184)) ([77acfdd](https://github.com/exoma-ch/nucl-parquet/commit/77acfddb09927538a2323b274b8c56c5a2a4e7c7))
+* **em:** Ship Seltzer-Berger bremsstrahlung DCS — closes [#118](https://github.com/exoma-ch/nucl-parquet/issues/118) ([#182](https://github.com/exoma-ch/nucl-parquet/issues/182)) ([cbc7df4](https://github.com/exoma-ch/nucl-parquet/commit/cbc7df44d3275c13858a105c0a82730f4abfdb4f))
+* **stopping:** Per-isotope catima table (proj_A column) — closes [#169](https://github.com/exoma-ch/nucl-parquet/issues/169) ([#171](https://github.com/exoma-ch/nucl-parquet/issues/171)) ([cbf34a7](https://github.com/exoma-ch/nucl-parquet/commit/cbf34a717ae151305f18dd85366794b2d9ce3284))
+* **stopping:** Ship NIST PSTAR/ASTAR compound tables — closes [#160](https://github.com/exoma-ch/nucl-parquet/issues/160) ([#181](https://github.com/exoma-ch/nucl-parquet/issues/181)) ([71e8ff2](https://github.com/exoma-ch/nucl-parquet/commit/71e8ff2c3df31422b196d0ecc7f208d8ef1255da))
+
+
+### Documentation
+
+* **adr:** 0001 — radiation state API design record (supersedes [#55](https://github.com/exoma-ch/nucl-parquet/issues/55)) ([#167](https://github.com/exoma-ch/nucl-parquet/issues/167)) ([9a96948](https://github.com/exoma-ch/nucl-parquet/commit/9a96948713bb5f4ec060276b36613e801ac46570))
+
 ## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.13.0...nucl-parquet-py-v0.14.0) (2026-05-12)
 
 
