@@ -49,17 +49,21 @@ DEST_DIR = ROOT / "data" / "g4_raw" / "strata-nuclear"
 CATALOG_PATH = ROOT / "data" / "catalog.json"
 CATALOG_KEY = "strata-data-nuclear"
 
-# The four Geant4-derived nuclear-structure files we depend on. Anything else
-# in the strata-data dataset (em/, hadronic/, optical/, NUDEX) is out of scope
-# for the v0.11 migration; if a future phase wants those, extend this list and
-# bump the revision pin together.
+# Strata-data files we depend on, pinned to the same revision via
+# catalog.json::libraries.strata-data-nuclear. The em/ files were added in
+# v0.13 for #121 (ESTAR) and #118 (Seltzer-Berger DCS). Other strata content
+# (hadronic/, optical/) is still out of scope; extend this list and bump the
+# revision pin together.
 FILES = [
     "nuclear/ensdfstate.parquet",
     "nuclear/photon_evap_levels.parquet",
     "nuclear/photon_evap_gammas.parquet",
     "nuclear/radioactive_decay.parquet",
-    # NUDEX shell corrections + runtime metadata — closes #77 (other NUDEX
-    # files were already in FILES via prior ports).
+    "em/estar_basic.parquet",
+    "em/estar_long.parquet",
+    "em/density_effect.parquet",
+    "em/brem_sb_dcs.parquet",
+    # NUDEX shell corrections + runtime metadata — closes #77
     "nuclear/nudex_shellcor_ms.parquet",
     "nuclear/nudex_special_inputs.parquet",
     "nuclear/nudex_general_stat.parquet",
