@@ -485,12 +485,16 @@ ORDER BY delta_keV ASC, r.intensity_pct DESC
 LIMIT 20
 """
 
-# NOTE: `coincidences/*.parquet` does not carry a `state` column today, so
-# coincidence pairs are state-agnostic. The `$state` parameter scopes the
-# radiation intensity lookup only (i.e. "show me coincidence pairs for this
-# (Z,A), using intensities from the specified parent state"). For isomers with
-# distinct cascades we need `state` added to the coincidences build — tracked
-# as a follow-up to #36.
+# NOTE: `coincidences/*.parquet` carries both γ-γ cascade pairs and mixed-
+# emission pairs (β/EC X-ray/Auger/511 keV annihilation ⊗ γ) since #170.
+# Mixed rows have NULL gamma_energy_keV/coinc_energy_keV but populated
+# emission{1,2}_* columns; the `WHERE emission1_rad_type='gamma' AND
+# emission2_rad_type='gamma'` filter below preserves γ-γ-only behavior.
+#
+# `$state` still scopes the radiation intensity lookup. For metastable
+# parents whose cascades differ from the ground state, prefer the
+# `coincidences()` Python helper (filters on `parent_state` + `parent_decay_mode`
+# directly).
 COINCIDENCE_SQL = """
 SELECT DISTINCT
        c.gamma_energy_keV AS E_gamma_1,
@@ -512,6 +516,7 @@ LEFT JOIN (
 ) r2 ON c.Z = r2.Z AND c.A = r2.A AND r2.state = $state
     AND ABS(c.coinc_energy_keV - r2.energy_keV) < 0.5
 WHERE c.Z = $z AND c.A = $a
+  AND c.emission1_rad_type = 'gamma' AND c.emission2_rad_type = 'gamma'
   AND c.gamma_energy_keV < c.coinc_energy_keV  -- avoid symmetric duplicates
 ORDER BY coinc_prob_pct DESC NULLS LAST
 """
@@ -555,6 +560,58 @@ def gamma_lines(
         JOIN nuclides n ON r.Z = n.Z AND r.A = n.A AND r.state = n.state
         WHERE {" AND ".join(where)}
         ORDER BY r.intensity_pct DESC
+    """
+    return db.sql(sql, params=params)
+
+
+def coincidences(
+    db: duckdb.DuckDBPyConnection,
+    z: int,
+    a: int,
+    parent_state: str = "",
+    parent_decay_mode: str | None = None,
+    emission1_rad_type: str | None = None,
+    emission2_rad_type: str | None = None,
+    min_intensity: float = 0.0,
+) -> duckdb.DuckDBPyRelation:
+    """Coincidence pairs for a parent nuclide, filterable by emission type (#170).
+
+    Each row is one (emission₁, emission₂) pair from a single parent decay.
+
+    - ``parent_state``: ``""`` (ground) | ``"m"`` (isomer) — selects which parent
+      state's decay channels populate the cascade.
+    - ``parent_decay_mode``: ``"beta-"`` | ``"beta+"`` | ``"KshellEC"`` |
+      ``"LshellEC"`` | ... — restrict to a single parent decay channel.
+    - ``emission{1,2}_rad_type``: ``"gamma"`` | ``"beta"`` | ``"xray"`` |
+      ``"auger"`` | ``"annihilation_511"`` — filter by emission kind. Pass
+      ``"gamma"`` for both to recover legacy γ-γ-only behavior.
+    - ``min_intensity``: filter on ``pair_intensity`` (relative — see schema docs).
+
+    Returns a DuckDB relation; call ``.pl()`` / ``.df()`` / ``.arrow()`` as usual.
+    """
+    where = ["c.Z = ?", "c.A = ?", "c.pair_intensity > ?"]
+    params: list[object] = [int(z), int(a), float(min_intensity)]
+    # Parent-state filter — coalesce NULL to '' so γ-γ rows without a fed-level
+    # match (parent_decay_mode unknown) still surface when caller asks for "".
+    where.append("COALESCE(c.parent_state, '') = ?")
+    params.append(parent_state)
+    if parent_decay_mode is not None:
+        where.append("c.parent_decay_mode = ?")
+        params.append(parent_decay_mode)
+    if emission1_rad_type is not None:
+        where.append("c.emission1_rad_type = ?")
+        params.append(emission1_rad_type)
+    if emission2_rad_type is not None:
+        where.append("c.emission2_rad_type = ?")
+        params.append(emission2_rad_type)
+    sql = f"""
+        SELECT c.Z, c.A, c.parent_state, c.parent_decay_mode, c.daughter_ex_keV,
+               c.emission1_rad_type, c.emission1_energy_keV, c.emission1_intensity, c.emission1_shell,
+               c.emission2_rad_type, c.emission2_energy_keV, c.emission2_intensity, c.emission2_shell,
+               c.pair_intensity
+        FROM coincidences c
+        WHERE {" AND ".join(where)}
+        ORDER BY c.pair_intensity DESC NULLS LAST
     """
     return db.sql(sql, params=params)
 
