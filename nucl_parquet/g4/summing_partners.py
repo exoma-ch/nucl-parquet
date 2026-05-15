@@ -132,10 +132,11 @@ def _build_gamma_gamma(coinc: pl.DataFrame) -> pl.DataFrame:
         .alias("emission2_icc_total"),
     )
 
-    # Deduplicate after canonicalization — same (Z, A, E1, E2, parent_level)
-    # should appear once.
+    # Deduplicate after canonicalization — same (Z, A, state, E1, E2, parent_level)
+    # should appear once. Include parent_state so ground-state and metastable
+    # decay channels feeding the same cascade aren't collapsed.
     gg = gg.unique(
-        subset=["Z", "A", "emission1_energy_keV", "emission2_energy_keV", "parent_level_keV"],
+        subset=["Z", "A", "parent_state", "emission1_energy_keV", "emission2_energy_keV", "parent_level_keV"],
         keep="first",
     )
 
