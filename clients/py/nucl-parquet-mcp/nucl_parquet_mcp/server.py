@@ -1,215 +1,91 @@
-"""nucl-parquet MCP server — lazy-loads Parquet files from GitHub."""
+"""nucl-parquet MCP server — wraps the nucl_parquet client library.
+
+Delegates all data access to ``nucl_parquet.connect()`` which registers
+70+ Parquet-backed DuckDB views with lazy loading and predicate pushdown.
+This is the SSoT refactor (epic #173, Sub-D #178): the MCP is a thin shell
+over the client library, not a re-implementation of parquet I/O.
+"""
 
 from __future__ import annotations
 
-import io
+import json
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
+from pathlib import Path
 from typing import Any
 
-import httpx
-import pyarrow.parquet as pq
+import duckdb
 from mcp.server.fastmcp import FastMCP
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-BASE_URL = os.environ.get(
-    "NUCL_PARQUET_BASE_URL",
-    "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/",
-)
+import nucl_parquet
 
 # ---------------------------------------------------------------------------
-# Embedded catalog
+# Data bootstrap
 # ---------------------------------------------------------------------------
 
-CATALOG: dict[str, Any] = {
-    "libraries": {
-        "tendl-2024": {
-            "name": "TENDL-2024",
-            "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)",
-            "projectiles": ["p", "d", "t", "h", "a"],
-            "data_type": "cross_sections",
-            "version": "2024",
-            "path": "tendl-2024/xs/",
-        },
-        "endfb-8.1": {
-            "name": "ENDF/B-VIII.1",
-            "description": "US Evaluated Nuclear Data File (NNDC/BNL)",
-            "projectiles": ["n", "p", "d", "t", "h", "a"],
-            "data_type": "cross_sections",
-            "version": "VIII.1",
-            "path": "endfb-8.1/xs/",
-        },
-        "jeff-4.0": {
-            "name": "JEFF-4.0",
-            "description": "Joint Evaluated Fission and Fusion File (NEA)",
-            "projectiles": ["n", "p"],
-            "data_type": "cross_sections",
-            "version": "4.0",
-            "path": "jeff-4.0/xs/",
-        },
-        "jendl-5": {
-            "name": "JENDL-5",
-            "description": "Japanese Evaluated Nuclear Data Library (JAEA)",
-            "projectiles": ["n", "p", "d", "a"],
-            "data_type": "cross_sections",
-            "version": "5",
-            "path": "jendl-5/xs/",
-        },
-        "tendl-2025": {
-            "name": "TENDL-2025",
-            "description": "TALYS Evaluated Nuclear Data Library 2025 (PSI)",
-            "projectiles": ["n", "p", "d", "t", "h", "a"],
-            "data_type": "cross_sections",
-            "version": "2025",
-            "path": "tendl-2025/xs/",
-        },
-        "cendl-3.2": {
-            "name": "CENDL-3.2",
-            "description": "Chinese Evaluated Nuclear Data Library (CIAE)",
-            "projectiles": ["n"],
-            "data_type": "cross_sections",
-            "version": "3.2",
-            "path": "cendl-3.2/xs/",
-        },
-        "brond-3.1": {
-            "name": "BROND-3.1",
-            "description": "Russian Evaluated Nuclear Data Library (IPPE)",
-            "projectiles": ["n"],
-            "data_type": "cross_sections",
-            "version": "3.1",
-            "path": "brond-3.1/xs/",
-        },
-        "fendl-3.2": {
-            "name": "FENDL-3.2",
-            "description": "Fusion Evaluated Nuclear Data Library (IAEA)",
-            "projectiles": ["n"],
-            "data_type": "cross_sections",
-            "version": "3.2",
-            "path": "fendl-3.2/xs/",
-        },
-        "eaf-2010": {
-            "name": "EAF-2010",
-            "description": "European Activation File (CCFE)",
-            "projectiles": ["n"],
-            "data_type": "cross_sections",
-            "version": "2010",
-            "path": "eaf-2010/xs/",
-        },
-        "irdff-2": {
-            "name": "IRDFF-II",
-            "description": "International Reactor Dosimetry and Fusion File (IAEA)",
-            "projectiles": ["n"],
-            "data_type": "cross_sections",
-            "version": "II",
-            "path": "irdff-2/xs/",
-        },
-        "iaea-medical": {
-            "name": "IAEA-Medical",
-            "description": "Medical isotope production cross-sections (IAEA)",
-            "projectiles": ["p", "d", "h", "a"],
-            "data_type": "cross_sections",
-            "version": "latest",
-            "path": "iaea-medical/xs/",
-        },
-        "jendl-ad-2017": {
-            "name": "JENDL/AD-2017",
-            "description": "Activation/Dosimetry Library (JAEA)",
-            "projectiles": ["n", "p"],
-            "data_type": "cross_sections",
-            "version": "2017",
-            "path": "jendl-ad-2017/xs/",
-        },
-        "jendl-deu-2020": {
-            "name": "JENDL-DEU-2020",
-            "description": "Dedicated deuteron-induced reaction library (JAEA)",
-            "projectiles": ["d"],
-            "data_type": "cross_sections",
-            "version": "2020",
-            "path": "jendl-deu-2020/xs/",
-        },
-        "iaea-pd-2019": {
-            "name": "IAEA-PD-2019",
-            "description": "Photonuclear Data Library (IAEA)",
-            "projectiles": ["g"],
-            "data_type": "cross_sections",
-            "version": "2019",
-            "path": "iaea-pd-2019/xs/",
-        },
-        "exfor": {
-            "name": "EXFOR",
-            "description": "Experimental nuclear reaction data (IAEA NDS)",
-            "projectiles": ["n", "p", "d", "t", "h", "a"],
-            "data_type": "experimental_cross_sections",
-            "version": "latest",
-            "path": "exfor/",
-        },
-    },
-    "shared": {
-        "meta": {
-            "path": "meta/",
-            "files": {"abundances": "abundances.parquet", "decay": "decay.parquet", "elements": "elements.parquet"},
-        },
-        "stopping": {
-            "path": "stopping/",
-            "files": {
-                "PSTAR": "PSTAR.parquet",
-                "ASTAR": "ASTAR.parquet",
-                "ESTAR": "ESTAR.parquet",
-                "dSTAR": "dSTAR.parquet",
-                "tSTAR": "tSTAR.parquet",
-                "catima": "catima/catima.parquet",
-            },
-            "sources": ["PSTAR", "ASTAR", "ESTAR", "dSTAR", "tSTAR", "catima"],
-        },
-    },
-}
+_db: duckdb.DuckDBPyConnection | None = None
+
+
+def _get_db() -> duckdb.DuckDBPyConnection:
+    """Lazy-connect to the nucl-parquet DuckDB instance."""
+    global _db  # noqa: PLW0603
+    if _db is not None:
+        return _db
+
+    # Try to find local data; download if not present.
+    try:
+        data_path = nucl_parquet.data_dir()
+    except FileNotFoundError:
+        # No local data — download the latest release tarball.
+        nucl_parquet.download()
+        data_path = nucl_parquet.data_dir()
+
+    _db = nucl_parquet.connect(data_path)
+    return _db
+
+
+def _query(sql: str, params: dict[str, Any] | None = None, max_rows: int = 500) -> dict[str, Any]:
+    """Run a read-only SQL query and return {total, truncated, rows}."""
+    db = _get_db()
+    rel = db.sql(sql, params=params or {})
+    total = rel.count("*").fetchone()[0]
+    rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
+    truncated = total > max_rows
+    return {"total": total, "truncated": truncated, "rows": rows}
+
 
 # ---------------------------------------------------------------------------
-# Parquet fetch + cache
+# Catalog (read from the actual data directory, not hardcoded)
 # ---------------------------------------------------------------------------
 
-_cache: dict[str, list[dict[str, Any]]] = {}
+
+def _load_catalog() -> dict[str, Any]:
+    """Load catalog.json from the data directory."""
+    data_path = nucl_parquet.data_dir()
+    catalog_path = Path(data_path) / "catalog.json"
+    with open(catalog_path) as f:
+        return json.load(f)
 
 
-def _get_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(follow_redirects=True, timeout=60.0)
+def _get_catalog() -> dict[str, Any]:
+    global _catalog  # noqa: PLW0603
+    if "_catalog" not in globals() or _catalog is None:
+        globals()["_catalog"] = _load_catalog()
+    return _catalog
 
 
-async def fetch_parquet_rows(
-    relative_path: str,
-    base_url: str = BASE_URL,
-) -> list[dict[str, Any]]:
-    """Fetch a parquet file from GitHub and return rows as dicts."""
-    if relative_path in _cache:
-        return _cache[relative_path]
+_catalog: dict[str, Any] | None = None
 
-    url = base_url.rstrip("/") + "/" + relative_path.lstrip("/")
-    async with _get_client() as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        data = resp.content
-
-    table = pq.read_table(io.BytesIO(data))
-    rows = table.to_pylist()
-    _cache[relative_path] = rows
-    return rows
+# Kept as a module-level reference for tests that import it.
+CATALOG: dict[str, Any] = {}
 
 
-async def _fetch_manifest(library_id: str) -> dict[str, Any]:
-    """Fetch the manifest.json for a library."""
-    lib = CATALOG["libraries"].get(library_id)
-    if lib is None:
-        raise ValueError(f"Unknown library: {library_id}")
-    manifest_path = lib["path"].replace("xs/", "manifest.json")
-    url = BASE_URL.rstrip("/") + "/" + manifest_path
-    async with _get_client() as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.json()
+def _ensure_catalog() -> dict[str, Any]:
+    global CATALOG  # noqa: PLW0603
+    if not CATALOG:
+        CATALOG.update(_get_catalog())
+    return CATALOG
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +100,15 @@ except PackageNotFoundError:
 mcp = FastMCP("nucl-parquet", version=_VERSION)
 
 
+# ---------------------------------------------------------------------------
+# Library / cross-section tools
+# ---------------------------------------------------------------------------
+
+
 @mcp.tool()
 async def list_libraries() -> str:
     """List all available nuclear data libraries with projectiles and descriptions."""
+    cat = _ensure_catalog()
     libs = [
         {
             "id": lib_id,
@@ -236,10 +118,9 @@ async def list_libraries() -> str:
             "version": lib["version"],
             "data_type": lib["data_type"],
         }
-        for lib_id, lib in CATALOG["libraries"].items()
+        for lib_id, lib in cat["libraries"].items()
+        if "projectiles" in lib  # skip non-library entries like strata-data-nuclear
     ]
-    import json
-
     return json.dumps(libs, indent=2)
 
 
@@ -251,17 +132,24 @@ async def list_isotopes(library: str, projectile: str) -> str:
         library: Library ID, e.g. 'tendl-2024', 'endfb-8.1'.
         projectile: Projectile type: n, p, d, t, h, a, g.
     """
-    lib = CATALOG["libraries"].get(library)
+    cat = _ensure_catalog()
+    lib = cat["libraries"].get(library)
     if lib is None:
         raise ValueError(f"Unknown library: {library}. Use list_libraries to see options.")
-    if projectile not in lib["projectiles"]:
-        raise ValueError(f"Projectile '{projectile}' not in {library}. Available: {', '.join(lib['projectiles'])}")
-    manifest = await _fetch_manifest(library)
+    if projectile not in lib.get("projectiles", []):
+        raise ValueError(
+            f"Projectile '{projectile}' not in {library}. "
+            f"Available: {', '.join(lib.get('projectiles', []))}"
+        )
+    # Manifests are JSON files alongside the parquet data — read from disk.
+    data_path = nucl_parquet.data_dir()
+    manifest_path = Path(data_path) / lib["path"].replace("xs/", "manifest.json")
+    with open(manifest_path) as f:
+        manifest = json.load(f)
     elements = manifest.get("elements", [])
-    import json
-
     return json.dumps(
-        {"library": library, "projectile": projectile, "elements": elements, "count": len(elements)}, indent=2
+        {"library": library, "projectile": projectile, "elements": elements, "count": len(elements)},
+        indent=2,
     )
 
 
@@ -282,27 +170,53 @@ async def get_cross_sections(
         element: Target element symbol, e.g. 'Cu', 'Fe'.
         max_rows: Maximum rows to return (default 500).
     """
-    lib = CATALOG["libraries"].get(library)
+    cat = _ensure_catalog()
+    lib = cat["libraries"].get(library)
     if lib is None:
         raise ValueError(f"Unknown library: {library}")
 
-    parquet_path = f"{lib['path']}{projectile}_{element}.parquet"
-    rows = await fetch_parquet_rows(parquet_path)
+    # Cross-section tables are registered as DuckDB views named after the library.
+    # The view name is the library ID with hyphens replaced by underscores.
+    view_name = library.replace("-", "_").replace(".", "_")
+    db = _get_db()
 
-    truncated = len(rows) > max_rows
-    import json
+    # Check if view exists
+    tables = [r[0] for r in db.sql("SHOW TABLES").fetchall()]
+    if view_name not in tables:
+        # Fall back to reading the parquet file directly
+        data_path = nucl_parquet.data_dir()
+        parquet_path = Path(data_path) / f"{lib['path']}{projectile}_{element}.parquet"
+        if not parquet_path.exists():
+            raise ValueError(f"No data for {projectile}_{element} in {library}")
+        rel = db.sql(f"SELECT * FROM read_parquet('{parquet_path}')")
+        total = rel.count("*").fetchone()[0]
+        rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
+        truncated = total > max_rows
+    else:
+        result = _query(
+            f"SELECT * FROM {view_name} WHERE target_symbol = $element",
+            {"element": element},
+            max_rows,
+        )
+        total, truncated, rows = result["total"], result["truncated"], result["rows"]
 
     return json.dumps(
         {
             "library": library,
             "projectile": projectile,
             "element": element,
-            "total": len(rows),
+            "total": total,
             "truncated": truncated,
-            "rows": rows[:max_rows],
+            "rows": rows,
         },
         indent=2,
+        default=str,
     )
+
+
+# ---------------------------------------------------------------------------
+# Nuclear structure tools (DuckDB views)
+# ---------------------------------------------------------------------------
 
 
 @mcp.tool()
@@ -316,15 +230,22 @@ async def get_decay_data(z: int | None = None, a: int | None = None) -> str:
     if z is None and a is None:
         raise ValueError("Provide at least z or a to filter decay data.")
 
-    meta = CATALOG["shared"]["meta"]
-    path = meta["path"] + meta["files"]["decay"]
-    rows = await fetch_parquet_rows(path)
+    conditions = []
+    params: dict[str, Any] = {}
+    if z is not None:
+        conditions.append("Z = $z")
+        params["z"] = z
+    if a is not None:
+        conditions.append("A = $a")
+        params["a"] = a
 
-    filtered = [row for row in rows if (z is None or row.get("Z") == z) and (a is None or row.get("A") == a)]
-
-    import json
-
-    return json.dumps({"z": z, "a": a, "count": len(filtered), "rows": filtered}, indent=2, default=str)
+    where = " AND ".join(conditions)
+    result = _query(f"SELECT * FROM decay WHERE {where}", params)
+    return json.dumps(
+        {"z": z, "a": a, "count": result["total"], "rows": result["rows"]},
+        indent=2,
+        default=str,
+    )
 
 
 @mcp.tool()
@@ -334,14 +255,11 @@ async def get_abundances(z: int) -> str:
     Args:
         z: Atomic number (e.g. 29 for Cu).
     """
-    meta = CATALOG["shared"]["meta"]
-    path = meta["path"] + meta["files"]["abundances"]
-    rows = await fetch_parquet_rows(path)
-    filtered = [row for row in rows if row.get("Z") == z]
-
-    import json
-
-    return json.dumps({"z": z, "count": len(filtered), "isotopes": filtered}, indent=2)
+    result = _query("SELECT * FROM abundances WHERE Z = $z", {"z": z})
+    return json.dumps(
+        {"z": z, "count": result["total"], "isotopes": result["rows"]},
+        indent=2,
+    )
 
 
 @mcp.tool()
@@ -354,47 +272,41 @@ async def get_stopping_power(source: str, target_z: int) -> str:
                 ³He routes through the catima master table (no NIST table exists).
         target_z: Target element atomic number.
     """
-    sp = CATALOG["shared"]["stopping"]
-    if source not in sp["files"]:
-        import json
-
+    # Map source names to DuckDB view names
+    view_map = {
+        "PSTAR": "stopping",
+        "ASTAR": "stopping",
+        "ESTAR": "stopping",
+        "dSTAR": "stopping",
+        "tSTAR": "stopping",
+        "catima": "catima_stopping",
+    }
+    if source not in view_map:
         return json.dumps(
-            {"error": f"unknown source {source!r}; valid: {sp['sources']}"},
+            {"error": f"unknown source {source!r}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima"},
             indent=2,
         )
-    path = sp["path"] + sp["files"][source]
-    rows = await fetch_parquet_rows(path)
 
-    # catima uses (proj_Z, target_Z, energy_MeV_u, dedx); NIST tables use
-    # (source, target_Z, energy_MeV, dedx). Filter by target_Z either way.
-    filtered = [row for row in rows if row.get("target_Z") == target_z]
-
-    import json
-
-    return json.dumps({"source": source, "target_z": target_z, "count": len(filtered), "rows": filtered}, indent=2)
-
-
-# Z → element-symbol lookup for per-element parquet files.
-# fmt: off
-_Z_TO_SYMBOL = [
-    "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
-    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
-    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
-    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
-    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-    "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
-]
-# fmt: on
+    view = view_map[source]
+    if source == "catima":
+        result = _query(
+            f"SELECT * FROM {view} WHERE target_Z = $tz",
+            {"tz": target_z},
+        )
+    else:
+        result = _query(
+            f"SELECT * FROM {view} WHERE source = $src AND target_Z = $tz",
+            {"src": source, "tz": target_z},
+        )
+    return json.dumps(
+        {"source": source, "target_z": target_z, "count": result["total"], "rows": result["rows"]},
+        indent=2,
+    )
 
 
-def _z_to_symbol(z: int) -> str:
-    if z < 1 or z >= len(_Z_TO_SYMBOL):
-        raise ValueError(f"Z={z} out of range (1-{len(_Z_TO_SYMBOL) - 1})")
-    return _Z_TO_SYMBOL[z]
+# ---------------------------------------------------------------------------
+# Radiation / coincidence / spectra tools (DuckDB views)
+# ---------------------------------------------------------------------------
 
 
 @mcp.tool()
@@ -406,18 +318,15 @@ async def get_radiation(z: int, a: int | None = None, max_rows: int = 500) -> st
         a: Mass number (optional — omit to get all isotopes of element Z).
         max_rows: Maximum rows to return (default 500).
     """
-    symbol = _z_to_symbol(z)
-    path = f"meta/ensdf/radiation/{symbol}.parquet"
-    rows = await fetch_parquet_rows(path)
-
+    conditions = ["Z = $z"]
+    params: dict[str, Any] = {"z": z}
     if a is not None:
-        rows = [r for r in rows if r.get("A") == a]
-
-    truncated = len(rows) > max_rows
-    import json
-
+        conditions.append("A = $a")
+        params["a"] = a
+    where = " AND ".join(conditions)
+    result = _query(f"SELECT * FROM radiation WHERE {where}", params, max_rows)
     return json.dumps(
-        {"z": z, "a": a, "symbol": symbol, "total": len(rows), "truncated": truncated, "rows": rows[:max_rows]},
+        {"z": z, "a": a, "total": result["total"], "truncated": result["truncated"], "rows": result["rows"]},
         indent=2,
     )
 
@@ -435,18 +344,15 @@ async def get_coincidences(z: int, a: int | None = None, max_rows: int = 500) ->
         a: Mass number (optional — omit for all isotopes of element Z).
         max_rows: Maximum rows to return (default 500).
     """
-    symbol = _z_to_symbol(z)
-    path = f"meta/ensdf/coincidences/{symbol}.parquet"
-    rows = await fetch_parquet_rows(path)
-
+    conditions = ["Z = $z"]
+    params: dict[str, Any] = {"z": z}
     if a is not None:
-        rows = [r for r in rows if r.get("A") == a]
-
-    truncated = len(rows) > max_rows
-    import json
-
+        conditions.append("A = $a")
+        params["a"] = a
+    where = " AND ".join(conditions)
+    result = _query(f"SELECT * FROM coincidences WHERE {where}", params, max_rows)
     return json.dumps(
-        {"z": z, "a": a, "symbol": symbol, "total": len(rows), "truncated": truncated, "rows": rows[:max_rows]},
+        {"z": z, "a": a, "total": result["total"], "truncated": result["truncated"], "rows": result["rows"]},
         indent=2,
     )
 
@@ -463,16 +369,13 @@ async def get_beta_spectrum(z: int, a: int, max_rows: int = 500) -> str:
         a: Mass number of the parent nuclide.
         max_rows: Maximum rows to return (default 500).
     """
-    symbol = _z_to_symbol(z)
-    path = f"meta/ensdf/beta_spectra/{symbol}.parquet"
-    rows = await fetch_parquet_rows(path)
-    rows = [r for r in rows if r.get("Z") == z and r.get("A") == a]
-
-    truncated = len(rows) > max_rows
-    import json
-
+    result = _query(
+        "SELECT * FROM beta_spectra WHERE Z = $z AND A = $a",
+        {"z": z, "a": a},
+        max_rows,
+    )
     return json.dumps(
-        {"z": z, "a": a, "symbol": symbol, "total": len(rows), "truncated": truncated, "rows": rows[:max_rows]},
+        {"z": z, "a": a, "total": result["total"], "truncated": result["truncated"], "rows": result["rows"]},
         indent=2,
     )
 
@@ -487,23 +390,21 @@ async def get_compound_compositions(material: str | None = None) -> str:
     Args:
         material: Material name (e.g. 'Water, Liquid', 'Air, Dry'). Omit to list all materials.
     """
-    path = "meta/compound_compositions.parquet"
-    rows = await fetch_parquet_rows(path)
-
-    if material is not None:
-        rows = [r for r in rows if r.get("material") == material]
-        if not rows:
-            all_materials = sorted({r.get("material", "") for r in await fetch_parquet_rows(path)})
-            raise ValueError(f"Unknown material: {material!r}. Available: {all_materials}")
-
-    import json
-
+    db = _get_db()
     if material is None:
-        materials = sorted({r.get("material", "") for r in rows})
+        rows = db.sql("SELECT DISTINCT material FROM compound_compositions ORDER BY material").fetchdf()
+        materials = rows["material"].tolist()
         return json.dumps({"count": len(materials), "materials": materials}, indent=2)
 
+    result = _query(
+        "SELECT * FROM compound_compositions WHERE material = $mat",
+        {"mat": material},
+    )
+    if result["total"] == 0:
+        all_mats = db.sql("SELECT DISTINCT material FROM compound_compositions ORDER BY material").fetchdf()
+        raise ValueError(f"Unknown material: {material!r}. Available: {all_mats['material'].tolist()}")
     return json.dumps(
-        {"material": material, "count": len(rows), "composition": rows},
+        {"material": material, "count": result["total"], "composition": result["rows"]},
         indent=2,
     )
 
@@ -527,24 +428,92 @@ async def get_electron_stopping(
     if target is None and target_z is None:
         raise ValueError("Provide target (compound name) or target_z (atomic number).")
 
-    path = "stopping/em/electron_stopping.parquet"
-    rows = await fetch_parquet_rows(path)
-
     if target_z is not None:
-        rows = [r for r in rows if r.get("target_Z") == target_z]
-    elif target is not None:
-        rows = [r for r in rows if r.get("name") == target or r.get("g4_name") == target]
-
-    truncated = len(rows) > max_rows
-    import json
-
+        result = _query(
+            "SELECT * FROM electron_stopping WHERE target_Z = $tz",
+            {"tz": target_z},
+            max_rows,
+        )
+    else:
+        result = _query(
+            "SELECT * FROM electron_stopping WHERE name = $t OR g4_name = $t",
+            {"t": target},
+            max_rows,
+        )
     return json.dumps(
         {
             "target": target,
             "target_z": target_z,
-            "total": len(rows),
-            "truncated": truncated,
-            "rows": rows[:max_rows],
+            "total": result["total"],
+            "truncated": result["truncated"],
+            "rows": result["rows"],
         },
         indent=2,
     )
+
+
+# ---------------------------------------------------------------------------
+# SQL escape hatch (Sub-E #179)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def sql_query(sql: str, max_rows: int = 10000) -> str:
+    """Execute read-only SQL against all 70+ nuclear data tables.
+
+    Supports JOINs, aggregations, window functions — anything DuckDB supports.
+    Use describe_schema() to discover available tables and columns.
+
+    Args:
+        sql: Read-only SQL query. DDL/DML (DROP, CREATE, INSERT, UPDATE) will be rejected.
+        max_rows: Maximum rows to return (default 10000).
+    """
+    forbidden = {"DROP", "CREATE", "INSERT", "UPDATE", "DELETE", "ALTER", "TRUNCATE", "COPY"}
+    first_word = sql.strip().split()[0].upper() if sql.strip() else ""
+    if first_word in forbidden:
+        raise ValueError(f"Write operations are not allowed: {first_word}")
+
+    db = _get_db()
+    try:
+        rel = db.sql(sql)
+    except duckdb.Error as e:
+        raise ValueError(f"SQL error: {e}") from e
+
+    total = rel.count("*").fetchone()[0]
+    rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
+    truncated = total > max_rows
+    return json.dumps(
+        {"total": total, "truncated": truncated, "rows": rows},
+        indent=2,
+        default=str,
+    )
+
+
+@mcp.tool()
+async def describe_schema() -> str:
+    """List all available tables/views with their column names and types.
+
+    Use this to discover what data is available before writing SQL queries.
+    """
+    db = _get_db()
+    tables_rel = db.sql("SHOW TABLES")
+    table_names = sorted(r[0] for r in tables_rel.fetchall())
+
+    schema: dict[str, list[dict[str, str]]] = {}
+    for tbl in table_names:
+        try:
+            cols_rel = db.sql(f"DESCRIBE {tbl}")
+            cols = [{"name": r[0], "type": r[1]} for r in cols_rel.fetchall()]
+            schema[tbl] = cols
+        except duckdb.Error:
+            schema[tbl] = []
+
+    return json.dumps({"tables": len(schema), "schema": schema}, indent=2)
+
+
+@mcp.tool()
+async def list_tables() -> str:
+    """List all available table/view names (short form of describe_schema)."""
+    db = _get_db()
+    tables = sorted(r[0] for r in db.sql("SHOW TABLES").fetchall())
+    return json.dumps({"count": len(tables), "tables": tables}, indent=2)

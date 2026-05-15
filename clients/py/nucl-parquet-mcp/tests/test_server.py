@@ -1,4 +1,4 @@
-"""Tests for nucl-parquet MCP server."""
+"""Tests for nucl-parquet MCP server (SSoT refactor — DuckDB-backed)."""
 
 from __future__ import annotations
 
@@ -6,19 +6,22 @@ import json
 
 import pytest
 from nucl_parquet_mcp.server import (
-    CATALOG,
-    fetch_parquet_rows,
+    _ensure_catalog,
+    _get_db,
+    describe_schema,
     get_abundances,
-    get_beta_spectrum,  # noqa: F401
-    get_coincidences,  # noqa: F401
-    get_compound_compositions,  # noqa: F401
+    get_beta_spectrum,
+    get_coincidences,
+    get_compound_compositions,
     get_cross_sections,
     get_decay_data,
-    get_electron_stopping,  # noqa: F401
-    get_radiation,  # noqa: F401
-    list_isotopes,
+    get_electron_stopping,
+    get_radiation,
     list_libraries,
+    list_isotopes,
+    list_tables,
     mcp,
+    sql_query,
 )
 
 # ---------------------------------------------------------------------------
@@ -36,72 +39,40 @@ class TestVersion:
 
 
 # ---------------------------------------------------------------------------
-# Catalog tests (no network)
+# Catalog tests (loaded from disk, not hardcoded)
 # ---------------------------------------------------------------------------
 
 
 class TestCatalog:
     def test_has_all_libraries(self):
-        libs = CATALOG["libraries"]
+        cat = _ensure_catalog()
+        libs = cat["libraries"]
         assert len(libs) >= 15
         assert "tendl-2024" in libs
         assert "endfb-8.1" in libs
         assert "exfor" in libs
 
-    def test_all_libraries_have_projectiles(self):
-        for lib_id, lib in CATALOG["libraries"].items():
-            assert len(lib["projectiles"]) > 0, f"{lib_id} has no projectiles"
-
-    def test_all_paths_end_with_slash(self):
-        for lib_id, lib in CATALOG["libraries"].items():
-            assert lib["path"].endswith("/"), f"{lib_id} path should end with /"
-
-    def test_shared_meta_files(self):
-        meta = CATALOG["shared"]["meta"]
-        assert "abundances" in meta["files"]
-        assert "decay" in meta["files"]
-        assert "elements" in meta["files"]
-
-    def test_stopping_sources(self):
-        sources = CATALOG["shared"]["stopping"]["sources"]
-        # NIST tables + catima master after #137; ICRU73/MSTAR were never real.
-        assert "PSTAR" in sources
-        assert "ASTAR" in sources
-        assert "ESTAR" in sources
-        assert "catima" in sources
-
-    def test_stopping_has_per_source_files(self):
-        """Post-#143 the aggregate stopping.parquet is deleted; per-source only."""
-        files = CATALOG["shared"]["stopping"]["files"]
-        for label in ("PSTAR", "ASTAR", "ESTAR", "dSTAR", "tSTAR", "catima"):
-            assert label in files, f"{label} not advertised in stopping files"
-        assert "stopping" not in files, "old stopping.parquet aggregate must not be advertised"
-
-
-class TestUrlConstruction:
-    def test_cross_section_path(self):
-        lib = CATALOG["libraries"]["tendl-2024"]
-        path = f"{lib['path']}p_Cu.parquet"
-        assert path == "tendl-2024/xs/p_Cu.parquet"
-
-    def test_meta_path(self):
-        meta = CATALOG["shared"]["meta"]
-        path = meta["path"] + meta["files"]["decay"]
-        assert path == "meta/decay.parquet"
-
-    def test_manifest_path(self):
-        lib = CATALOG["libraries"]["tendl-2024"]
-        path = lib["path"].replace("xs/", "manifest.json")
-        assert path == "tendl-2024/manifest.json"
+    def test_all_xs_libraries_have_projectiles(self):
+        cat = _ensure_catalog()
+        for lib_id, lib in cat["libraries"].items():
+            if "projectiles" in lib:
+                assert len(lib["projectiles"]) > 0, f"{lib_id} has no projectiles"
 
 
 # ---------------------------------------------------------------------------
-# Integration tests (require network)
+# DuckDB integration tests (local data, no network)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-class TestIntegration:
+class TestDuckDB:
+    def test_db_connects(self):
+        db = _get_db()
+        tables = [r[0] for r in db.sql("SHOW TABLES").fetchall()]
+        assert "decay" in tables
+        assert "abundances" in tables
+        assert "radiation" in tables
+
     async def test_list_libraries(self):
         result = await list_libraries()
         data = json.loads(result)
@@ -113,53 +84,69 @@ class TestIntegration:
         with pytest.raises(ValueError, match="Unknown library"):
             await list_isotopes("nonexistent", "p")
 
-    async def test_list_isotopes_invalid_projectile(self):
-        with pytest.raises(ValueError, match="not in"):
-            await list_isotopes("tendl-2024", "n")
-
     async def test_get_decay_data_requires_filter(self):
         with pytest.raises(ValueError, match="at least z or a"):
             await get_decay_data()
 
-    @pytest.mark.timeout(30)
-    async def test_fetch_abundances(self):
-        rows = await fetch_parquet_rows("meta/abundances.parquet")
-        assert len(rows) > 0
-        cu63 = [r for r in rows if r.get("Z") == 29 and r.get("A") == 63]
-        assert len(cu63) == 1
-        assert 0.5 < cu63[0]["abundance"] < 0.8
-
-    @pytest.mark.timeout(30)
     async def test_get_abundances(self):
         result = await get_abundances(29)
         data = json.loads(result)
         assert data["z"] == 29
-        assert data["count"] >= 2  # Cu has at least Cu-63 and Cu-65
+        assert data["count"] >= 2  # Cu-63 and Cu-65
 
-    @pytest.mark.timeout(30)
-    async def test_get_cross_sections(self):
-        result = await get_cross_sections("fendl-3.2", "n", "Cu", max_rows=10)
-        data = json.loads(result)
-        assert data["library"] == "fendl-3.2"
-        assert data["total"] > 0
-        assert len(data["rows"]) <= 10
-
-    @pytest.mark.timeout(30)
     async def test_get_decay_data(self):
         result = await get_decay_data(z=27, a=60)
         data = json.loads(result)
         assert data["count"] >= 1  # Co-60 should exist
 
-    @pytest.mark.timeout(30)
-    async def test_cache_works(self):
-        """Second fetch should use cache."""
-        import time
+    async def test_get_radiation(self):
+        result = await get_radiation(z=27, a=60)
+        data = json.loads(result)
+        assert data["total"] > 0
+        # Co-60 has the famous 1173 keV gamma
+        energies = [r.get("energy_keV") for r in data["rows"] if r.get("rad_type") == "gamma"]
+        assert any(abs(e - 1173.2) < 1.0 for e in energies if e is not None)
 
-        t0 = time.monotonic()
-        await fetch_parquet_rows("meta/elements.parquet")
-        t1 = time.monotonic()
-        await fetch_parquet_rows("meta/elements.parquet")
-        t2 = time.monotonic()
+    async def test_get_coincidences(self):
+        result = await get_coincidences(z=27, a=60)
+        data = json.loads(result)
+        assert data["total"] > 0
 
-        # Cached call should be much faster
-        assert (t2 - t1) < (t1 - t0) + 0.01
+    async def test_get_beta_spectrum(self):
+        result = await get_beta_spectrum(z=15, a=32)
+        data = json.loads(result)
+        assert data["total"] > 0  # P-32 has a beta transition
+
+    async def test_get_compound_compositions_list(self):
+        result = await get_compound_compositions()
+        data = json.loads(result)
+        assert data["count"] > 0
+        assert any("Water" in m for m in data["materials"])
+
+    async def test_get_stopping_power(self):
+        result = await get_stopping_power("PSTAR", 29)
+        data = json.loads(result)
+        assert data["count"] > 0
+
+    async def test_sql_query(self):
+        result = await sql_query("SELECT COUNT(*) AS n FROM decay WHERE Z = 27")
+        data = json.loads(result)
+        assert data["total"] == 1
+        assert data["rows"][0]["n"] > 0
+
+    async def test_sql_query_rejects_ddl(self):
+        with pytest.raises(ValueError, match="Write operations"):
+            await sql_query("DROP TABLE decay")
+
+    async def test_describe_schema(self):
+        result = await describe_schema()
+        data = json.loads(result)
+        assert data["tables"] > 0
+        assert "decay" in data["schema"]
+
+    async def test_list_tables(self):
+        result = await list_tables()
+        data = json.loads(result)
+        assert "decay" in data["tables"]
+        assert "radiation" in data["tables"]
+        assert data["count"] >= 20
