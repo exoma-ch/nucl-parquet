@@ -2,14 +2,7 @@
   "$schema": "./catalog.schema.json",
   "version": 1,
   "data_version": "2026.5.1",
-<<<<<<< HEAD
-  "data_sha256": "5c1d2bfafff301c9b6739f656d3dab45cf49be609fc003463d8aba0f05bfe4f2",
-||||||| 9a96948
-  "data_version": "2026.5.0",
-  "data_sha256": "c18ff3d96e527b2cd68f6ebd4a5271653a0bd8170586948f06f422f97663afae",
-=======
   "data_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
->>>>>>> origin/main
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -333,6 +326,14 @@
         "fetcher": "nucl_parquet/build_stopping_compounds.py",
         "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
       }
+    },
+    "beta_spectra": {
+      "path": "meta/ensdf/beta_spectra/",
+      "layout": "one file per parent element symbol \u2014 meta/ensdf/beta_spectra/{Symbol}.parquet",
+      "schema": ["Z", "A", "state", "transition_idx", "decay_mode", "forbiddenness", "endpoint_keV", "branching", "energy_keV", "dN_dE", "cumulative", "shape_factor_approx"],
+      "source": "Endpoint Q-values + forbiddenness from strata radioactive_decay.parquet; spectrum shape from Fermi function (relativistic, with shape factors for unique 1st/2nd forbidden)",
+      "coverage": "All \u03b2-minus and \u03b2+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions \u00d7 200 energy bins each",
+      "note": "dN/dE is normalized per transition: \u222b dN/dE \u00b7 dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions (K-40, Tc-99, Re-187, Cl-36, etc.) use S(E)=1 as a documented approximation \u2014 filter on shape_factor_approx=True to find them. For \u03b2+ transitions, endpoint_keV is the positron kinetic-energy endpoint (strata's q_value_kev minus 2\u00b7m_e c\u00b2 = 1022 keV). State 'm' marks metastable parents (inferred from parent_ex_kev > 0). Validated: P-32 mean E = 694.9 (NNDC 694.9, exact); F-18 \u03b2+ mean E = 250 keV (NNDC 249.8); Bi-210 mean E = 390 (NNDC 389)."
     },
     "em": {
       "path": "em/",

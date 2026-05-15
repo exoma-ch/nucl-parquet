@@ -244,6 +244,11 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "levels", "ensdf_levels")
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
+    # Pre-tabulated β-decay continuous spectra per transition (#78). Companion
+    # to `radiation` (which has discrete γ/X-ray/Auger lines): `beta_spectra`
+    # has the continuous β kinetic-energy distribution sampled on 200 bins
+    # per transition, normalized so ∫ dN/dE = 1.
+    _register_glob(db, data_dir / "meta" / "ensdf" / "beta_spectra", "beta_spectra")
 
     # --- NUDEX neutron-capture primary gammas (v0.14 epic #115) ---
     _register_parquet(db, data_dir / "meta" / "capture_gammas.parquet", "capture_gammas")
