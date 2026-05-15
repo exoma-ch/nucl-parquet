@@ -1,7 +1,7 @@
 {
   "name": "@nucl-parquet/mcp",
   "version": "0.13.3",
-  "description": "MCP server for nuclear data — lazy-loads Parquet from GitHub",
+  "description": "MCP server for nuclear data — wraps local Parquet via DuckDB",
   "type": "module",
   "bin": {
     "nucl-parquet-mcp": "./dist/index.js"
@@ -21,8 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "hyparquet": "^1.7.0",
-    "hyparquet-compressors": "^1.1.0",
+    "duckdb": "^1.4.4",
     "zod": "^3.23.0"
   },
   "devDependencies": {
