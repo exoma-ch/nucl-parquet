@@ -317,6 +317,14 @@
         "source": "gerchowl/strata-data em/density_effect.parquet (Sternheimer parameterization)",
         "coverage": "278 materials covering the standard Geant4 NIST_MATERIAL set (elements with G4_ prefix, plus ICRU compounds)",
         "note": "Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList. For elements Zeff equals Z. Use these params to evaluate the density-effect correction \u03b4 above the validity range of tabulated dedx."
+      },
+      "compounds": {
+        "path": "stopping/compounds/",
+        "schema": ["source", "matno", "compound", "energy_MeV", "dedx"],
+        "sources": ["PSTAR_compounds", "ASTAR_compounds"],
+        "source_url": "https://physics.nist.gov/PhysRefData/Star/Text/method.html",
+        "fetcher": "nucl_parquet/build_stopping_compounds.py",
+        "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
       }
     }
   }
