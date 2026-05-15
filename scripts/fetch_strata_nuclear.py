@@ -49,16 +49,19 @@ DEST_DIR = ROOT / "data" / "g4_raw" / "strata-nuclear"
 CATALOG_PATH = ROOT / "data" / "catalog.json"
 CATALOG_KEY = "strata-data-nuclear"
 
-# Strata-data files we depend on. v0.11 brought the 4 nuclear-structure files;
-# v0.13 added em/brem_sb_dcs.parquet for #118 (Seltzer-Berger DCS). Other
-# strata content (hadronic/, optical/, microelec_*, dpwa_*, channeling_*,
-# etc.) is still out of scope; extend this list and bump the revision pin
-# together when a future phase wants them.
+# Strata-data files we depend on, pinned to the same revision via
+# catalog.json::libraries.strata-data-nuclear. The em/ files were added in
+# v0.13 for #121 (ESTAR) and #118 (Seltzer-Berger DCS). Other strata content
+# (hadronic/, optical/) is still out of scope; extend this list and bump the
+# revision pin together.
 FILES = [
     "nuclear/ensdfstate.parquet",
     "nuclear/photon_evap_levels.parquet",
     "nuclear/photon_evap_gammas.parquet",
     "nuclear/radioactive_decay.parquet",
+    "em/estar_basic.parquet",
+    "em/estar_long.parquet",
+    "em/density_effect.parquet",
     "em/brem_sb_dcs.parquet",
 ]
 
