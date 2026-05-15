@@ -15,6 +15,9 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
 
+import re
+import threading
+
 import duckdb
 from mcp.server.fastmcp import FastMCP
 
@@ -25,24 +28,32 @@ import nucl_parquet
 # ---------------------------------------------------------------------------
 
 _db: duckdb.DuckDBPyConnection | None = None
+_db_lock = threading.Lock()
 
 
 def _get_db() -> duckdb.DuckDBPyConnection:
-    """Lazy-connect to the nucl-parquet DuckDB instance."""
+    """Lazy-connect to the nucl-parquet DuckDB instance (thread-safe)."""
     global _db  # noqa: PLW0603
     if _db is not None:
         return _db
 
-    # Try to find local data; download if not present.
-    try:
-        data_path = nucl_parquet.data_dir()
-    except FileNotFoundError:
-        # No local data — download the latest release tarball.
-        nucl_parquet.download()
-        data_path = nucl_parquet.data_dir()
+    with _db_lock:
+        if _db is not None:
+            return _db
 
-    _db = nucl_parquet.connect(data_path)
-    return _db
+        # Try to find local data; download if not present.
+        try:
+            data_path = nucl_parquet.data_dir()
+        except FileNotFoundError:
+            nucl_parquet.download()
+            data_path = nucl_parquet.data_dir()
+
+        conn = nucl_parquet.connect(data_path)
+        # Harden against SQL escape hatch abuse
+        conn.sql("SET enable_external_access = false")
+        conn.sql("SET allow_extensions_autoloading = false")
+        _db = conn
+        return _db
 
 
 def _query(sql: str, params: dict[str, Any] | None = None, max_rows: int = 500) -> dict[str, Any]:
@@ -68,13 +79,6 @@ def _load_catalog() -> dict[str, Any]:
         return json.load(f)
 
 
-def _get_catalog() -> dict[str, Any]:
-    global _catalog  # noqa: PLW0603
-    if "_catalog" not in globals() or _catalog is None:
-        globals()["_catalog"] = _load_catalog()
-    return _catalog
-
-
 _catalog: dict[str, Any] | None = None
 
 # Kept as a module-level reference for tests that import it.
@@ -82,10 +86,11 @@ CATALOG: dict[str, Any] = {}
 
 
 def _ensure_catalog() -> dict[str, Any]:
-    global CATALOG  # noqa: PLW0603
-    if not CATALOG:
-        CATALOG.update(_get_catalog())
-    return CATALOG
+    global _catalog, CATALOG  # noqa: PLW0603
+    if _catalog is None:
+        _catalog = _load_catalog()
+        CATALOG.update(_catalog)
+    return _catalog
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +148,12 @@ async def list_isotopes(library: str, projectile: str) -> str:
         )
     # Manifests are JSON files alongside the parquet data — read from disk.
     data_path = nucl_parquet.data_dir()
-    manifest_path = Path(data_path) / lib["path"].replace("xs/", "manifest.json")
+    lib_path = lib["path"]
+    if not lib_path.endswith("xs/"):
+        raise ValueError(f"Library {library} path '{lib_path}' does not end with 'xs/' — cannot derive manifest path")
+    manifest_path = Path(data_path) / lib_path.replace("xs/", "manifest.json")
+    if not manifest_path.exists():
+        raise ValueError(f"Manifest not found at {manifest_path}")
     with open(manifest_path) as f:
         manifest = json.load(f)
     elements = manifest.get("elements", [])
@@ -170,35 +180,27 @@ async def get_cross_sections(
         element: Target element symbol, e.g. 'Cu', 'Fe'.
         max_rows: Maximum rows to return (default 500).
     """
+    # Validate inputs against strict patterns to prevent path traversal / injection.
+    if not re.match(r"^[npdthag]$", projectile):
+        raise ValueError(f"Invalid projectile: {projectile!r}. Must be one of: n, p, d, t, h, a, g")
+    if not re.match(r"^[A-Z][a-z]?$", element):
+        raise ValueError(f"Invalid element symbol: {element!r}. Must be 1-2 letters (e.g. 'Cu', 'Fe')")
+
     cat = _ensure_catalog()
     lib = cat["libraries"].get(library)
     if lib is None:
         raise ValueError(f"Unknown library: {library}")
 
-    # Cross-section tables are registered as DuckDB views named after the library.
-    # The view name is the library ID with hyphens replaced by underscores.
-    view_name = library.replace("-", "_").replace(".", "_")
+    # Read the parquet file for this projectile + element combination.
+    data_path = nucl_parquet.data_dir()
+    parquet_path = Path(data_path) / f"{lib['path']}{projectile}_{element}.parquet"
+    if not parquet_path.exists():
+        raise ValueError(f"No data for {projectile}_{element} in {library}")
     db = _get_db()
-
-    # Check if view exists
-    tables = [r[0] for r in db.sql("SHOW TABLES").fetchall()]
-    if view_name not in tables:
-        # Fall back to reading the parquet file directly
-        data_path = nucl_parquet.data_dir()
-        parquet_path = Path(data_path) / f"{lib['path']}{projectile}_{element}.parquet"
-        if not parquet_path.exists():
-            raise ValueError(f"No data for {projectile}_{element} in {library}")
-        rel = db.sql(f"SELECT * FROM read_parquet('{parquet_path}')")
-        total = rel.count("*").fetchone()[0]
-        rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
-        truncated = total > max_rows
-    else:
-        result = _query(
-            f"SELECT * FROM {view_name} WHERE target_symbol = $element",
-            {"element": element},
-            max_rows,
-        )
-        total, truncated, rows = result["total"], result["truncated"], result["rows"]
+    rel = db.sql("SELECT * FROM read_parquet($path)", params={"path": str(parquet_path)})
+    total = rel.count("*").fetchone()[0]
+    rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
+    truncated = total > max_rows
 
     return json.dumps(
         {
@@ -282,10 +284,7 @@ async def get_stopping_power(source: str, target_z: int) -> str:
         "catima": "catima_stopping",
     }
     if source not in view_map:
-        return json.dumps(
-            {"error": f"unknown source {source!r}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima"},
-            indent=2,
-        )
+        raise ValueError(f"Unknown source {source!r}. Valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima")
 
     view = view_map[source]
     if source == "catima":
@@ -468,10 +467,19 @@ async def sql_query(sql: str, max_rows: int = 10000) -> str:
         sql: Read-only SQL query. DDL/DML (DROP, CREATE, INSERT, UPDATE) will be rejected.
         max_rows: Maximum rows to return (default 10000).
     """
-    forbidden = {"DROP", "CREATE", "INSERT", "UPDATE", "DELETE", "ALTER", "TRUNCATE", "COPY"}
-    first_word = sql.strip().split()[0].upper() if sql.strip() else ""
-    if first_word in forbidden:
-        raise ValueError(f"Write operations are not allowed: {first_word}")
+    # Allowlist: only SELECT and WITH (CTEs) are permitted as leading keywords.
+    # Multi-statement attacks (SELECT ...; DROP ...) are caught by DuckDB which
+    # only executes the first statement via .sql(). The connection also has
+    # enable_external_access=false and allow_extensions_autoloading=false set
+    # at init time, blocking COPY TO, EXPORT, ATTACH, and extension loading.
+    stripped = sql.strip()
+    if not stripped:
+        raise ValueError("Empty SQL query")
+    first_word = stripped.split()[0].upper()
+    if first_word not in {"SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"}:
+        raise ValueError(
+            f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got: {first_word}"
+        )
 
     db = _get_db()
     try:

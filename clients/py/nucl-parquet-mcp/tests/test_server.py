@@ -135,8 +135,50 @@ class TestDuckDB:
         assert data["rows"][0]["n"] > 0
 
     async def test_sql_query_rejects_ddl(self):
-        with pytest.raises(ValueError, match="Write operations"):
+        with pytest.raises(ValueError, match="Only read queries"):
             await sql_query("DROP TABLE decay")
+
+    async def test_sql_query_rejects_copy(self):
+        with pytest.raises(ValueError, match="Only read queries"):
+            await sql_query("COPY radiation TO '/tmp/exfil.csv'")
+
+    async def test_sql_query_rejects_attach(self):
+        with pytest.raises(ValueError, match="Only read queries"):
+            await sql_query("ATTACH '/tmp/evil.db' AS x")
+
+    async def test_sql_query_rejects_export(self):
+        with pytest.raises(ValueError, match="Only read queries"):
+            await sql_query("EXPORT DATABASE '/tmp/dump'")
+
+    async def test_sql_query_rejects_install(self):
+        with pytest.raises(ValueError, match="Only read queries"):
+            await sql_query("INSTALL httpfs")
+
+    async def test_sql_query_rejects_pragma(self):
+        with pytest.raises(ValueError, match="Only read queries"):
+            await sql_query("PRAGMA version")
+
+    async def test_get_electron_stopping(self):
+        result = await get_electron_stopping(target_z=29)
+        data = json.loads(result)
+        assert data["total"] > 0
+
+    async def test_get_stopping_power_catima(self):
+        result = await get_stopping_power("catima", 29)
+        data = json.loads(result)
+        assert data["count"] > 0
+
+    async def test_get_stopping_power_invalid_source(self):
+        with pytest.raises(ValueError, match="Unknown source"):
+            await get_stopping_power("INVALID", 29)
+
+    async def test_get_cross_sections_invalid_element(self):
+        with pytest.raises(ValueError, match="Invalid element"):
+            await get_cross_sections("tendl-2024", "p", "'; DROP TABLE decay; --")
+
+    async def test_get_cross_sections_invalid_projectile(self):
+        with pytest.raises(ValueError, match="Invalid projectile"):
+            await get_cross_sections("tendl-2024", "x", "Cu")
 
     async def test_describe_schema(self):
         result = await describe_schema()
