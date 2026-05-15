@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import os
-from importlib.metadata import version as _pkg_version
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from typing import Any
 
 import httpx
@@ -215,7 +215,12 @@ async def _fetch_manifest(library_id: str) -> dict[str, Any]:
 # MCP Server
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("nucl-parquet", version=_pkg_version("nucl-parquet-mcp"))
+try:
+    _VERSION = _pkg_version("nucl-parquet-mcp")
+except PackageNotFoundError:
+    _VERSION = "0.0.0-dev"
+
+mcp = FastMCP("nucl-parquet", version=_VERSION)
 
 
 @mcp.tool()
