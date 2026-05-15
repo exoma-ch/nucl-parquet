@@ -347,6 +347,10 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     # --- G4EMLOW electron-matter cross-sections (v0.13 epic #114) ---
     _register_parquet(db, data_dir / "em" / "electron_brem.parquet", "electron_brem")
+    # Seltzer-Berger differential cross section dσ/dκ for bremsstrahlung
+    # photon emission. Companion to electron_brem (integrated σ): the DCS
+    # lets MC samplers draw photon energies, not just total σ. See #118.
+    _register_parquet(db, data_dir / "em" / "electron_brem_sb_dcs.parquet", "electron_brem_sb_dcs")
 
     return db
 

@@ -51,9 +51,9 @@ CATALOG_KEY = "strata-data-nuclear"
 
 # Strata-data files we depend on, pinned to the same revision via
 # catalog.json::libraries.strata-data-nuclear. The em/ files were added in
-# v0.13 for issue #121 (ESTAR migration + density-effect params).
-# Other strata content (hadronic/, optical/) is still out of scope; extend
-# this list and bump the revision pin together.
+# v0.13 for #121 (ESTAR) and #118 (Seltzer-Berger DCS). Other strata content
+# (hadronic/, optical/) is still out of scope; extend this list and bump the
+# revision pin together.
 FILES = [
     "nuclear/ensdfstate.parquet",
     "nuclear/photon_evap_levels.parquet",
@@ -62,6 +62,7 @@ FILES = [
     "em/estar_basic.parquet",
     "em/estar_long.parquet",
     "em/density_effect.parquet",
+    "em/brem_sb_dcs.parquet",
 ]
 
 
