@@ -2,7 +2,7 @@
 name = "nucl-parquet-mcp"
 version = "0.13.3"
 edition = "2021"
-description = "MCP server for nuclear data — lazy-loads Parquet from GitHub"
+description = "MCP server for nuclear data — wraps local Parquet via nucl-parquet crate"
 license = "MIT"
 repository = "https://github.com/exoma-ch/nucl-parquet"
 
@@ -11,10 +11,10 @@ name = "nucl-parquet-mcp"
 path = "src/main.rs"
 
 [dependencies]
+nucl-parquet = { path = "../nucl-parquet" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["rustls-tls", "json"], default-features = false }
 parquet = { version = "54", default-features = false, features = ["arrow", "zstd"] }
 arrow = { version = "54", default-features = false }
 bytes = "1"
