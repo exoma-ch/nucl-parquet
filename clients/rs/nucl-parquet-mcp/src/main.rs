@@ -689,15 +689,24 @@ async fn handle_tool_call(
             )
         }
         "get_radiation" | "get_coincidences" => {
-            let z = args.get("z").and_then(|v| v.as_i64()).ok_or("missing 'z'")?;
+            let z = args
+                .get("z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'z'")?;
             let a = args.get("a").and_then(|v| v.as_i64());
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
             let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
-            let subdir = if name == "get_radiation" { "radiation" } else { "coincidences" };
+            let subdir = if name == "get_radiation" {
+                "radiation"
+            } else {
+                "coincidences"
+            };
             let path = format!("meta/ensdf/{subdir}/{symbol}.parquet");
             let rows = fetch_parquet_rows(client, cache, &path).await?;
             let filtered: Vec<_> = if let Some(av) = a {
-                rows.into_iter().filter(|r| r.get("A").and_then(|v| v.as_i64()) == Some(av)).collect()
+                rows.into_iter()
+                    .filter(|r| r.get("A").and_then(|v| v.as_i64()) == Some(av))
+                    .collect()
             } else {
                 rows
             };
@@ -705,44 +714,70 @@ async fn handle_tool_call(
             let truncated = total > max_rows;
             let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
             let result = serde_json::json!({ "z": z, "a": a, "symbol": symbol, "total": total, "truncated": truncated, "rows": display });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         "get_beta_spectrum" => {
-            let z = args.get("z").and_then(|v| v.as_i64()).ok_or("missing 'z'")?;
-            let a = args.get("a").and_then(|v| v.as_i64()).ok_or("missing 'a'")?;
+            let z = args
+                .get("z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'z'")?;
+            let a = args
+                .get("a")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'a'")?;
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
             let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
             let path = format!("meta/ensdf/beta_spectra/{symbol}.parquet");
             let rows = fetch_parquet_rows(client, cache, &path).await?;
-            let filtered: Vec<_> = rows.into_iter()
-                .filter(|r| r.get("Z").and_then(|v| v.as_i64()) == Some(z) && r.get("A").and_then(|v| v.as_i64()) == Some(a))
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|r| {
+                    r.get("Z").and_then(|v| v.as_i64()) == Some(z)
+                        && r.get("A").and_then(|v| v.as_i64()) == Some(a)
+                })
                 .collect();
             let total = filtered.len();
             let truncated = total > max_rows;
             let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
             let result = serde_json::json!({ "z": z, "a": a, "symbol": symbol, "total": total, "truncated": truncated, "rows": display });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         "get_compound_compositions" => {
             let material = args.get("material").and_then(|v| v.as_str());
-            let rows = fetch_parquet_rows(client, cache, "meta/compound_compositions.parquet").await?;
+            let rows =
+                fetch_parquet_rows(client, cache, "meta/compound_compositions.parquet").await?;
             if let Some(mat) = material {
-                let filtered: Vec<_> = rows.into_iter()
+                let filtered: Vec<_> = rows
+                    .into_iter()
                     .filter(|r| r.get("material").and_then(|v| v.as_str()) == Some(mat))
                     .collect();
                 if filtered.is_empty() {
                     return Err(format!("Unknown material: {mat:?}"));
                 }
                 let result = serde_json::json!({ "material": mat, "count": filtered.len(), "composition": filtered });
-                Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+                Ok(
+                    serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+                )
             } else {
-                let mut materials: Vec<String> = rows.iter()
-                    .filter_map(|r| r.get("material").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                let mut materials: Vec<String> = rows
+                    .iter()
+                    .filter_map(|r| {
+                        r.get("material")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
                     .collect();
                 materials.sort();
                 materials.dedup();
-                let result = serde_json::json!({ "count": materials.len(), "materials": materials });
-                Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+                let result =
+                    serde_json::json!({ "count": materials.len(), "materials": materials });
+                Ok(
+                    serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+                )
             }
         }
         "get_electron_stopping" => {
@@ -750,24 +785,32 @@ async fn handle_tool_call(
             let target_z = args.get("target_z").and_then(|v| v.as_i64());
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
             if target.is_none() && target_z.is_none() {
-                return Err("Provide target (compound name) or target_z (atomic number)".to_string());
+                return Err(
+                    "Provide target (compound name) or target_z (atomic number)".to_string()
+                );
             }
-            let rows = fetch_parquet_rows(client, cache, "stopping/em/electron_stopping.parquet").await?;
-            let filtered: Vec<_> = rows.into_iter().filter(|r| {
-                if let Some(tz) = target_z {
-                    r.get("target_Z").and_then(|v| v.as_i64()) == Some(tz)
-                } else if let Some(t) = target {
-                    r.get("name").and_then(|v| v.as_str()) == Some(t)
-                        || r.get("g4_name").and_then(|v| v.as_str()) == Some(t)
-                } else {
-                    false
-                }
-            }).collect();
+            let rows =
+                fetch_parquet_rows(client, cache, "stopping/em/electron_stopping.parquet").await?;
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|r| {
+                    if let Some(tz) = target_z {
+                        r.get("target_Z").and_then(|v| v.as_i64()) == Some(tz)
+                    } else if let Some(t) = target {
+                        r.get("name").and_then(|v| v.as_str()) == Some(t)
+                            || r.get("g4_name").and_then(|v| v.as_str()) == Some(t)
+                    } else {
+                        false
+                    }
+                })
+                .collect();
             let total = filtered.len();
             let truncated = total > max_rows;
             let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
             let result = serde_json::json!({ "target": target, "target_z": target_z, "total": total, "truncated": truncated, "rows": display });
-            Ok(serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }))
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
         }
         _ => Err(format!("Unknown tool: {name}")),
     }
