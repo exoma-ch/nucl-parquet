@@ -5,3 +5,8 @@ export { Process, TransitionType } from "./types.js";
 export type { Transition } from "./types.js";
 export { catimaColumns, stoppingColumns, xsColumns } from "./columns.js";
 export type { CatimaColumns, StoppingColumns, XsColumns } from "./columns.js";
+export { CoincidencesDb } from "./coincidences.js";
+export type { CoincidenceEntry, CoincidenceFilter, Emission } from "./coincidences.js";
+export { RadiationDb } from "./radiation.js";
+export type { EmissionEntry, GammaCandidate } from "./radiation.js";
+export { zToSymbol } from "./z_symbols.js";

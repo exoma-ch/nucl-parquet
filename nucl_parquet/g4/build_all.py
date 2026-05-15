@@ -52,6 +52,7 @@ from nucl_parquet.download import data_dir as _resolve_data_dir
 from nucl_parquet.g4 import (
     coincidences,
     ensdfstate,
+    mixed_coincidences,
     photon_evap_gammas,
     photon_evap_levels,
     radioactive_decay,
@@ -299,7 +300,7 @@ def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, me
         logger.info("[4/6] photon_evap_gammas → radiation/{Symbol} (rad_type=gamma)")
         photon_evap_gammas.build(data_dir=data_dir)
 
-        logger.info("[5/6] coincidences → coincidences/{Symbol}")
+        logger.info("[5/6] coincidences → coincidences/{Symbol} (γ-γ cascade pairs)")
         coincidences.build(
             strata_dir / "photon_evap_gammas.parquet",
             strata_dir / "photon_evap_levels.parquet",
@@ -318,6 +319,18 @@ def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, me
     logger.info("[merge] radiation_atomic/ ⇨ radiation/ (per #74 design memo Integration contract)")
     n_files, n_added = merge_radiation_atomic(data_dir)
     logger.info("merged %d files, %d xray/auger rows added", n_files, n_added)
+
+    # Augment coincidences/ with mixed-emission pairs (β/EC/annihilation × γ).
+    # Runs *after* the radiation merge so EC X-ray + Auger lines exist in
+    # radiation/{Symbol}.parquet for the join. Per issue #170 / ADR-0002.
+    logger.info("[coinc-mix] augment coincidences/ with mixed-emission pairs (#170)")
+    mixed_coincidences.build(
+        data_dir / "meta" / "decay_detailed.parquet",
+        data_dir / "meta" / "nudex_levels.parquet",
+        data_dir / "meta" / "nudex_level_gammas.parquet",
+        data_dir / "meta" / "ensdf" / "radiation",
+        data_dir / "meta" / "ensdf" / "coincidences",
+    )
 
     logger.info("[invariants] sweeping the rebuilt dataset")
     _check_invariants(data_dir)
