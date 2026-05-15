@@ -63,6 +63,10 @@ FILES = [
     "em/estar_long.parquet",
     "em/density_effect.parquet",
     "em/brem_sb_dcs.parquet",
+    # NUDEX shell corrections + runtime metadata — closes #77
+    "nuclear/nudex_shellcor_ms.parquet",
+    "nuclear/nudex_special_inputs.parquet",
+    "nuclear/nudex_general_stat.parquet",
 ]
 
 

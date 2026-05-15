@@ -266,10 +266,15 @@
         "decay": "decay.parquet",
         "elements": "elements.parquet",
         "spectrum_xs": "spectrum_xs.parquet",
-        "compound_compositions": "compound_compositions.parquet"
+        "compound_compositions": "compound_compositions.parquet",
+        "nudex_shellcor": "nudex_shellcor.parquet",
+        "nudex_special_inputs": "nudex_special_inputs.parquet",
+        "nudex_general_stat": "nudex_general_stat.parquet"
       },
       "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs.",
-      "compound_compositions_note": "Elemental compositions (Z, weight_fraction) for the 33 NIST XCOM standard materials (water, air, tissue, bone, plastics, glasses, …). One row per (material, Z); weight fractions sum to 1.0 ± 1e-6 per material. Source: NIST XCOM Table 4 + ICRU-44. Join on `material` to xcom_compounds (integrated µ/ρ) or to photon_pe_total/photon_compton/photon_pair for Bragg-additive per-process σ. Built by nucl_parquet.build_compound_compositions."
+      "compound_compositions_note": "Elemental compositions (Z, weight_fraction) for the 33 NIST XCOM standard materials (water, air, tissue, bone, plastics, glasses, …). One row per (material, Z); weight fractions sum to 1.0 ± 1e-6 per material. Source: NIST XCOM Table 4 + ICRU-44. Join on `material` to xcom_compounds (integrated µ/ρ) or to photon_pe_total/photon_compton/photon_pair for Bragg-additive per-process σ. Built by nucl_parquet.build_compound_compositions.",
+      "nudex_shellcor_note": "Microscopic shell corrections + ground-state β₂/β₄ deformation parameters per (Z, A) from strata's NUDEX nudex_shellcor_ms. Schema: Z/A/symbol/shell_MeV/deformation_correction_MeV/beta2/beta4. Used by Hauser-Feshbach codes. Closes #77.",
+      "nudex_runtime_config_note": "nudex_special_inputs and nudex_general_stat are NUDEX runtime configuration tables (per-isotope overrides + defaults) shipped for audit/completeness — not load-bearing for typical consumers."
     },
     "stopping": {
       "path": "stopping/",
