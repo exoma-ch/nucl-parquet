@@ -159,12 +159,12 @@ class TestIccNormalization:
             ],
         }
         results = compute_absolute_intensities({200.0: 1.0}, cascade)
-        by_energy = {r["energy"]: r["intensity_pct"] for r in results}
+        gammas = {r["energy"]: r["intensity_pct"] for r in results if r["rad_type"] == "gamma"}
         # Each has total_transition = 100. Branch = 50% each.
         # Gamma A: 100% × 0.5 × 1/10 × 100 = 5%
         # Gamma B: 100% × 0.5 × 1.0 × 100 = 50%
-        assert by_energy[100.0] == pytest.approx(5.0)
-        assert by_energy[200.0] == pytest.approx(50.0)
+        assert gammas[100.0] == pytest.approx(5.0)
+        assert gammas[200.0] == pytest.approx(50.0)
 
 
 class TestITHandling:
@@ -215,9 +215,32 @@ class TestOutputSchema:
             "parent_Z", "parent_A", "parent_state", "decay_mode",
             "daughter_Z", "daughter_A", "rad_type", "energy_keV",
             "intensity_pct", "icc_total", "parent_level_keV",
-            "daughter_level_keV", "multipolarity",
+            "daughter_level_keV", "multipolarity", "rad_subtype",
         ]
         assert _OUTPUT_COLUMNS == expected
+
+
+class TestConversionElectrons:
+    """Verify CE rows are emitted with ICC × photon intensity."""
+
+    def test_ce_emitted_when_icc_nonzero(self):
+        """A gamma with ICC=1 produces equal gamma + CE intensities."""
+        cascade = {
+            100.0: [{"daughter_level": 0.0, "energy": 100.0, "intensity_pct": 100.0, "icc_total": 1.0, "multipolarity": None}],
+        }
+        results = compute_absolute_intensities({100.0: 1.0}, cascade)
+        by_type = {r["rad_type"]: r["intensity_pct"] for r in results}
+        assert by_type["gamma"] == pytest.approx(50.0)
+        assert by_type["ce"] == pytest.approx(50.0)
+
+    def test_no_ce_when_icc_zero(self):
+        """No CE rows when ICC = 0."""
+        cascade = {
+            100.0: [{"daughter_level": 0.0, "energy": 100.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None}],
+        }
+        results = compute_absolute_intensities({100.0: 1.0}, cascade)
+        types = {r["rad_type"] for r in results}
+        assert "ce" not in types
 
 
 class TestEdgeCases:
@@ -305,6 +328,7 @@ class TestTc99m:
         """140.5 keV gamma: NuDat = 89.06%."""
         it_rows = tc99m.filter(
             (pl.col("decay_mode") == "IT")
+            & (pl.col("rad_type") == "gamma")
             & pl.col("energy_keV").is_between(140, 141)
         )
         assert it_rows.height == 1
@@ -331,9 +355,10 @@ class TestEu152:
         )
 
     def _sum_intensity(self, df: pl.DataFrame, e_low: float, e_high: float) -> float:
-        """Sum intensity_pct across all decay modes for a gamma energy."""
+        """Sum gamma intensity_pct across all decay modes for an energy."""
         return df.filter(
-            pl.col("energy_keV").is_between(e_low, e_high)
+            (pl.col("rad_type") == "gamma")
+            & pl.col("energy_keV").is_between(e_low, e_high)
         )["intensity_pct"].sum()
 
     def test_121_keV_ec(self, eu152: pl.DataFrame):
@@ -357,8 +382,49 @@ class TestEu152:
         assert 62 in daughters  # Sm
         assert 64 in daughters  # Gd
 
+    def test_has_xray_auger(self, eu152: pl.DataFrame):
+        """Eu-152 EC produces Eu characteristic x-rays and Auger electrons."""
+        xray = eu152.filter(pl.col("rad_type") == "xray")
+        auger = eu152.filter(pl.col("rad_type") == "auger")
+        assert xray.height > 0, "Expected x-ray rows from EC"
+        assert auger.height > 0, "Expected Auger rows from EC"
+
+    def test_annihilation_511(self, eu152: pl.DataFrame):
+        """Eu-152 β⁺ produces 511 keV annihilation photons."""
+        ann = eu152.filter(pl.col("rad_type") == "annihilation")
+        assert ann.height == 1
+        assert ann["energy_keV"][0] == pytest.approx(511.0)
+        # 2 × β⁺ branching (small for Eu-152)
+        assert ann["intensity_pct"][0] > 0
+
+    def test_has_conversion_electrons(self, eu152: pl.DataFrame):
+        """Eu-152 has conversion electron rows from highly-converted transitions."""
+        ce = eu152.filter(pl.col("rad_type") == "ce")
+        assert ce.height > 0
+
     def test_total_intensity_bounded(self, eu152: pl.DataFrame):
-        """Sum of all gamma intensities per decay mode ≤ sensible bound."""
-        # Per decay mode, total photon emission can exceed 100% due to cascades
+        """Individual emission intensity ≤ sensible bound."""
+        # Per decay mode, total emission can exceed 100% due to cascades
         # (one decay can emit multiple gammas). But each individual line ≤ 100%.
-        assert (eu152["intensity_pct"] <= 100.01).all()
+        assert (eu152["intensity_pct"] <= 200.01).all()
+
+
+@pytest.mark.data
+class TestNa22:
+    """Na-22 β⁺: validate 511 keV annihilation."""
+
+    @pytest.fixture
+    def na22(self) -> pl.DataFrame:
+        path = _EMISSIONS_DIR / "Na.parquet"
+        if not path.exists():
+            pytest.skip("emissions data not built")
+        df = pl.read_parquet(path)
+        return df.filter(
+            (pl.col("parent_A") == 22) & (pl.col("parent_state") == "")
+        )
+
+    def test_511_keV(self, na22: pl.DataFrame):
+        """Na-22 511 keV: NuDat = 179.79% (2 photons per β⁺)."""
+        ann = na22.filter(pl.col("rad_type") == "annihilation")
+        assert ann.height == 1
+        assert ann["intensity_pct"][0] == pytest.approx(179.79, rel=0.01)

@@ -1,13 +1,23 @@
-"""Derive ``meta/ensdf/emissions/{Symbol}.parquet`` — absolute per-decay photon
-emission intensities, parent-keyed.
+"""Derive ``meta/ensdf/emissions/{Symbol}.parquet`` — absolute per-decay
+emission intensities for all emission types, parent-keyed.
 
 Per issue #196 — ``intensity_pct`` in the radiation table is relative per cascade
 level (G4 PhotonEvaporation semantics), not absolute per parent decay.  This
 module materializes the **NuDat-equivalent** table: for each parent nuclide, what
-gammas are emitted and at what absolute probability per decay.
+emissions are produced and at what absolute probability per decay.
 
-Algorithm
----------
+Emission types
+--------------
+
+- **gamma**: photon emission from nuclear deexcitation cascade.
+- **ce**: conversion electron — nuclear transition energy transferred to a bound
+  atomic electron instead of emitting a photon.  Intensity = ``gamma × ICC``.
+- **xray** / **auger**: atomic emissions following EC or IC vacancies.  Already
+  absolute in ``radiation/{Symbol}.parquet``; reformatted with parent attribution.
+- **annihilation**: 511 keV photons from β⁺ positron annihilation (2 per β⁺ decay).
+
+Algorithm (gamma + CE)
+----------------------
 
 For each parent (Z, A, state) that has known decay channels:
 
@@ -19,11 +29,8 @@ For each parent (Z, A, state) that has known decay channels:
    - Propagate: ``population[daughter_level] += population[level] × branch_frac``.
 3. **Absolute photon intensity** per gamma:
    ``abs_pct = population[level] × branch_frac × 1/(1+ICC) × 100``.
-
-Key insight: G4's ``intensity_pct`` is the *photon* emission probability
-(relative per level).  Total transition rate (photon + IC) =
-``intensity × (1 + ICC)``.  Normalizing branch fractions per level requires the
-total rate, not photon-only.
+4. **Conversion electron intensity** per gamma transition:
+   ``ce_pct = abs_photon_pct × ICC``.
 
 Schema (output, per element ``meta/ensdf/emissions/{Symbol}.parquet``)
 ----------------------------------------------------------------------
@@ -33,16 +40,17 @@ Filed by **parent** element symbol (Co-60 emissions live in ``Co.parquet``).
     parent_Z              Int32     — decaying nucleus
     parent_A              Int32
     parent_state          Utf8      — '' | 'm' | 'm2'
-    decay_mode            Utf8      — 'beta-' | 'KshellEC' | 'IT' | …
+    decay_mode            Utf8      — 'beta-' | 'KshellEC' | 'IT' | 'beta+' | …
     daughter_Z            Int32     — product nucleus
     daughter_A            Int32
-    rad_type              Utf8      — 'gamma'
+    rad_type              Utf8      — 'gamma' | 'ce' | 'xray' | 'auger' | 'annihilation'
     energy_keV            Float64
-    intensity_pct         Float64   — absolute per-decay photon emission (0–100%)
-    icc_total             Float32   — internal conversion coefficient
-    parent_level_keV      Float64   — cascade level in daughter
-    daughter_level_keV    Float64   — destination level
-    multipolarity         Int32     — from radiation table
+    intensity_pct         Float64   — absolute per-decay emission probability (0–100%)
+    icc_total             Float32   — ICC (gamma/ce); NULL for xray/auger/annihilation
+    parent_level_keV      Float64   — cascade level in daughter (gamma/ce); NULL otherwise
+    daughter_level_keV    Float64   — destination level (gamma/ce); NULL otherwise
+    multipolarity         Int32     — from radiation table (gamma/ce); NULL otherwise
+    rad_subtype           Utf8      — xray/auger line ID from radiation; NULL for gamma/ce
 
 Usage::
 
@@ -77,6 +85,7 @@ _OUTPUT_COLUMNS = [
     "parent_level_keV",
     "daughter_level_keV",
     "multipolarity",
+    "rad_subtype",
 ]
 
 _OUTPUT_SCHEMA: dict[str, pl.DataType] = {
@@ -93,6 +102,7 @@ _OUTPUT_SCHEMA: dict[str, pl.DataType] = {
     "parent_level_keV": pl.Float64,
     "daughter_level_keV": pl.Float64,
     "multipolarity": pl.Int32,
+    "rad_subtype": pl.Utf8,
 }
 
 
@@ -150,8 +160,8 @@ def compute_absolute_intensities(
 
     Returns
     -------
-    List of dicts with keys: energy, parent_level, daughter_level,
-    intensity_pct, icc_total, multipolarity.
+    List of dicts with keys: rad_type, energy, parent_level, daughter_level,
+    intensity_pct, icc_total, multipolarity.  Includes both gamma and CE rows.
     """
     # Process levels top-down: propagate population through the cascade.
     # The level list is static — new daughter levels added during propagation
@@ -188,6 +198,7 @@ def compute_absolute_intensities(
 
             if abs_photon_pct >= min_intensity_pct:
                 results.append({
+                    "rad_type": "gamma",
                     "energy": g["energy"],
                     "parent_level": lev,
                     "daughter_level": g["daughter_level"],
@@ -195,6 +206,21 @@ def compute_absolute_intensities(
                     "icc_total": g["icc_total"],
                     "multipolarity": g["multipolarity"],
                 })
+
+            # Conversion electron: complementary fraction ICC/(1+ICC)
+            icc = g["icc_total"]
+            if icc > 0:
+                abs_ce_pct = abs_photon_pct * icc
+                if abs_ce_pct >= min_intensity_pct:
+                    results.append({
+                        "rad_type": "ce",
+                        "energy": g["energy"],  # transition energy (≈ CE KE + binding)
+                        "parent_level": lev,
+                        "daughter_level": g["daughter_level"],
+                        "intensity_pct": abs_ce_pct,
+                        "icc_total": icc,
+                        "multipolarity": g["multipolarity"],
+                    })
 
     return results
 
@@ -263,6 +289,46 @@ def _build_feeding_from_it(
     return {"IT": {level_kev: branching}}
 
 
+def _collect_atomic_rows(
+    rows: list[dict],
+    rad_df: pl.DataFrame,
+    daughter_z: int,
+    daughter_a: int,
+    rad_decay_mode: str,
+    parent_z: int,
+    parent_a: int,
+    parent_state: str,
+    emit_decay_mode: str,
+) -> None:
+    """Collect x-ray/auger rows from radiation/ for a daughter isotope.
+
+    X-ray/Auger intensities in radiation/ are already absolute per parent decay.
+    """
+    atomic = rad_df.filter(
+        (pl.col("Z") == daughter_z)
+        & (pl.col("A") == daughter_a)
+        & pl.col("rad_type").is_in(["xray", "auger"])
+        & (pl.col("decay_mode") == rad_decay_mode)
+    )
+    for row in atomic.iter_rows(named=True):
+        rows.append({
+            "parent_Z": parent_z,
+            "parent_A": parent_a,
+            "parent_state": parent_state,
+            "decay_mode": emit_decay_mode,
+            "daughter_Z": daughter_z,
+            "daughter_A": daughter_a,
+            "rad_type": row["rad_type"],
+            "energy_keV": row["energy_keV"],
+            "intensity_pct": row["intensity_pct"],
+            "icc_total": None,
+            "parent_level_keV": None,
+            "daughter_level_keV": None,
+            "multipolarity": None,
+            "rad_subtype": row.get("rad_subtype"),
+        })
+
+
 def build_for_parent(
     parent_z: int,
     parent_a: int,
@@ -321,7 +387,7 @@ def build_for_parent(
     if not all_feeding:
         return _empty_output()
 
-    # Process each daughter × decay_mode
+    # --- Gamma + CE from cascade ---
     rows: list[dict] = []
     for (daughter_z, daughter_a), modes in all_feeding.items():
         rad_df = radiation_cache.get(daughter_z)
@@ -332,8 +398,8 @@ def build_for_parent(
             continue
 
         for mode, feeding_map in modes.items():
-            gammas = compute_absolute_intensities(dict(feeding_map), cascade)
-            for g in gammas:
+            emissions = compute_absolute_intensities(dict(feeding_map), cascade)
+            for g in emissions:
                 rows.append({
                     "parent_Z": parent_z,
                     "parent_A": parent_a,
@@ -341,14 +407,69 @@ def build_for_parent(
                     "decay_mode": mode,
                     "daughter_Z": daughter_z,
                     "daughter_A": daughter_a,
-                    "rad_type": "gamma",
+                    "rad_type": g["rad_type"],
                     "energy_keV": g["energy"],
                     "intensity_pct": g["intensity_pct"],
                     "icc_total": g["icc_total"],
                     "parent_level_keV": g["parent_level"],
                     "daughter_level_keV": g["daughter_level"],
                     "multipolarity": g["multipolarity"],
+                    "rad_subtype": None,
                 })
+
+    # --- X-ray / Auger from radiation/ (already absolute) ---
+    # EC x-rays/augers are filed under the PARENT element (Z = parent_Z) because
+    # the atomic vacancy is in the parent atom's shell. IT x-rays are also filed
+    # under the parent element (same Z since IT daughter = parent).
+    _ec_modes = {"KshellEC", "LshellEC", "MshellEC", "NshellEC", "beta+"}
+    has_ec = any(m in _ec_modes for modes in all_feeding.values() for m in modes)
+    has_it = any("IT" in modes for modes in all_feeding.values())
+
+    parent_rad_df = radiation_cache.get(parent_z)
+    if parent_rad_df is not None:
+        if has_ec:
+            # EC x-rays: filed under parent element, A = parent_A, decay_mode='EC'
+            _collect_atomic_rows(
+                rows, parent_rad_df, parent_z, parent_a, "EC",
+                parent_z, parent_a, parent_state, "EC",
+            )
+        if has_it:
+            # IT x-rays: filed under parent element (same Z), decay_mode='IT'
+            _collect_atomic_rows(
+                rows, parent_rad_df, parent_z, parent_a, "IT",
+                parent_z, parent_a, parent_state, "IT",
+            )
+
+    # --- 511 keV annihilation from β⁺ ---
+    beta_plus_rows = decay_summary.filter(
+        (pl.col("Z") == parent_z)
+        & (pl.col("A") == parent_a)
+        & (pl.col("state") == parent_state)
+        & (pl.col("decay_mode") == "beta+")
+    )
+    if not beta_plus_rows.is_empty():
+        bp_branching = beta_plus_rows["branching"].sum()
+        if bp_branching > 0:
+            # 2 photons per β⁺ annihilation
+            ann_pct = 2.0 * bp_branching * 100.0
+            daughter_z = beta_plus_rows["daughter_Z"][0]
+            daughter_a = beta_plus_rows["daughter_A"][0]
+            rows.append({
+                "parent_Z": parent_z,
+                "parent_A": parent_a,
+                "parent_state": parent_state,
+                "decay_mode": "beta+",
+                "daughter_Z": daughter_z,
+                "daughter_A": daughter_a,
+                "rad_type": "annihilation",
+                "energy_keV": 511.0,
+                "intensity_pct": ann_pct,
+                "icc_total": None,
+                "parent_level_keV": None,
+                "daughter_level_keV": None,
+                "multipolarity": None,
+                "rad_subtype": None,
+            })
 
     if not rows:
         return _empty_output()

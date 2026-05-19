@@ -220,6 +220,7 @@ describe("DuckDB", () => {
         `SELECT energy_keV, SUM(intensity_pct) as total_intensity
          FROM emissions
          WHERE parent_Z = 63 AND parent_A = 152 AND parent_state = ''
+           AND rad_type = 'gamma'
            AND energy_keV BETWEEN 121.0 AND 122.5
          GROUP BY energy_keV`,
         (err: Error | null, rows: Record<string, unknown>[]) => {
