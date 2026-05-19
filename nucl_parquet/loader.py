@@ -246,6 +246,8 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
     # ICC-corrected summing partners for HPGe TCS corrections (#177).
     _register_glob(db, data_dir / "meta" / "ensdf" / "summing_partners", "summing_partners")
+    # Absolute per-decay photon emission intensities, parent-keyed (#196).
+    _register_glob(db, data_dir / "meta" / "ensdf" / "emissions", "emissions")
     # Pre-tabulated β-decay continuous spectra per transition (#78). Companion
     # to `radiation` (which has discrete γ/X-ray/Auger lines): `beta_spectra`
     # has the continuous β kinetic-energy distribution sampled on 200 bins
@@ -744,6 +746,66 @@ def summing_partners(
         FROM summing_partners s
         WHERE {" AND ".join(where)}
         ORDER BY s.pure_emission_joint_intensity DESC NULLS LAST
+    """
+    return db.sql(sql, params=params)
+
+
+def emissions(
+    db: duckdb.DuckDBPyConnection,
+    parent_z: int,
+    parent_a: int,
+    parent_state: str = "",
+    decay_mode: str | None = None,
+    energy_keV: float | None = None,
+    tolerance_keV: float = 0.5,
+    min_intensity_pct: float = 0.0,
+) -> duckdb.DuckDBPyRelation:
+    """Absolute per-decay photon emission intensities (#196).
+
+    Returns all gamma emissions for the specified parent nuclide with absolute
+    intensities (NuDat-equivalent). Filed by parent, not daughter.
+
+    Parameters
+    ----------
+    db
+        DuckDB connection from :func:`connect`.
+    parent_z, parent_a
+        Parent nucleus (the decaying nuclide — e.g. Z=27, A=60 for Co-60).
+    parent_state
+        ``""`` (ground) | ``"m"`` | ``"m2"``.
+    decay_mode
+        Filter by decay mode: ``"beta-"`` | ``"KshellEC"`` | ``"IT"`` | etc.
+    energy_keV
+        If given, filter to gammas near this energy within ``tolerance_keV``.
+    tolerance_keV
+        Energy-match tolerance (default 0.5 keV).
+    min_intensity_pct
+        Minimum absolute intensity (%) to include (default 0 = all).
+
+    Returns
+    -------
+    DuckDB relation; call ``.pl()`` / ``.df()`` / ``.arrow()`` as usual.
+    """
+    where = ["e.parent_Z = ?", "e.parent_A = ?", "e.parent_state = ?"]
+    params: list[object] = [int(parent_z), int(parent_a), parent_state]
+
+    if decay_mode is not None:
+        where.append("e.decay_mode = ?")
+        params.append(decay_mode)
+
+    if energy_keV is not None:
+        where.append("ABS(e.energy_keV - ?) < ?")
+        params.extend([float(energy_keV), float(tolerance_keV)])
+
+    if min_intensity_pct > 0:
+        where.append("e.intensity_pct >= ?")
+        params.append(float(min_intensity_pct))
+
+    sql = f"""
+        SELECT e.*
+        FROM emissions e
+        WHERE {" AND ".join(where)}
+        ORDER BY e.intensity_pct DESC
     """
     return db.sql(sql, params=params)
 

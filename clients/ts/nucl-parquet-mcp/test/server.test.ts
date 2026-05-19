@@ -191,6 +191,47 @@ describe("DuckDB", () => {
     expect(rows.length).toBeGreaterThanOrEqual(10);
   });
 
+  it("queries absolute emissions for Co-60 (parent Z=27, A=60)", async () => {
+    const db = getDb();
+    const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      db.all(
+        "SELECT * FROM emissions WHERE parent_Z = 27 AND parent_A = 60 AND parent_state = '' ORDER BY intensity_pct DESC",
+        (err: Error | null, rows: Record<string, unknown>[]) => {
+          if (err) reject(err); else resolve(rows);
+        },
+      );
+    });
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    // Top two should be 1332 and 1173 keV
+    const top = rows[0];
+    expect(top.intensity_pct as number).toBeGreaterThan(99.0);
+    // Find 1173 keV gamma
+    const g1173 = rows.find(
+      (r) => Math.abs((r.energy_keV as number) - 1173.239) < 0.5,
+    );
+    expect(g1173).toBeDefined();
+    expect(g1173!.intensity_pct as number).toBeCloseTo(99.85, 0);
+  });
+
+  it("queries Eu-152 emissions summed across EC shells", async () => {
+    const db = getDb();
+    const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      db.all(
+        `SELECT energy_keV, SUM(intensity_pct) as total_intensity
+         FROM emissions
+         WHERE parent_Z = 63 AND parent_A = 152 AND parent_state = ''
+           AND energy_keV BETWEEN 121.0 AND 122.5
+         GROUP BY energy_keV`,
+        (err: Error | null, rows: Record<string, unknown>[]) => {
+          if (err) reject(err); else resolve(rows);
+        },
+      );
+    });
+    expect(rows.length).toBe(1);
+    // NuDat: 28.58% summed across all EC shells
+    expect(rows[0].total_intensity as number).toBeCloseTo(28.58, 0);
+  });
+
   it("has 20+ registered tables/views", async () => {
     const db = getDb();
     const tables = await new Promise<Record<string, unknown>[]>((resolve, reject) => {

@@ -148,6 +148,7 @@ function registerViews(db: duckdb.Database, dataDir: string): void {
   registerGlob(db, join(dataDir, "meta", "ensdf", "radiation"), "radiation");
   registerGlob(db, join(dataDir, "meta", "ensdf", "coincidences"), "coincidences");
   registerGlob(db, join(dataDir, "meta", "ensdf", "summing_partners"), "summing_partners");
+  registerGlob(db, join(dataDir, "meta", "ensdf", "emissions"), "emissions");
   registerGlob(db, join(dataDir, "meta", "ensdf", "beta_spectra"), "beta_spectra");
 
   // --- NUDEX data ---
@@ -591,6 +592,51 @@ server.tool(
       content: [{
         type: "text" as const,
         text: safeStringify({ z: zNum, a: aNum, primary_energy_keV, ...result }, 2),
+      }],
+    };
+  },
+);
+
+server.tool(
+  "get_emissions",
+  "Get absolute per-decay photon emission intensities (NuDat-equivalent). Returns gamma emissions for a parent nuclide with absolute intensities (photon emission probability per decay, 0-100%). Filed by parent, not daughter.",
+  {
+    parent_z: z.number().describe("Atomic number of the decaying parent (e.g. 27 for Co-60)"),
+    parent_a: z.number().describe("Mass number of the parent (e.g. 60 for Co-60)"),
+    parent_state: z.string().optional().describe("Nuclear state: '' (ground), 'm', 'm2'"),
+    decay_mode: z.string().optional().describe("Filter by decay mode: 'beta-', 'KshellEC', 'IT', etc."),
+    energy_keV: z.number().optional().describe("Filter to gammas near this energy"),
+    tolerance_keV: z.number().optional().describe("Energy tolerance (default 0.5 keV)"),
+    min_intensity_pct: z.number().optional().describe("Minimum absolute intensity (%) to include"),
+    max_rows: z.number().optional().describe("Max rows to return (default 500)"),
+  },
+  async ({ parent_z, parent_a, parent_state, decay_mode, energy_keV, tolerance_keV, min_intensity_pct, max_rows }) => {
+    const conditions = ["parent_Z = ?", "parent_A = ?", "parent_state = ?"];
+    const params: unknown[] = [parent_z, parent_a, parent_state ?? ""];
+    const tol = tolerance_keV ?? 0.5;
+
+    if (decay_mode !== undefined) {
+      conditions.push("decay_mode = ?");
+      params.push(decay_mode);
+    }
+    if (energy_keV !== undefined) {
+      conditions.push("ABS(energy_keV - ?) < ?");
+      params.push(energy_keV, tol);
+    }
+    if (min_intensity_pct !== undefined && min_intensity_pct > 0) {
+      conditions.push("intensity_pct >= ?");
+      params.push(min_intensity_pct);
+    }
+
+    const result = await query(
+      `SELECT * FROM emissions WHERE ${conditions.join(" AND ")} ORDER BY intensity_pct DESC`,
+      params,
+      max_rows ?? 500,
+    );
+    return {
+      content: [{
+        type: "text" as const,
+        text: safeStringify({ parent_z, parent_a, parent_state: parent_state ?? "", ...result }, 2),
       }],
     };
   },
