@@ -552,6 +552,7 @@ LEFT JOIN (
 ) r2 ON c.Z = r2.Z AND c.A = r2.A AND r2.state = $state
     AND ABS(c.coinc_energy_keV - r2.energy_keV) < 0.5
 WHERE c.Z = $z AND c.A = $a
+  AND COALESCE(c.parent_state, '') = $state
   AND c.emission1_rad_type = 'gamma' AND c.emission2_rad_type = 'gamma'
   AND c.gamma_energy_keV < c.coinc_energy_keV  -- avoid symmetric duplicates
 ORDER BY coinc_prob_pct DESC NULLS LAST
