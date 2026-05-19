@@ -559,9 +559,7 @@ class TestSpotChecks:
             (pl.col("Z") == 79) & (pl.col("A") == 197) & (pl.col("rad_type") == "xray")
         )
         l_xrays = au.filter(pl.col("rad_subtype").str.starts_with("L"))
-        k_xrays = au.filter(pl.col("rad_subtype").str.starts_with("K"))
         l_total = l_xrays["intensity_pct"].sum()
-        k_total = k_xrays["intensity_pct"].sum()
         # L X-rays must be present and substantial (α_L >> α_K for 130 keV M4).
         # Before #193, L was 0% and K was ~96%. With per-shell ICC, L should
         # be comparable to K (~20-75% depending on state-assignment filtering).
