@@ -343,6 +343,19 @@ def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, me
     )
     logger.info("wrote %d summing-partner files", len(sp_paths))
 
+    # Materialize emissions/ — absolute per-decay photon emission intensities
+    # (NuDat-equivalent parent-keyed table). Runs after radiation merge since it
+    # reads the full radiation/ files. Per issue #196.
+    logger.info("[emissions] materialize emissions/ — absolute per-decay intensities (#196)")
+    em_paths = emissions.build(
+        data_dir / "meta" / "decay_detailed.parquet",
+        data_dir / "meta" / "decay.parquet",
+        data_dir / "meta" / "ensdf" / "nuclides.parquet",
+        data_dir / "meta" / "ensdf" / "radiation",
+        data_dir / "meta" / "ensdf" / "emissions",
+    )
+    logger.info("wrote %d emission files", len(em_paths))
+
     logger.info("[invariants] sweeping the rebuilt dataset")
     _check_invariants(data_dir)
     logger.info("Build pipeline complete and invariants green.")

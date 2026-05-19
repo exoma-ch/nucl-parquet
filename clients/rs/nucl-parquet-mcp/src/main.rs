@@ -378,6 +378,24 @@ fn tool_definitions() -> serde_json::Value {
                 }
             },
             {
+                "name": "get_emissions",
+                "description": "Get absolute per-decay photon emission intensities (NuDat-equivalent). Parent-keyed, not daughter-keyed.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "parent_z": { "type": "integer", "description": "Atomic number of decaying parent (e.g. 27 for Co-60)" },
+                        "parent_a": { "type": "integer", "description": "Mass number of parent" },
+                        "parent_state": { "type": "string", "description": "'' (ground), 'm', 'm2'" },
+                        "decay_mode": { "type": "string", "description": "Filter: 'beta-', 'KshellEC', 'IT', etc." },
+                        "energy_keV": { "type": "number", "description": "Filter near this energy" },
+                        "tolerance_keV": { "type": "number", "description": "Energy tolerance (default 0.5 keV)" },
+                        "min_intensity_pct": { "type": "number", "description": "Minimum absolute intensity (%)" },
+                        "max_rows": { "type": "integer", "description": "Max rows (default 500)" }
+                    },
+                    "required": ["parent_z", "parent_a"]
+                }
+            },
+            {
                 "name": "get_beta_spectrum",
                 "description": "Get continuous beta-decay kinetic-energy spectrum (Fermi function, dN/dE normalized to 1)",
                 "inputSchema": {
@@ -681,6 +699,80 @@ async fn handle_tool_call(
                 serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
             )
         }
+        "get_emissions" => {
+            let parent_z = args
+                .get("parent_z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'parent_z'")?;
+            let parent_a = args
+                .get("parent_a")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'parent_a'")?;
+            let parent_state = args
+                .get("parent_state")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let decay_mode_filter = args.get("decay_mode").and_then(|v| v.as_str());
+            let energy_filter = args.get("energy_keV").and_then(|v| v.as_f64());
+            let tolerance = args
+                .get("tolerance_keV")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.5);
+            let min_intensity = args
+                .get("min_intensity_pct")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
+            let symbol =
+                z_to_symbol(parent_z).ok_or_else(|| format!("Z={parent_z} out of range"))?;
+            let path = data_dir.join(format!("meta/ensdf/emissions/{symbol}.parquet"));
+            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|r| {
+                    if r.get("parent_A").and_then(|v| v.as_i64()) != Some(parent_a) {
+                        return false;
+                    }
+                    let rs = r.get("parent_state").and_then(|v| v.as_str()).unwrap_or("");
+                    if rs != parent_state {
+                        return false;
+                    }
+                    if let Some(dm) = decay_mode_filter {
+                        if r.get("decay_mode").and_then(|v| v.as_str()) != Some(dm) {
+                            return false;
+                        }
+                    }
+                    if let Some(ef) = energy_filter {
+                        let e = r.get("energy_keV").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        if (e - ef).abs() >= tolerance {
+                            return false;
+                        }
+                    }
+                    let intensity = r
+                        .get("intensity_pct")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    if intensity < min_intensity {
+                        return false;
+                    }
+                    true
+                })
+                .collect();
+            let total = filtered.len();
+            let truncated = total > max_rows;
+            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
+            let result = serde_json::json!({
+                "parent_z": parent_z,
+                "parent_a": parent_a,
+                "parent_state": parent_state,
+                "total": total,
+                "truncated": truncated,
+                "rows": display
+            });
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
+        }
         "get_beta_spectrum" => {
             let z = args
                 .get("z")
@@ -939,7 +1031,7 @@ mod tests {
     fn tool_definitions_valid() {
         let defs = tool_definitions();
         let tools = defs.get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 12);
+        assert_eq!(tools.len(), 13);
         for tool in tools {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());
@@ -1016,7 +1108,7 @@ mod tests {
             .unwrap();
         let result = resp.result.unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 12);
+        assert_eq!(tools.len(), 13);
     }
 
     #[tokio::test]
@@ -1110,6 +1202,41 @@ mod tests {
             total >= 1,
             "Expected ≥1 Co-60 summing partners, got {total}"
         );
+    }
+
+    #[tokio::test]
+    async fn handle_get_emissions() {
+        let data_dir = test_data_dir();
+        let catalog = load_catalog(&data_dir).unwrap();
+        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".into(),
+            params: serde_json::json!({
+                "name": "get_emissions",
+                "arguments": { "parent_z": 27, "parent_a": 60 }
+            }),
+        };
+        let resp = handle_request(&data_dir, &catalog, &cache, req)
+            .await
+            .unwrap();
+        assert!(resp.error.is_none());
+        let content = resp.result.unwrap();
+        let text = content["content"][0]["text"].as_str().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let total = parsed["total"].as_u64().unwrap();
+        assert!(
+            total >= 2,
+            "Expected ≥2 Co-60 emission rows (1173+1332), got {total}"
+        );
+        // Verify 1173 keV gamma exists with reasonable intensity
+        let rows = parsed["rows"].as_array().unwrap();
+        let has_1173 = rows.iter().any(|r| {
+            let e = r.get("energy_keV").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            (e - 1173.239).abs() < 0.5
+        });
+        assert!(has_1173, "Expected Co-60 1173 keV gamma in emissions");
     }
 
     #[tokio::test]

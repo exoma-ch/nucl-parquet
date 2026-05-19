@@ -405,6 +405,63 @@ async def get_summing_partners(
 
 
 @mcp.tool()
+async def get_emissions(
+    parent_z: int,
+    parent_a: int,
+    parent_state: str = "",
+    decay_mode: str | None = None,
+    energy_keV: float | None = None,
+    tolerance_keV: float = 0.5,
+    min_intensity_pct: float = 0.0,
+    max_rows: int = 500,
+) -> str:
+    """Get absolute per-decay photon emission intensities (NuDat-equivalent).
+
+    Returns all gamma emissions for a parent nuclide with absolute intensities
+    (photon emission probability per decay, 0-100%). Filed by parent, not daughter.
+
+    Args:
+        parent_z: Atomic number of the decaying parent nuclide (e.g. 27 for Co-60).
+        parent_a: Mass number of the parent (e.g. 60 for Co-60).
+        parent_state: Nuclear state ('' = ground, 'm' = metastable, 'm2' = 2nd isomer).
+        decay_mode: Filter by decay mode ('beta-', 'KshellEC', 'IT', etc.).
+        energy_keV: Filter to gammas near this energy.
+        tolerance_keV: Energy match tolerance in keV (default 0.5).
+        min_intensity_pct: Minimum absolute intensity (%) to include (default 0).
+        max_rows: Maximum rows to return (default 500).
+    """
+    conditions = ["parent_Z = $z", "parent_A = $a", "parent_state = $state"]
+    params: dict[str, Any] = {"z": parent_z, "a": parent_a, "state": parent_state}
+    if decay_mode is not None:
+        conditions.append("decay_mode = $mode")
+        params["mode"] = decay_mode
+    if energy_keV is not None:
+        conditions.append("ABS(energy_keV - $energy) < $tol")
+        params["energy"] = energy_keV
+        params["tol"] = tolerance_keV
+    if min_intensity_pct > 0:
+        conditions.append("intensity_pct >= $min_int")
+        params["min_int"] = min_intensity_pct
+    where = " AND ".join(conditions)
+    result = _query(
+        f"SELECT * FROM emissions WHERE {where} ORDER BY intensity_pct DESC",
+        params,
+        max_rows,
+    )
+    return json.dumps(
+        {
+            "parent_z": parent_z,
+            "parent_a": parent_a,
+            "parent_state": parent_state,
+            "total": result["total"],
+            "truncated": result["truncated"],
+            "rows": result["rows"],
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
 async def get_beta_spectrum(z: int, a: int, max_rows: int = 500) -> str:
     """Get the continuous beta-decay kinetic-energy spectrum for a nuclide.
 
