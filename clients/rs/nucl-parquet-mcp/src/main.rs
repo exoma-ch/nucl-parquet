@@ -203,6 +203,12 @@ fn column_value_to_json(col: &dyn Array, idx: usize) -> serde_json::Value {
     } else if let Some(a) = col.as_any().downcast_ref::<StringArray>() {
         serde_json::Value::String(a.value(idx).to_string())
     } else {
+        // Fallback: try casting to Utf8 (handles dictionary-encoded strings from Parquet)
+        if let Ok(cast) = arrow::compute::cast(col, &arrow::datatypes::DataType::Utf8) {
+            if let Some(s) = cast.as_any().downcast_ref::<StringArray>() {
+                return serde_json::Value::String(s.value(idx).to_string());
+            }
+        }
         serde_json::Value::String(format!("{col:?}"))
     }
 }
@@ -353,6 +359,22 @@ fn tool_definitions() -> serde_json::Value {
                         "max_rows": { "type": "integer", "description": "Max rows (default 500)" }
                     },
                     "required": ["z"]
+                }
+            },
+            {
+                "name": "get_summing_partners",
+                "description": "Get ICC-corrected summing partners for HPGe true-coincidence-summing (TCS) corrections",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "z": { "type": "integer", "description": "Atomic number (daughter, filing convention)" },
+                        "a": { "type": "integer", "description": "Mass number" },
+                        "primary_energy_keV": { "type": "number", "description": "Filter to pairs matching this energy" },
+                        "tolerance_keV": { "type": "number", "description": "Energy tolerance (default 0.5 keV)" },
+                        "emission1_rad_type": { "type": "string", "description": "'gamma', 'xray', or 'auger'" },
+                        "max_rows": { "type": "integer", "description": "Max rows (default 500)" }
+                    },
+                    "required": ["z", "a"]
                 }
             },
             {
@@ -601,6 +623,60 @@ async fn handle_tool_call(
             let truncated = total > max_rows;
             let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
             let result = serde_json::json!({ "z": z, "a": a, "symbol": symbol, "total": total, "truncated": truncated, "rows": display });
+            Ok(
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
+            )
+        }
+        "get_summing_partners" => {
+            let z = args
+                .get("z")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'z'")?;
+            let a = args
+                .get("a")
+                .and_then(|v| v.as_i64())
+                .ok_or("missing 'a'")?;
+            let primary_energy = args.get("primary_energy_keV").and_then(|v| v.as_f64());
+            let tolerance = args
+                .get("tolerance_keV")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.5);
+            let e1_type = args.get("emission1_rad_type").and_then(|v| v.as_str());
+            let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
+            let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
+            let path = data_dir.join(format!("meta/ensdf/summing_partners/{symbol}.parquet"));
+            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
+            let filtered: Vec<_> = rows
+                .into_iter()
+                .filter(|r| {
+                    if r.get("A").and_then(|v| v.as_i64()) != Some(a) {
+                        return false;
+                    }
+                    if let Some(e1t) = e1_type {
+                        if r.get("emission1_rad_type").and_then(|v| v.as_str()) != Some(e1t) {
+                            return false;
+                        }
+                    }
+                    if let Some(pe) = primary_energy {
+                        let e1 = r
+                            .get("emission1_energy_keV")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0);
+                        let e2 = r
+                            .get("emission2_energy_keV")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0);
+                        if (e1 - pe).abs() >= tolerance && (e2 - pe).abs() >= tolerance {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .collect();
+            let total = filtered.len();
+            let truncated = total > max_rows;
+            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
+            let result = serde_json::json!({ "z": z, "a": a, "primary_energy_keV": primary_energy, "total": total, "truncated": truncated, "rows": display });
             Ok(
                 serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
             )
@@ -863,7 +939,7 @@ mod tests {
     fn tool_definitions_valid() {
         let defs = tool_definitions();
         let tools = defs.get("tools").unwrap().as_array().unwrap();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 12);
         for tool in tools {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());
@@ -940,7 +1016,7 @@ mod tests {
             .unwrap();
         let result = resp.result.unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 12);
     }
 
     #[tokio::test]
@@ -1003,6 +1079,37 @@ mod tests {
         let text = content["content"][0]["text"].as_str().unwrap();
         // Co-60 has at least ground state + isomer
         assert!(text.contains("\"count\":"));
+    }
+
+    #[tokio::test]
+    async fn handle_get_summing_partners() {
+        let data_dir = test_data_dir();
+        let catalog = load_catalog(&data_dir).unwrap();
+        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".into(),
+            params: serde_json::json!({
+                "name": "get_summing_partners",
+                "arguments": { "z": 28, "a": 60, "emission1_rad_type": "gamma" }
+            }),
+        };
+        let resp = handle_request(&data_dir, &catalog, &cache, req)
+            .await
+            .unwrap();
+        assert!(resp.error.is_none());
+        let content = resp.result.unwrap();
+        let text = content["content"][0]["text"].as_str().unwrap();
+        // Co-60 → Ni-60: should have the 1173/1333 keV pair
+        assert!(text.contains("\"z\": 28"));
+        assert!(text.contains("\"a\": 60"));
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let total = parsed["total"].as_u64().unwrap();
+        assert!(
+            total >= 1,
+            "Expected ≥1 Co-60 summing partners, got {total}"
+        );
     }
 
     #[tokio::test]

@@ -155,6 +155,42 @@ describe("DuckDB", () => {
     expect((rows[0].n as number)).toBeGreaterThan(0);
   });
 
+  it("queries summing partners for Co-60 (Z=28, A=60)", async () => {
+    const db = getDb();
+    const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      db.all(
+        "SELECT * FROM summing_partners WHERE Z = 28 AND A = 60 AND emission1_rad_type = 'gamma'",
+        (err: Error | null, rows: Record<string, unknown>[]) => {
+          if (err) reject(err); else resolve(rows);
+        },
+      );
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    // Check 1173/1333 keV pair exists (canonicalized: E1 ≤ E2)
+    const pair = rows.find(
+      (r) =>
+        Math.abs((r.emission1_energy_keV as number) - 1173.2) < 1.0 &&
+        Math.abs((r.emission2_energy_keV as number) - 1332.5) < 1.0,
+    );
+    expect(pair).toBeDefined();
+    expect(pair!.icc_correction_factor as number).toBeGreaterThan(0.99);
+  });
+
+  it("queries summing partners for Eu-152 (Gd-152 daughter, Z=64)", async () => {
+    const db = getDb();
+    const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      db.all(
+        `SELECT * FROM summing_partners WHERE Z = 64 AND A = 152
+         AND emission1_rad_type = 'gamma'
+         AND (ABS(emission1_energy_keV - 344.28) < 1.0 OR ABS(emission2_energy_keV - 344.28) < 1.0)`,
+        (err: Error | null, rows: Record<string, unknown>[]) => {
+          if (err) reject(err); else resolve(rows);
+        },
+      );
+    });
+    expect(rows.length).toBeGreaterThanOrEqual(10);
+  });
+
   it("has 20+ registered tables/views", async () => {
     const db = getDb();
     const tables = await new Promise<Record<string, unknown>[]>((resolve, reject) => {

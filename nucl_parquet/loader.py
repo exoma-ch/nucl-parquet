@@ -244,6 +244,8 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_glob(db, data_dir / "meta" / "ensdf" / "levels", "ensdf_levels")
     _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
     _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
+    # ICC-corrected summing partners for HPGe TCS corrections (#177).
+    _register_glob(db, data_dir / "meta" / "ensdf" / "summing_partners", "summing_partners")
     # Pre-tabulated β-decay continuous spectra per transition (#78). Companion
     # to `radiation` (which has discrete γ/X-ray/Auger lines): `beta_spectra`
     # has the continuous β kinetic-energy distribution sampled on 200 bins
@@ -685,6 +687,65 @@ def identify_gamma(
             float(min_intensity),
         ],
     )
+
+
+def summing_partners(
+    db: duckdb.DuckDBPyConnection,
+    z: int,
+    a: int,
+    primary_energy_keV: float | None = None,
+    tolerance_keV: float = 0.5,
+    parent_state: str = "",
+    emission1_rad_type: str | None = None,
+) -> duckdb.DuckDBPyRelation:
+    """ICC-corrected summing partners for HPGe TCS corrections (#177).
+
+    Returns all emission pairs that can sum in a close-geometry HPGe detector
+    for the specified nuclide. Each row carries ``icc_correction_factor`` and
+    ``pure_emission_joint_intensity`` pre-computed.
+
+    Parameters
+    ----------
+    db
+        DuckDB connection from :func:`connect`.
+    z, a
+        Daughter nucleus (filing convention — Co-60 cascades are under Ni-60).
+    primary_energy_keV
+        If given, filter to pairs where *either* emission matches this energy
+        within ``tolerance_keV``. Typical use: find all summing partners of a
+        specific gamma line.
+    tolerance_keV
+        Energy-match tolerance (default 0.5 keV, typical HPGe FWHM at ~1 MeV).
+    parent_state
+        ``""`` (ground) | ``"m"`` | ``"m2"``.
+    emission1_rad_type
+        Filter emission side 1: ``"gamma"`` | ``"xray"`` | ``"auger"``.
+        Pass ``"gamma"`` for γ-γ only; omit for all pair types.
+
+    Returns
+    -------
+    DuckDB relation; call ``.pl()`` / ``.df()`` / ``.arrow()`` as usual.
+    """
+    where = ["s.Z = ?", "s.A = ?", "COALESCE(s.parent_state, '') = ?"]
+    params: list[object] = [int(z), int(a), parent_state]
+
+    if primary_energy_keV is not None:
+        where.append("(ABS(s.emission1_energy_keV - ?) < ? OR ABS(s.emission2_energy_keV - ?) < ?)")
+        params.extend(
+            [float(primary_energy_keV), float(tolerance_keV), float(primary_energy_keV), float(tolerance_keV)]
+        )
+
+    if emission1_rad_type is not None:
+        where.append("s.emission1_rad_type = ?")
+        params.append(emission1_rad_type)
+
+    sql = f"""
+        SELECT s.*
+        FROM summing_partners s
+        WHERE {" AND ".join(where)}
+        ORDER BY s.pure_emission_joint_intensity DESC NULLS LAST
+    """
+    return db.sql(sql, params=params)
 
 
 # ---------------------------------------------------------------------------

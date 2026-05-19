@@ -13,9 +13,11 @@ This module convolves three independent inputs into a per-(Z, A, state)
    ``{KshellEC, LshellEC, MshellEC, NshellEC}`` carrying per-shell ``branching``
    summed across daughter levels.
 
-3. **Internal-conversion totals** (``data/g4_raw/strata-nuclear/photon_evap_gammas.parquet``):
-   ``icc_total`` per gamma transition; we approximate per-shell IC vacancies
-   as **K-shell only** (per-shell partial ICCs absent from strata).
+3. **Internal-conversion coefficients** (``data/g4_raw/strata-nuclear/photon_evap_gammas.parquet``):
+   ``icc_total`` per gamma transition plus per-shell fractions
+   ``icc_frac_K, icc_frac_L1..L3, icc_frac_M1..M5, icc_frac_outer``
+   (BrIcc-precomputed, embedded in G4 PhotonEvaporation6.1.2).
+   IC vacancies are partitioned across shells using these fractions.
 
 Output schema (matches ``radiation/`` v0.10.x columns + new optional ones):
     Z, A, state, rad_type, energy_keV, intensity_pct,
@@ -135,13 +137,31 @@ _XRAY_LABEL: Final[dict[tuple[str, str], str]] = {
     ("M5", "N7"): "Mα1",
 }
 
-# v0.11 approximation: EC L/M/N totals attributed to L1/M1/N1 vacancies for
-# atomic-relaxation lookup. (Sub-shell branchings absent from strata input.)
+# EC shell-letter to EADL sub-shell mapping. EC branchings from
+# decay_detailed use shell-letter labels (K, L, M, N); EADL indexes by
+# sub-shell. EC L/M/N totals are attributed to L1/M1/N1 (the dominant
+# sub-shell for EC capture at most Z).
 _SHELL_TOTAL_TO_VACANCY: Final[dict[str, str]] = {
     "K": "K",
     "L": "L1",
     "M": "M1",
     "N": "N1",
+}
+
+# Per-shell ICC fraction columns exported by strata's PhotonEvaporation
+# parser (BrIcc-precomputed, G4 columns 7-16). Maps column name → EADL
+# vacancy sub-shell label.
+_ICC_FRAC_COLS: Final[dict[str, str]] = {
+    "icc_frac_K": "K",
+    "icc_frac_L1": "L1",
+    "icc_frac_L2": "L2",
+    "icc_frac_L3": "L3",
+    "icc_frac_M1": "M1",
+    "icc_frac_M2": "M2",
+    "icc_frac_M3": "M3",
+    "icc_frac_M4": "M4",
+    "icc_frac_M5": "M5",
+    "icc_frac_outer": "O1",  # "outer" lumps O+P+Q; attribute to O1 (largest)
 }
 
 
@@ -326,37 +346,27 @@ def compute_ic_vacancy_rates(
     parent_states: pl.DataFrame,
     k_edges: dict[int, float] | None = None,
 ) -> pl.DataFrame:
-    """Approximate per-(Z, A, state) IC vacancy rates (K-shell only).
+    """Compute per-(Z, A, state) IC vacancy rates, partitioned by shell.
 
-    Restricted to **the depopulating gammas of the isomer level itself** —
-    we don't propagate cascade populations through subsequent levels. This
-    is a v0.11.x simplification (see design memo §"Known gaps"):
-
-    - Avoids over-counting K vacancies when the same lower level appears in
-      many cascade paths under the isomer.
-    - Captures the dominant IC for canonical isomers when the level the
-      strata catalog matches as ``parent_ex_kev`` is the depopulating one.
-    - For ground-state EC parents, IC of post-EC daughter gammas is not
-      yet folded in (see design memo §"Known gaps", item 4).
-
-    The yield is computed as
-    ``Σ_g (intensity_g / 100) × icc_g / (1 + icc_g)``
-    over all gammas whose ``parent_level`` equals the isomer's level_idx
-    (resolved by ±1 keV match against ``photon_evap_levels``). Cascade
-    propagation (a daughter level emitting its own IC-converted gamma) is
-    intentionally skipped — that path is a v0.12 follow-up.
+    When the strata gamma table carries per-shell ICC fractions
+    (``icc_frac_K``, ``icc_frac_L1``, …), IC vacancies are distributed
+    across all contributing sub-shells. Falls back to K-shell only when
+    the per-shell columns are absent (pre-v0.12 strata data).
 
     Args:
         photon_evap_gammas: Strata's gamma table (z, a, parent_level,
-            daughter_level, gamma_energy_kev, intensity, icc_total, …).
+            daughter_level, gamma_energy_kev, intensity, icc_total,
+            icc_frac_K, icc_frac_L1..L3, icc_frac_M1..M5, icc_frac_outer).
         photon_evap_levels: Strata's level table (z, a, level_idx,
             excitation_kev, half_life_s, …).
         parent_states: DataFrame of (Z, A, state, parent_ex_kev) for the
             parents we want IC vacancies for.
 
     Returns:
-        DataFrame: (Z, A, parent_ex_kev, daughter_Z, shell='K', vacancy_rate).
+        DataFrame: (Z, A, parent_ex_kev, daughter_Z, shell, vacancy_rate).
         Daughter Z = parent Z (IC happens in same atom).
+        ``shell`` is a sub-shell label (K, L1, L2, …) when per-shell data
+        is available, or ``'K'`` as fallback.
     """
     empty_schema = {
         "Z": pl.Int32,
@@ -397,7 +407,9 @@ def compute_ic_vacancy_rates(
         .agg(pl.col("level_idx").first())
     )
 
-    gammas = photon_evap_gammas.select(
+    # Detect per-shell ICC fraction columns (present in strata >= v0.12).
+    has_per_shell_icc = "icc_frac_K" in photon_evap_gammas.columns
+    gamma_cols = [
         pl.col("z").cast(pl.Int32).alias("Z"),
         pl.col("a").cast(pl.Int32).alias("A"),
         pl.col("parent_level").alias("level_idx"),
@@ -405,10 +417,13 @@ def compute_ic_vacancy_rates(
         pl.col("gamma_energy_kev").cast(pl.Float64),
         pl.col("intensity").cast(pl.Float64),
         pl.col("icc_total").cast(pl.Float64),
-    )
+    ]
+    if has_per_shell_icc:
+        gamma_cols.extend(pl.col(c).cast(pl.Float64) for c in _ICC_FRAC_COLS if c in photon_evap_gammas.columns)
+    gammas = photon_evap_gammas.select(gamma_cols)
 
     # For each isomer parent, propagate cascade populations from the isomer
-    # level down through the gamma scheme, summing K-shell IC vacancies
+    # level down through the gamma scheme, summing per-shell IC vacancies
     # over each transition. This captures the canonical Tc-99m physics:
     # the *level-1 → ground* 140.5 keV transition (populated via the
     # 2.17 keV depopulating gamma of the isomer) is the dominant
@@ -436,33 +451,46 @@ def compute_ic_vacancy_rates(
             (pl.col("__trans_rate") / pl.col("__trans_rate").sum().over(["level_idx"])).alias("transition_frac"),
         )
 
-        v_k = 0.0
+        # Accumulate per-shell vacancies.
+        vacancies: dict[str, float] = {}  # shell_label → vacancy_rate
         for g in gammas_za.iter_rows(named=True):
             src = int(g["level_idx"])
             src_pop = populations.get(src, 0.0)
             if src_pop <= 0.0:
                 continue
-            energy = float(g["gamma_energy_kev"])
-            if k_edge is not None and energy < k_edge:
-                continue
             icc = float(g["icc_total"])
+            if icc <= 0.0:
+                continue
             t_frac = float(g["transition_frac"])
-            ic_frac = icc / (1.0 + icc) if (1.0 + icc) > 0 else 0.0
-            v_k += src_pop * t_frac * ic_frac
+            ic_frac = icc / (1.0 + icc)
+            ic_contrib = src_pop * t_frac * ic_frac
 
-        if v_k <= 0.0:
-            continue
-        # Cap at 1.0: physical bound is one K vacancy per parent decay.
-        out_rows.append(
-            {
-                "Z": z,
-                "A": a,
-                "parent_ex_kev": parent_ex_kev,
-                "daughter_Z": z,
-                "shell": "K",
-                "vacancy_rate": min(v_k, 1.0),
-            }
-        )
+            if has_per_shell_icc and g.get("icc_frac_K") is not None:
+                # Distribute IC across shells using BrIcc fractions.
+                for col, shell_label in _ICC_FRAC_COLS.items():
+                    frac = g.get(col)
+                    if frac is not None and frac > 0.0:
+                        vacancies[shell_label] = vacancies.get(shell_label, 0.0) + ic_contrib * frac
+            else:
+                # Fallback: K-only (pre-v0.12 data or missing fractions).
+                energy = float(g["gamma_energy_kev"])
+                if k_edge is not None and energy < k_edge:
+                    continue
+                vacancies["K"] = vacancies.get("K", 0.0) + ic_contrib
+
+        for shell_label, v in vacancies.items():
+            if v <= 0.0:
+                continue
+            out_rows.append(
+                {
+                    "Z": z,
+                    "A": a,
+                    "parent_ex_kev": parent_ex_kev,
+                    "daughter_Z": z,
+                    "shell": shell_label,
+                    "vacancy_rate": min(v, 1.0),
+                }
+            )
 
     if not out_rows:
         return pl.DataFrame(schema=empty_schema)
@@ -531,7 +559,11 @@ def synthesize_emissions(
         if eadl.is_empty():
             continue
 
-        vacancy_shell = _SHELL_TOTAL_TO_VACANCY.get(rec["shell"])
+        shell_input = rec["shell"]
+        # Sub-shell labels (K, L1, L2, L3, M1, …) from per-shell IC pass
+        # through directly as EADL vacancy_shell keys. Shell-letter labels
+        # (L, M, N) from EC are mapped via _SHELL_TOTAL_TO_VACANCY.
+        vacancy_shell = _SHELL_TOTAL_TO_VACANCY.get(shell_input, shell_input)
         if vacancy_shell is None:
             continue
 
@@ -866,8 +898,16 @@ def check_energy_conservation(
         .agg(pl.col("intensity_pct").sum().alias("actual_pct"))
         .rename({"parent_level_keV": "parent_ex_kev"})
     )
-    expected = vacancy_rates.with_columns((pl.col("vacancy_rate") * 100.0).alias("expected_pct")).select(
-        ["Z", "A", "parent_ex_kev", "shell", "expected_pct"]
+    # Roll up sub-shell vacancy rates (L1, L2, L3 → L) to match the
+    # shell-letter grouping used for emissions (rad_subtype first char).
+    expected = (
+        vacancy_rates.with_columns(
+            pl.col("shell").str.slice(0, 1).alias("shell_letter"),
+            (pl.col("vacancy_rate") * 100.0).alias("expected_pct"),
+        )
+        .group_by(["Z", "A", "parent_ex_kev", "shell_letter"])
+        .agg(pl.col("expected_pct").sum())
+        .rename({"shell_letter": "shell"})
     )
 
     joined = (
