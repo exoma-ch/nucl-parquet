@@ -15,6 +15,8 @@ Emission types
 - **xray** / **auger**: atomic emissions following EC or IC vacancies.  Already
   absolute in ``radiation/{Symbol}.parquet``; reformatted with parent attribution.
 - **annihilation**: 511 keV photons from β⁺ positron annihilation (2 per β⁺ decay).
+- **beta-** / **beta+**: endpoint energy per transition (Q for β⁻; Q − 1022 keV for β⁺).
+- **alpha**: kinetic energy per transition (Q × (A−4)/A recoil correction).
 
 Algorithm (gamma + CE)
 ----------------------
@@ -43,7 +45,7 @@ Filed by **parent** element symbol (Co-60 emissions live in ``Co.parquet``).
     decay_mode            Utf8      — 'beta-' | 'KshellEC' | 'IT' | 'beta+' | …
     daughter_Z            Int32     — product nucleus
     daughter_A            Int32
-    rad_type              Utf8      — 'gamma' | 'ce' | 'xray' | 'auger' | 'annihilation'
+    rad_type              Utf8      — 'gamma' | 'ce' | 'xray' | 'auger' | 'annihilation' | 'beta-' | 'beta+' | 'alpha'
     energy_keV            Float64
     intensity_pct         Float64   — absolute per-decay emission probability (0–100%)
     icc_total             Float32   — ICC (gamma/ce); NULL for xray/auger/annihilation
@@ -470,6 +472,53 @@ def build_for_parent(
                 "multipolarity": None,
                 "rad_subtype": None,
             })
+
+    # --- β⁻ / β⁺ / α endpoint emissions from decay_detailed ---
+    beta_alpha_rows = decay_detailed.filter(
+        (pl.col("Z") == parent_z)
+        & (pl.col("A") == parent_a)
+        & (pl.col("parent_ex_kev") == parent_ex_kev)
+        & pl.col("decay_mode").is_in(["beta-", "beta+", "alpha"])
+    )
+    for row in beta_alpha_rows.iter_rows(named=True):
+        mode = row["decay_mode"]
+        q = row["q_value_kev"]
+        branching = row["branching"]
+        dz, da = row["daughter_Z"], row["daughter_A"]
+        if dz is None or da is None or q is None or branching <= 0:
+            continue
+
+        if mode == "beta-":
+            # β⁻ endpoint = Q (already accounts for daughter excitation)
+            energy = q
+            rad_type = "beta-"
+        elif mode == "beta+":
+            # β⁺ endpoint = Q - 2×m_e c² (1022 keV)
+            energy = q - 1022.0
+            if energy <= 0:
+                continue  # energetically forbidden for β⁺ (EC only)
+            rad_type = "beta+"
+        else:  # alpha
+            # α kinetic energy = Q × (A-4)/A (recoil correction)
+            energy = q * (parent_a - 4) / parent_a
+            rad_type = "alpha"
+
+        rows.append({
+            "parent_Z": parent_z,
+            "parent_A": parent_a,
+            "parent_state": parent_state,
+            "decay_mode": mode,
+            "daughter_Z": dz,
+            "daughter_A": da,
+            "rad_type": rad_type,
+            "energy_keV": energy,
+            "intensity_pct": branching * 100.0,
+            "icc_total": None,
+            "parent_level_keV": None,
+            "daughter_level_keV": row["daughter_ex_kev"],
+            "multipolarity": None,
+            "rad_subtype": None,
+        })
 
     if not rows:
         return _empty_output()

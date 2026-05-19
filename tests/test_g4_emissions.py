@@ -428,3 +428,54 @@ class TestNa22:
         ann = na22.filter(pl.col("rad_type") == "annihilation")
         assert ann.height == 1
         assert ann["intensity_pct"][0] == pytest.approx(179.79, rel=0.01)
+
+    def test_beta_plus_endpoint(self, na22: pl.DataFrame):
+        """Na-22 β⁺ endpoint: NuDat = 545.7 keV, 90.3%."""
+        bp = na22.filter(pl.col("rad_type") == "beta+")
+        main = bp.sort("intensity_pct", descending=True).row(0, named=True)
+        assert main["energy_keV"] == pytest.approx(546.8, rel=0.005)
+        assert main["intensity_pct"] == pytest.approx(89.9, rel=0.01)
+
+
+@pytest.mark.data
+class TestCo60Beta:
+    """Co-60 β⁻ endpoint validation."""
+
+    @pytest.fixture
+    def co60(self) -> pl.DataFrame:
+        path = _EMISSIONS_DIR / "Co.parquet"
+        if not path.exists():
+            pytest.skip("emissions data not built")
+        df = pl.read_parquet(path)
+        return df.filter(
+            (pl.col("parent_A") == 60) & (pl.col("parent_state") == "")
+        )
+
+    def test_beta_minus_endpoint(self, co60: pl.DataFrame):
+        """Co-60 β⁻ main: endpoint 317 keV, 99.88%."""
+        bm = co60.filter(pl.col("rad_type") == "beta-")
+        main = bm.sort("intensity_pct", descending=True).row(0, named=True)
+        assert main["energy_keV"] == pytest.approx(317.0, rel=0.005)
+        assert main["intensity_pct"] == pytest.approx(99.88, rel=0.005)
+
+
+@pytest.mark.data
+class TestRa226Alpha:
+    """Ra-226 α validation."""
+
+    @pytest.fixture
+    def ra226(self) -> pl.DataFrame:
+        path = _EMISSIONS_DIR / "Ra.parquet"
+        if not path.exists():
+            pytest.skip("emissions data not built")
+        df = pl.read_parquet(path)
+        return df.filter(
+            (pl.col("parent_A") == 226) & (pl.col("parent_state") == "")
+        )
+
+    def test_alpha_energy(self, ra226: pl.DataFrame):
+        """Ra-226 α: NuDat = 4784.3 keV, 94.45%."""
+        alpha = ra226.filter(pl.col("rad_type") == "alpha")
+        main = alpha.sort("intensity_pct", descending=True).row(0, named=True)
+        assert main["energy_keV"] == pytest.approx(4784.3, rel=0.001)
+        assert main["intensity_pct"] == pytest.approx(94.45, rel=0.01)
