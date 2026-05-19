@@ -16,7 +16,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from nucl_parquet.g4.summing_partners import build_for_element, _OUTPUT_COLUMNS
+from nucl_parquet.g4.summing_partners import _OUTPUT_COLUMNS, build_for_element
 
 _REPO_ROOT = Path(__file__).parent.parent
 _SP_DIR = _REPO_ROOT / "data" / "meta" / "ensdf" / "summing_partners"
@@ -68,14 +68,29 @@ class TestIccCorrection:
 
     def test_both_zero(self):
         """No ICC → correction factor = 1.0."""
-        coinc = _make_coinc_gg([{
-            "Z": 28, "A": 60, "gamma1_energy_keV": 100.0, "gamma2_energy_keV": 200.0,
-            "gamma1_intensity": 100.0, "gamma2_intensity": 100.0,
-            "parent_level_keV": 300.0, "intermediate_level_keV": 200.0, "final_level_keV": 0.0,
-            "pair_intensity": 100.0, "gamma1_icc_total": 0.0, "gamma2_icc_total": 0.0,
-            "parent_state": "", "emission1_rad_type": "gamma", "emission2_rad_type": "gamma",
-            "emission1_energy_keV": 100.0, "emission2_energy_keV": 200.0,
-        }])
+        coinc = _make_coinc_gg(
+            [
+                {
+                    "Z": 28,
+                    "A": 60,
+                    "gamma1_energy_keV": 100.0,
+                    "gamma2_energy_keV": 200.0,
+                    "gamma1_intensity": 100.0,
+                    "gamma2_intensity": 100.0,
+                    "parent_level_keV": 300.0,
+                    "intermediate_level_keV": 200.0,
+                    "final_level_keV": 0.0,
+                    "pair_intensity": 100.0,
+                    "gamma1_icc_total": 0.0,
+                    "gamma2_icc_total": 0.0,
+                    "parent_state": "",
+                    "emission1_rad_type": "gamma",
+                    "emission2_rad_type": "gamma",
+                    "emission1_energy_keV": 100.0,
+                    "emission2_energy_keV": 200.0,
+                }
+            ]
+        )
         result = build_for_element(coinc)
         assert result.height == 1
         row = result.row(0, named=True)
@@ -83,14 +98,29 @@ class TestIccCorrection:
 
     def test_significant_icc(self):
         """α₁=0.1, α₂=0.2 → correction = 1/((1.1)×(1.2)) ≈ 0.7576."""
-        coinc = _make_coinc_gg([{
-            "Z": 28, "A": 60, "gamma1_energy_keV": 100.0, "gamma2_energy_keV": 200.0,
-            "gamma1_intensity": 100.0, "gamma2_intensity": 100.0,
-            "parent_level_keV": 300.0, "intermediate_level_keV": 200.0, "final_level_keV": 0.0,
-            "pair_intensity": 100.0, "gamma1_icc_total": 0.1, "gamma2_icc_total": 0.2,
-            "parent_state": "", "emission1_rad_type": "gamma", "emission2_rad_type": "gamma",
-            "emission1_energy_keV": 100.0, "emission2_energy_keV": 200.0,
-        }])
+        coinc = _make_coinc_gg(
+            [
+                {
+                    "Z": 28,
+                    "A": 60,
+                    "gamma1_energy_keV": 100.0,
+                    "gamma2_energy_keV": 200.0,
+                    "gamma1_intensity": 100.0,
+                    "gamma2_intensity": 100.0,
+                    "parent_level_keV": 300.0,
+                    "intermediate_level_keV": 200.0,
+                    "final_level_keV": 0.0,
+                    "pair_intensity": 100.0,
+                    "gamma1_icc_total": 0.1,
+                    "gamma2_icc_total": 0.2,
+                    "parent_state": "",
+                    "emission1_rad_type": "gamma",
+                    "emission2_rad_type": "gamma",
+                    "emission1_energy_keV": 100.0,
+                    "emission2_energy_keV": 200.0,
+                }
+            ]
+        )
         result = build_for_element(coinc)
         row = result.row(0, named=True)
         expected = 1.0 / (1.1 * 1.2)
@@ -99,14 +129,29 @@ class TestIccCorrection:
 
     def test_null_icc_treated_as_zero(self):
         """NULL ICC → coalesced to 0 → correction = 1.0."""
-        coinc = _make_coinc_gg([{
-            "Z": 28, "A": 60, "gamma1_energy_keV": 100.0, "gamma2_energy_keV": 200.0,
-            "gamma1_intensity": 100.0, "gamma2_intensity": 100.0,
-            "parent_level_keV": 300.0, "intermediate_level_keV": 200.0, "final_level_keV": 0.0,
-            "pair_intensity": 100.0, "gamma1_icc_total": None, "gamma2_icc_total": None,
-            "parent_state": "", "emission1_rad_type": "gamma", "emission2_rad_type": "gamma",
-            "emission1_energy_keV": 100.0, "emission2_energy_keV": 200.0,
-        }])
+        coinc = _make_coinc_gg(
+            [
+                {
+                    "Z": 28,
+                    "A": 60,
+                    "gamma1_energy_keV": 100.0,
+                    "gamma2_energy_keV": 200.0,
+                    "gamma1_intensity": 100.0,
+                    "gamma2_intensity": 100.0,
+                    "parent_level_keV": 300.0,
+                    "intermediate_level_keV": 200.0,
+                    "final_level_keV": 0.0,
+                    "pair_intensity": 100.0,
+                    "gamma1_icc_total": None,
+                    "gamma2_icc_total": None,
+                    "parent_state": "",
+                    "emission1_rad_type": "gamma",
+                    "emission2_rad_type": "gamma",
+                    "emission1_energy_keV": 100.0,
+                    "emission2_energy_keV": 200.0,
+                }
+            ]
+        )
         result = build_for_element(coinc)
         row = result.row(0, named=True)
         assert abs(row["icc_correction_factor"] - 1.0) < 1e-5
@@ -117,24 +162,48 @@ class TestCanonicalization:
 
     def test_symmetric_pair_deduped(self):
         """Two rows (E1=100,E2=200) and (E1=200,E2=100) → one output row."""
-        coinc = _make_coinc_gg([
-            {
-                "Z": 28, "A": 60, "gamma1_energy_keV": 100.0, "gamma2_energy_keV": 200.0,
-                "gamma1_intensity": 100.0, "gamma2_intensity": 50.0,
-                "parent_level_keV": 300.0, "intermediate_level_keV": 200.0, "final_level_keV": 0.0,
-                "pair_intensity": 50.0, "gamma1_icc_total": 0.0, "gamma2_icc_total": 0.0,
-                "parent_state": "", "emission1_rad_type": "gamma", "emission2_rad_type": "gamma",
-                "emission1_energy_keV": 100.0, "emission2_energy_keV": 200.0,
-            },
-            {
-                "Z": 28, "A": 60, "gamma1_energy_keV": 200.0, "gamma2_energy_keV": 100.0,
-                "gamma1_intensity": 50.0, "gamma2_intensity": 100.0,
-                "parent_level_keV": 300.0, "intermediate_level_keV": 200.0, "final_level_keV": 0.0,
-                "pair_intensity": 50.0, "gamma1_icc_total": 0.0, "gamma2_icc_total": 0.0,
-                "parent_state": "", "emission1_rad_type": "gamma", "emission2_rad_type": "gamma",
-                "emission1_energy_keV": 200.0, "emission2_energy_keV": 100.0,
-            },
-        ])
+        coinc = _make_coinc_gg(
+            [
+                {
+                    "Z": 28,
+                    "A": 60,
+                    "gamma1_energy_keV": 100.0,
+                    "gamma2_energy_keV": 200.0,
+                    "gamma1_intensity": 100.0,
+                    "gamma2_intensity": 50.0,
+                    "parent_level_keV": 300.0,
+                    "intermediate_level_keV": 200.0,
+                    "final_level_keV": 0.0,
+                    "pair_intensity": 50.0,
+                    "gamma1_icc_total": 0.0,
+                    "gamma2_icc_total": 0.0,
+                    "parent_state": "",
+                    "emission1_rad_type": "gamma",
+                    "emission2_rad_type": "gamma",
+                    "emission1_energy_keV": 100.0,
+                    "emission2_energy_keV": 200.0,
+                },
+                {
+                    "Z": 28,
+                    "A": 60,
+                    "gamma1_energy_keV": 200.0,
+                    "gamma2_energy_keV": 100.0,
+                    "gamma1_intensity": 50.0,
+                    "gamma2_intensity": 100.0,
+                    "parent_level_keV": 300.0,
+                    "intermediate_level_keV": 200.0,
+                    "final_level_keV": 0.0,
+                    "pair_intensity": 50.0,
+                    "gamma1_icc_total": 0.0,
+                    "gamma2_icc_total": 0.0,
+                    "parent_state": "",
+                    "emission1_rad_type": "gamma",
+                    "emission2_rad_type": "gamma",
+                    "emission1_energy_keV": 200.0,
+                    "emission2_energy_keV": 100.0,
+                },
+            ]
+        )
         result = build_for_element(coinc)
         assert result.height == 1
         row = result.row(0, named=True)
@@ -146,16 +215,33 @@ class TestMixedPairs:
 
     def test_xray_gamma_icc(self):
         """X-ray side has no ICC; gamma side α=0.1 → correction = 1/1.1."""
-        coinc = _make_coinc_gg([{
-            "Z": 62, "A": 152, "gamma1_energy_keV": None, "gamma2_energy_keV": None,
-            "gamma1_intensity": None, "gamma2_intensity": None,
-            "parent_level_keV": 344.0, "intermediate_level_keV": None, "final_level_keV": None,
-            "pair_intensity": 10.0, "gamma1_icc_total": None, "gamma2_icc_total": 0.1,
-            "parent_state": "", "parent_decay_mode": "KshellEC",
-            "emission1_rad_type": "xray", "emission2_rad_type": "gamma",
-            "emission1_energy_keV": 40.0, "emission1_intensity": 5.0, "emission1_shell": "K",
-            "emission2_energy_keV": 344.0, "emission2_intensity": 100.0,
-        }])
+        coinc = _make_coinc_gg(
+            [
+                {
+                    "Z": 62,
+                    "A": 152,
+                    "gamma1_energy_keV": None,
+                    "gamma2_energy_keV": None,
+                    "gamma1_intensity": None,
+                    "gamma2_intensity": None,
+                    "parent_level_keV": 344.0,
+                    "intermediate_level_keV": None,
+                    "final_level_keV": None,
+                    "pair_intensity": 10.0,
+                    "gamma1_icc_total": None,
+                    "gamma2_icc_total": 0.1,
+                    "parent_state": "",
+                    "parent_decay_mode": "KshellEC",
+                    "emission1_rad_type": "xray",
+                    "emission2_rad_type": "gamma",
+                    "emission1_energy_keV": 40.0,
+                    "emission1_intensity": 5.0,
+                    "emission1_shell": "K",
+                    "emission2_energy_keV": 344.0,
+                    "emission2_intensity": 100.0,
+                }
+            ]
+        )
         result = build_for_element(coinc)
         assert result.height == 1
         row = result.row(0, named=True)
@@ -169,14 +255,29 @@ class TestOutputSchema:
     """Output has all required columns in the right order."""
 
     def test_column_names(self):
-        coinc = _make_coinc_gg([{
-            "Z": 28, "A": 60, "gamma1_energy_keV": 100.0, "gamma2_energy_keV": 200.0,
-            "gamma1_intensity": 100.0, "gamma2_intensity": 100.0,
-            "parent_level_keV": 300.0, "intermediate_level_keV": 200.0, "final_level_keV": 0.0,
-            "pair_intensity": 100.0, "gamma1_icc_total": 0.0, "gamma2_icc_total": 0.0,
-            "parent_state": "", "emission1_rad_type": "gamma", "emission2_rad_type": "gamma",
-            "emission1_energy_keV": 100.0, "emission2_energy_keV": 200.0,
-        }])
+        coinc = _make_coinc_gg(
+            [
+                {
+                    "Z": 28,
+                    "A": 60,
+                    "gamma1_energy_keV": 100.0,
+                    "gamma2_energy_keV": 200.0,
+                    "gamma1_intensity": 100.0,
+                    "gamma2_intensity": 100.0,
+                    "parent_level_keV": 300.0,
+                    "intermediate_level_keV": 200.0,
+                    "final_level_keV": 0.0,
+                    "pair_intensity": 100.0,
+                    "gamma1_icc_total": 0.0,
+                    "gamma2_icc_total": 0.0,
+                    "parent_state": "",
+                    "emission1_rad_type": "gamma",
+                    "emission2_rad_type": "gamma",
+                    "emission1_energy_keV": 100.0,
+                    "emission2_energy_keV": 200.0,
+                }
+            ]
+        )
         result = build_for_element(coinc)
         assert result.columns == _OUTPUT_COLUMNS
 
@@ -190,10 +291,7 @@ class TestCo60:
 
     def test_pair_exists(self):
         ni = pl.read_parquet(_SP_DIR / "Ni.parquet")
-        co60 = ni.filter(
-            (pl.col("A") == 60)
-            & (pl.col("emission1_rad_type") == "gamma")
-        )
+        co60 = ni.filter((pl.col("A") == 60) & (pl.col("emission1_rad_type") == "gamma"))
         pair = co60.filter(
             ((pl.col("emission1_energy_keV") - 1173.2).abs() < 1.0)
             & ((pl.col("emission2_energy_keV") - 1332.5).abs() < 1.0)
@@ -244,10 +342,7 @@ class TestEu152:
     def test_mixed_pairs_exist(self):
         """Eu-152 EC decay → Sm-152: X-ray ⊗ γ pairs should exist."""
         sm = pl.read_parquet(_SP_DIR / "Sm.parquet")
-        mixed = sm.filter(
-            (pl.col("A") == 152)
-            & (pl.col("emission1_rad_type") != "gamma")
-        )
+        mixed = sm.filter((pl.col("A") == 152) & (pl.col("emission1_rad_type") != "gamma"))
         assert mixed.height > 0, "Eu-152 → Sm-152 should have X-ray/Auger ⊗ γ pairs"
 
 

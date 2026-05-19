@@ -419,10 +419,7 @@ def compute_ic_vacancy_rates(
         pl.col("icc_total").cast(pl.Float64),
     ]
     if has_per_shell_icc:
-        gamma_cols.extend(
-            pl.col(c).cast(pl.Float64) for c in _ICC_FRAC_COLS
-            if c in photon_evap_gammas.columns
-        )
+        gamma_cols.extend(pl.col(c).cast(pl.Float64) for c in _ICC_FRAC_COLS if c in photon_evap_gammas.columns)
     gammas = photon_evap_gammas.select(gamma_cols)
 
     # For each isomer parent, propagate cascade populations from the isomer

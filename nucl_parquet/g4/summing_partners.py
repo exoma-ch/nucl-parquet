@@ -93,10 +93,7 @@ _OUTPUT_COLUMNS = [
 
 def _build_gamma_gamma(coinc: pl.DataFrame) -> pl.DataFrame:
     """Extract γ-γ pairs, canonicalize (E1 ≤ E2), compute ICC correction."""
-    gg = coinc.filter(
-        (pl.col("emission1_rad_type") == "gamma")
-        & (pl.col("emission2_rad_type") == "gamma")
-    )
+    gg = coinc.filter((pl.col("emission1_rad_type") == "gamma") & (pl.col("emission2_rad_type") == "gamma"))
     if gg.is_empty():
         return _empty_output()
 
@@ -172,8 +169,7 @@ def _build_gamma_gamma(coinc: pl.DataFrame) -> pl.DataFrame:
 def _build_mixed(coinc: pl.DataFrame) -> pl.DataFrame:
     """Extract X-ray/Auger ⊗ γ pairs, compute ICC correction (gamma side only)."""
     mixed = coinc.filter(
-        pl.col("emission1_rad_type").is_in(["xray", "auger"])
-        & (pl.col("emission2_rad_type") == "gamma")
+        pl.col("emission1_rad_type").is_in(["xray", "auger"]) & (pl.col("emission2_rad_type") == "gamma")
     )
     if mixed.is_empty():
         return _empty_output()

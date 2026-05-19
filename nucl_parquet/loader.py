@@ -730,11 +730,10 @@ def summing_partners(
     params: list[object] = [int(z), int(a), parent_state]
 
     if primary_energy_keV is not None:
-        where.append(
-            "(ABS(s.emission1_energy_keV - ?) < ? OR ABS(s.emission2_energy_keV - ?) < ?)"
+        where.append("(ABS(s.emission1_energy_keV - ?) < ? OR ABS(s.emission2_energy_keV - ?) < ?)")
+        params.extend(
+            [float(primary_energy_keV), float(tolerance_keV), float(primary_energy_keV), float(tolerance_keV)]
         )
-        params.extend([float(primary_energy_keV), float(tolerance_keV),
-                        float(primary_energy_keV), float(tolerance_keV)])
 
     if emission1_rad_type is not None:
         where.append("s.emission1_rad_type = ?")

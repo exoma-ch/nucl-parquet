@@ -294,11 +294,22 @@ def transform(
         # Per-shell ICC fractions (BrIcc-precomputed in PhotonEvaporation6.1.2).
         # Nullable Float32; present when icc_total > 0. Consumed by xray_auger.py
         # to partition IC vacancies across atomic shells (#193).
-        *[pl.col(c).cast(pl.Float32) for c in [
-            "icc_frac_K", "icc_frac_L1", "icc_frac_L2", "icc_frac_L3",
-            "icc_frac_M1", "icc_frac_M2", "icc_frac_M3", "icc_frac_M4",
-            "icc_frac_M5", "icc_frac_outer",
-        ] if c in with_state.columns],
+        *[
+            pl.col(c).cast(pl.Float32)
+            for c in [
+                "icc_frac_K",
+                "icc_frac_L1",
+                "icc_frac_L2",
+                "icc_frac_L3",
+                "icc_frac_M1",
+                "icc_frac_M2",
+                "icc_frac_M3",
+                "icc_frac_M4",
+                "icc_frac_M5",
+                "icc_frac_outer",
+            ]
+            if c in with_state.columns
+        ],
     ).sort(["Z", "A", "parent_level_keV", "energy_keV"])
 
 

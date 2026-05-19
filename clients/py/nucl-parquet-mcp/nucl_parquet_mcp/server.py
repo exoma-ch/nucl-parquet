@@ -379,9 +379,7 @@ async def get_summing_partners(
     conditions = ["Z = $z", "A = $a"]
     params: dict[str, Any] = {"z": z, "a": a}
     if primary_energy_keV is not None:
-        conditions.append(
-            "(ABS(emission1_energy_keV - $energy) < $tol OR ABS(emission2_energy_keV - $energy) < $tol)"
-        )
+        conditions.append("(ABS(emission1_energy_keV - $energy) < $tol OR ABS(emission2_energy_keV - $energy) < $tol)")
         params["energy"] = primary_energy_keV
         params["tol"] = tolerance_keV
     if emission1_rad_type is not None:

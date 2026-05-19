@@ -555,9 +555,7 @@ class TestSpotChecks:
         fractions (icc_frac_K=0, icc_frac_L1..L3 large) must produce L
         X-ray lines. Before #193, all IC was attributed to K-shell and
         L X-rays were completely absent."""
-        au = emissions.filter(
-            (pl.col("Z") == 79) & (pl.col("A") == 197) & (pl.col("rad_type") == "xray")
-        )
+        au = emissions.filter((pl.col("Z") == 79) & (pl.col("A") == 197) & (pl.col("rad_type") == "xray"))
         l_xrays = au.filter(pl.col("rad_subtype").str.starts_with("L"))
         l_total = l_xrays["intensity_pct"].sum()
         # L X-rays must be present and substantial (α_L >> α_K for 130 keV M4).
@@ -565,8 +563,7 @@ class TestSpotChecks:
         # be comparable to K (~20-75% depending on state-assignment filtering).
         assert l_total > 0.0, "Au-197m L X-rays absent — per-shell ICC not wired"
         assert l_total > 10.0, (
-            f"Au-197m L X-ray total ({l_total:.1f}%) too low — "
-            f"per-shell ICC fractions may not be propagating"
+            f"Au-197m L X-ray total ({l_total:.1f}%) too low — per-shell ICC fractions may not be propagating"
         )
         # Lα1 at ~9.7 keV should be one of the top lines.
         la1 = au.filter(pl.col("rad_subtype") == "Lα1")
