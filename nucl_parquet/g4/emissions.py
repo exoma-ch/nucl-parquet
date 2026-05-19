@@ -119,27 +119,27 @@ def _empty_output() -> pl.DataFrame:
 
 
 def _build_cascade_map(
-    rad_df: pl.DataFrame, daughter_z: int, daughter_a: int,
+    rad_df: pl.DataFrame,
+    daughter_z: int,
+    daughter_a: int,
 ) -> dict[float, list[dict]]:
     """Build per-level gamma transition list for a specific daughter isotope.
 
     Returns mapping: parent_level_keV → [{daughter_level, energy, intensity_pct,
     icc_total, multipolarity}, …].
     """
-    gammas = rad_df.filter(
-        (pl.col("Z") == daughter_z)
-        & (pl.col("A") == daughter_a)
-        & (pl.col("rad_type") == "gamma")
-    )
+    gammas = rad_df.filter((pl.col("Z") == daughter_z) & (pl.col("A") == daughter_a) & (pl.col("rad_type") == "gamma"))
     cascade: dict[float, list[dict]] = defaultdict(list)
     for row in gammas.iter_rows(named=True):
-        cascade[row["parent_level_keV"]].append({
-            "daughter_level": row["daughter_level_keV"],
-            "energy": row["energy_keV"],
-            "intensity_pct": row["intensity_pct"],
-            "icc_total": row["icc_total"] if row["icc_total"] is not None else 0.0,
-            "multipolarity": row.get("multipolarity"),
-        })
+        cascade[row["parent_level_keV"]].append(
+            {
+                "daughter_level": row["daughter_level_keV"],
+                "energy": row["energy_keV"],
+                "intensity_pct": row["intensity_pct"],
+                "icc_total": row["icc_total"] if row["icc_total"] is not None else 0.0,
+                "multipolarity": row.get("multipolarity"),
+            }
+        )
     return dict(cascade)
 
 
@@ -180,9 +180,7 @@ def compute_absolute_intensities(
 
         gammas = cascade[lev]
         # Total transition rate = Σ(photon_intensity × (1 + ICC))
-        total_transition = sum(
-            g["intensity_pct"] * (1.0 + g["icc_total"]) for g in gammas
-        )
+        total_transition = sum(g["intensity_pct"] * (1.0 + g["icc_total"]) for g in gammas)
         if total_transition == 0:
             continue
 
@@ -199,46 +197,50 @@ def compute_absolute_intensities(
             population[daughter] += pop * branch_frac
 
             if abs_photon_pct >= min_intensity_pct:
-                results.append({
-                    "rad_type": "gamma",
-                    "energy": g["energy"],
-                    "parent_level": lev,
-                    "daughter_level": g["daughter_level"],
-                    "intensity_pct": abs_photon_pct,
-                    "icc_total": g["icc_total"],
-                    "multipolarity": g["multipolarity"],
-                })
+                results.append(
+                    {
+                        "rad_type": "gamma",
+                        "energy": g["energy"],
+                        "parent_level": lev,
+                        "daughter_level": g["daughter_level"],
+                        "intensity_pct": abs_photon_pct,
+                        "icc_total": g["icc_total"],
+                        "multipolarity": g["multipolarity"],
+                    }
+                )
 
             # Conversion electron: complementary fraction ICC/(1+ICC)
             icc = g["icc_total"]
             if icc > 0:
                 abs_ce_pct = abs_photon_pct * icc
                 if abs_ce_pct >= min_intensity_pct:
-                    results.append({
-                        "rad_type": "ce",
-                        "energy": g["energy"],  # transition energy (≈ CE KE + binding)
-                        "parent_level": lev,
-                        "daughter_level": g["daughter_level"],
-                        "intensity_pct": abs_ce_pct,
-                        "icc_total": icc,
-                        "multipolarity": g["multipolarity"],
-                    })
+                    results.append(
+                        {
+                            "rad_type": "ce",
+                            "energy": g["energy"],  # transition energy (≈ CE KE + binding)
+                            "parent_level": lev,
+                            "daughter_level": g["daughter_level"],
+                            "intensity_pct": abs_ce_pct,
+                            "icc_total": icc,
+                            "multipolarity": g["multipolarity"],
+                        }
+                    )
 
     return results
 
 
 def _build_feeding_from_detailed(
     decay_detailed: pl.DataFrame,
-    parent_z: int, parent_a: int, parent_ex_kev: float,
+    parent_z: int,
+    parent_a: int,
+    parent_ex_kev: float,
 ) -> dict[tuple[int, int], dict[str, dict[float, float]]]:
     """Build per-daughter, per-decay-mode feeding maps from decay_detailed.
 
     Returns mapping: (daughter_Z, daughter_A) → {decay_mode → {level_keV → branching}}.
     """
     rows = decay_detailed.filter(
-        (pl.col("Z") == parent_z)
-        & (pl.col("A") == parent_a)
-        & (pl.col("parent_ex_kev") == parent_ex_kev)
+        (pl.col("Z") == parent_z) & (pl.col("A") == parent_a) & (pl.col("parent_ex_kev") == parent_ex_kev)
     )
     result: dict[tuple[int, int], dict[str, dict[float, float]]] = defaultdict(
         lambda: defaultdict(lambda: defaultdict(float))
@@ -256,7 +258,9 @@ def _build_feeding_from_detailed(
 def _build_feeding_from_it(
     decay_summary: pl.DataFrame,
     nuclides: pl.DataFrame,
-    parent_z: int, parent_a: int, parent_state: str,
+    parent_z: int,
+    parent_a: int,
+    parent_state: str,
 ) -> dict[str, dict[float, float]] | None:
     """Build feeding map for IT (isomeric transition) decay.
 
@@ -273,15 +277,13 @@ def _build_feeding_from_it(
         return None
 
     # Look up the isomeric level energy
-    nuc = nuclides.filter(
-        (pl.col("Z") == parent_z)
-        & (pl.col("A") == parent_a)
-        & (pl.col("state") == parent_state)
-    )
+    nuc = nuclides.filter((pl.col("Z") == parent_z) & (pl.col("A") == parent_a) & (pl.col("state") == parent_state))
     if nuc.is_empty():
         logger.warning(
             "IT decay for Z=%d A=%d state=%s but no nuclide catalog entry",
-            parent_z, parent_a, parent_state,
+            parent_z,
+            parent_a,
+            parent_state,
         )
         return None
 
@@ -313,22 +315,24 @@ def _collect_atomic_rows(
         & (pl.col("decay_mode") == rad_decay_mode)
     )
     for row in atomic.iter_rows(named=True):
-        rows.append({
-            "parent_Z": parent_z,
-            "parent_A": parent_a,
-            "parent_state": parent_state,
-            "decay_mode": emit_decay_mode,
-            "daughter_Z": daughter_z,
-            "daughter_A": daughter_a,
-            "rad_type": row["rad_type"],
-            "energy_keV": row["energy_keV"],
-            "intensity_pct": row["intensity_pct"],
-            "icc_total": None,
-            "parent_level_keV": None,
-            "daughter_level_keV": None,
-            "multipolarity": None,
-            "rad_subtype": row.get("rad_subtype"),
-        })
+        rows.append(
+            {
+                "parent_Z": parent_z,
+                "parent_A": parent_a,
+                "parent_state": parent_state,
+                "decay_mode": emit_decay_mode,
+                "daughter_Z": daughter_z,
+                "daughter_A": daughter_a,
+                "rad_type": row["rad_type"],
+                "energy_keV": row["energy_keV"],
+                "intensity_pct": row["intensity_pct"],
+                "icc_total": None,
+                "parent_level_keV": None,
+                "daughter_level_keV": None,
+                "multipolarity": None,
+                "rad_subtype": row.get("rad_subtype"),
+            }
+        )
 
 
 def build_for_parent(
@@ -351,11 +355,7 @@ def build_for_parent(
     if parent_state == "":
         parent_ex_kev = 0.0
     else:
-        nuc = nuclides.filter(
-            (pl.col("Z") == parent_z)
-            & (pl.col("A") == parent_a)
-            & (pl.col("state") == parent_state)
-        )
+        nuc = nuclides.filter((pl.col("Z") == parent_z) & (pl.col("A") == parent_a) & (pl.col("state") == parent_state))
         if nuc.is_empty():
             return _empty_output()
         parent_ex_kev = nuc["level_keV"][0]
@@ -368,7 +368,10 @@ def build_for_parent(
 
     # From decay_detailed (β⁻, EC, α, etc.)
     detailed = _build_feeding_from_detailed(
-        decay_detailed, parent_z, parent_a, parent_ex_kev,
+        decay_detailed,
+        parent_z,
+        parent_a,
+        parent_ex_kev,
     )
     for key, modes in detailed.items():
         for mode, levels in modes.items():
@@ -377,7 +380,11 @@ def build_for_parent(
 
     # From IT (only in decay.parquet summary)
     it_feeding = _build_feeding_from_it(
-        decay_summary, nuclides, parent_z, parent_a, parent_state,
+        decay_summary,
+        nuclides,
+        parent_z,
+        parent_a,
+        parent_state,
     )
     if it_feeding is not None:
         # IT daughter is same nuclide
@@ -402,22 +409,24 @@ def build_for_parent(
         for mode, feeding_map in modes.items():
             emissions = compute_absolute_intensities(dict(feeding_map), cascade)
             for g in emissions:
-                rows.append({
-                    "parent_Z": parent_z,
-                    "parent_A": parent_a,
-                    "parent_state": parent_state,
-                    "decay_mode": mode,
-                    "daughter_Z": daughter_z,
-                    "daughter_A": daughter_a,
-                    "rad_type": g["rad_type"],
-                    "energy_keV": g["energy"],
-                    "intensity_pct": g["intensity_pct"],
-                    "icc_total": g["icc_total"],
-                    "parent_level_keV": g["parent_level"],
-                    "daughter_level_keV": g["daughter_level"],
-                    "multipolarity": g["multipolarity"],
-                    "rad_subtype": None,
-                })
+                rows.append(
+                    {
+                        "parent_Z": parent_z,
+                        "parent_A": parent_a,
+                        "parent_state": parent_state,
+                        "decay_mode": mode,
+                        "daughter_Z": daughter_z,
+                        "daughter_A": daughter_a,
+                        "rad_type": g["rad_type"],
+                        "energy_keV": g["energy"],
+                        "intensity_pct": g["intensity_pct"],
+                        "icc_total": g["icc_total"],
+                        "parent_level_keV": g["parent_level"],
+                        "daughter_level_keV": g["daughter_level"],
+                        "multipolarity": g["multipolarity"],
+                        "rad_subtype": None,
+                    }
+                )
 
     # --- X-ray / Auger from radiation/ (already absolute) ---
     # EC x-rays/augers are filed under the PARENT element (Z = parent_Z) because
@@ -432,14 +441,28 @@ def build_for_parent(
         if has_ec:
             # EC x-rays: filed under parent element, A = parent_A, decay_mode='EC'
             _collect_atomic_rows(
-                rows, parent_rad_df, parent_z, parent_a, "EC",
-                parent_z, parent_a, parent_state, "EC",
+                rows,
+                parent_rad_df,
+                parent_z,
+                parent_a,
+                "EC",
+                parent_z,
+                parent_a,
+                parent_state,
+                "EC",
             )
         if has_it:
             # IT x-rays: filed under parent element (same Z), decay_mode='IT'
             _collect_atomic_rows(
-                rows, parent_rad_df, parent_z, parent_a, "IT",
-                parent_z, parent_a, parent_state, "IT",
+                rows,
+                parent_rad_df,
+                parent_z,
+                parent_a,
+                "IT",
+                parent_z,
+                parent_a,
+                parent_state,
+                "IT",
             )
 
     # --- 511 keV annihilation from β⁺ ---
@@ -456,22 +479,24 @@ def build_for_parent(
             ann_pct = 2.0 * bp_branching * 100.0
             daughter_z = beta_plus_rows["daughter_Z"][0]
             daughter_a = beta_plus_rows["daughter_A"][0]
-            rows.append({
-                "parent_Z": parent_z,
-                "parent_A": parent_a,
-                "parent_state": parent_state,
-                "decay_mode": "beta+",
-                "daughter_Z": daughter_z,
-                "daughter_A": daughter_a,
-                "rad_type": "annihilation",
-                "energy_keV": 511.0,
-                "intensity_pct": ann_pct,
-                "icc_total": None,
-                "parent_level_keV": None,
-                "daughter_level_keV": None,
-                "multipolarity": None,
-                "rad_subtype": None,
-            })
+            rows.append(
+                {
+                    "parent_Z": parent_z,
+                    "parent_A": parent_a,
+                    "parent_state": parent_state,
+                    "decay_mode": "beta+",
+                    "daughter_Z": daughter_z,
+                    "daughter_A": daughter_a,
+                    "rad_type": "annihilation",
+                    "energy_keV": 511.0,
+                    "intensity_pct": ann_pct,
+                    "icc_total": None,
+                    "parent_level_keV": None,
+                    "daughter_level_keV": None,
+                    "multipolarity": None,
+                    "rad_subtype": None,
+                }
+            )
 
     # --- β⁻ / β⁺ / α endpoint emissions from decay_detailed ---
     beta_alpha_rows = decay_detailed.filter(
@@ -503,22 +528,24 @@ def build_for_parent(
             energy = q * (parent_a - 4) / parent_a
             rad_type = "alpha"
 
-        rows.append({
-            "parent_Z": parent_z,
-            "parent_A": parent_a,
-            "parent_state": parent_state,
-            "decay_mode": mode,
-            "daughter_Z": dz,
-            "daughter_A": da,
-            "rad_type": rad_type,
-            "energy_keV": energy,
-            "intensity_pct": branching * 100.0,
-            "icc_total": None,
-            "parent_level_keV": None,
-            "daughter_level_keV": row["daughter_ex_kev"],
-            "multipolarity": None,
-            "rad_subtype": None,
-        })
+        rows.append(
+            {
+                "parent_Z": parent_z,
+                "parent_A": parent_a,
+                "parent_state": parent_state,
+                "decay_mode": mode,
+                "daughter_Z": dz,
+                "daughter_A": da,
+                "rad_type": rad_type,
+                "energy_keV": energy,
+                "intensity_pct": branching * 100.0,
+                "icc_total": None,
+                "parent_level_keV": None,
+                "daughter_level_keV": row["daughter_ex_kev"],
+                "multipolarity": None,
+                "rad_subtype": None,
+            }
+        )
 
     if not rows:
         return _empty_output()
@@ -559,11 +586,7 @@ def build(
             radiation_cache[z] = pl.read_parquet(p)
 
     # Enumerate all parents from decay_summary (ground + metastable states)
-    parents = (
-        decay_summary.select("Z", "A", "state")
-        .unique()
-        .sort(["Z", "A", "state"])
-    )
+    parents = decay_summary.select("Z", "A", "state").unique().sort(["Z", "A", "state"])
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -574,8 +597,13 @@ def build(
     for row in parents.iter_rows(named=True):
         pz, pa, ps = row["Z"], row["A"], row["state"]
         result = build_for_parent(
-            pz, pa, ps,
-            decay_detailed, decay_summary, nuclides, radiation_cache,
+            pz,
+            pa,
+            ps,
+            decay_detailed,
+            decay_summary,
+            nuclides,
+            radiation_cache,
         )
         if not result.is_empty():
             per_element[pz].append(result)
@@ -597,7 +625,9 @@ def build(
 
     logger.info(
         "Wrote %d per-element emission files (%d rows total) to %s",
-        len(written), total_rows, out_dir,
+        len(written),
+        total_rows,
+        out_dir,
     )
     return written
 

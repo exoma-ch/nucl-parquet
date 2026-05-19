@@ -460,6 +460,7 @@ async def get_emissions(
         indent=2,
     )
 
+
 @mcp.tool()
 async def get_beta_spectrum(z: int, a: int, max_rows: int = 500) -> str:
     """Get the continuous beta-decay kinetic-energy spectrum for a nuclide.

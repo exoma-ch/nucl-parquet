@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.1",
-  "data_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "data_version": "2026.5.2",
+  "data_sha256": "b74aff6c5d20a81f2dd83000b0b47616cd7ddb50c51a920b5213addeac89b40f",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -333,6 +333,14 @@
         "fetcher": "nucl_parquet/build_stopping_compounds.py",
         "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
       }
+    },
+    "emissions": {
+      "path": "meta/ensdf/emissions/",
+      "layout": "one file per parent element symbol \u2014 meta/ensdf/emissions/{Symbol}.parquet",
+      "schema": ["parent_Z", "parent_A", "parent_state", "decay_mode", "daughter_Z", "daughter_A", "rad_type", "energy_keV", "intensity_pct", "icc_total", "parent_level_keV", "daughter_level_keV", "multipolarity", "rad_subtype"],
+      "source": "Cascade propagation through G4 PhotonEvaporation level schemes, fed by decay_detailed.parquet branching ratios. X-ray/Auger from radiation/ (xray_auger.py). \u03b2/\u03b1 endpoints from decay_detailed Q-values.",
+      "coverage": "All ground + metastable parents with known decays, Z=1..117. ~711k rows across 117 elements.",
+      "note": "NuDat-equivalent one-stop-shop: absolute per-decay emission intensities (0\u2013100%) for gamma, CE, X-ray, Auger, 511 keV annihilation, \u03b2\u207b/\u03b2\u207a endpoints, and \u03b1 kinetic energies. Filed by PARENT element (Co-60 in Co.parquet). Key physics: G4 intensity is photon-only relative; total transition rate = intensity \u00d7 (1+ICC). Validated against NuDat: Co-60 1173 keV \u00b10.01%, Tc-99m 140 keV \u00b10.02%, Eu-152 121.8 keV \u00b10.3%, Na-22 511 keV \u00b10.07%, Ra-226 \u03b1 4784 keV."
     },
     "beta_spectra": {
       "path": "meta/ensdf/beta_spectra/",

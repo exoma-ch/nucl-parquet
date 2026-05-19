@@ -15,11 +15,11 @@ import polars as pl
 import pytest
 
 from nucl_parquet.g4.emissions import (
-    compute_absolute_intensities,
-    build_for_parent,
-    _empty_output,
     _OUTPUT_COLUMNS,
     _OUTPUT_SCHEMA,
+    _empty_output,
+    build_for_parent,
+    compute_absolute_intensities,
 )
 
 _REPO_ROOT = Path(__file__).parent.parent
@@ -52,11 +52,18 @@ def _make_radiation(rows: list[dict]) -> pl.DataFrame:
 
 def _make_decay_detailed(rows: list[dict]) -> pl.DataFrame:
     schema = {
-        "Z": pl.Int32, "A": pl.Int32, "parent_ex_kev": pl.Float64,
-        "parent_level_flag": pl.Utf8, "half_life_s": pl.Float64,
-        "decay_mode": pl.Utf8, "daughter_Z": pl.Int32, "daughter_A": pl.Int32,
-        "daughter_ex_kev": pl.Float64, "daughter_level_flag": pl.Utf8,
-        "branching": pl.Float64, "q_value_kev": pl.Float64,
+        "Z": pl.Int32,
+        "A": pl.Int32,
+        "parent_ex_kev": pl.Float64,
+        "parent_level_flag": pl.Utf8,
+        "half_life_s": pl.Float64,
+        "decay_mode": pl.Utf8,
+        "daughter_Z": pl.Int32,
+        "daughter_A": pl.Int32,
+        "daughter_ex_kev": pl.Float64,
+        "daughter_level_flag": pl.Utf8,
+        "branching": pl.Float64,
+        "q_value_kev": pl.Float64,
         "forbiddenness": pl.Utf8,
     }
     return pl.DataFrame([{**{k: None for k in schema}, **r} for r in rows], schema=schema)
@@ -64,21 +71,35 @@ def _make_decay_detailed(rows: list[dict]) -> pl.DataFrame:
 
 def _make_decay_summary(rows: list[dict]) -> pl.DataFrame:
     schema = {
-        "Z": pl.Int32, "A": pl.Int32, "state": pl.Utf8,
-        "half_life_s": pl.Float64, "decay_mode": pl.Utf8,
-        "daughter_Z": pl.Int32, "daughter_A": pl.Int32,
-        "daughter_state": pl.Utf8, "branching": pl.Float64,
+        "Z": pl.Int32,
+        "A": pl.Int32,
+        "state": pl.Utf8,
+        "half_life_s": pl.Float64,
+        "decay_mode": pl.Utf8,
+        "daughter_Z": pl.Int32,
+        "daughter_A": pl.Int32,
+        "daughter_state": pl.Utf8,
+        "branching": pl.Float64,
     }
     return pl.DataFrame([{**{k: None for k in schema}, **r} for r in rows], schema=schema)
 
 
 def _make_nuclides(rows: list[dict]) -> pl.DataFrame:
     schema = {
-        "Z": pl.Int32, "A": pl.Int32, "state": pl.Utf8,
-        "symbol": pl.Utf8, "jp": pl.Utf8, "half_life_s": pl.Float64,
-        "level_keV": pl.Float64, "decay_1": pl.Utf8, "decay_1_pct": pl.Float64,
-        "decay_2": pl.Utf8, "decay_2_pct": pl.Float64, "spin_x2": pl.Int16,
-        "parity": pl.Int8, "floating_level_flag": pl.Utf8,
+        "Z": pl.Int32,
+        "A": pl.Int32,
+        "state": pl.Utf8,
+        "symbol": pl.Utf8,
+        "jp": pl.Utf8,
+        "half_life_s": pl.Float64,
+        "level_keV": pl.Float64,
+        "decay_1": pl.Utf8,
+        "decay_1_pct": pl.Float64,
+        "decay_2": pl.Utf8,
+        "decay_2_pct": pl.Float64,
+        "spin_x2": pl.Int16,
+        "parity": pl.Int8,
+        "floating_level_flag": pl.Utf8,
         "magnetic_moment_jt": pl.Float64,
     }
     return pl.DataFrame([{**{k: None for k in schema}, **r} for r in rows], schema=schema)
@@ -93,7 +114,15 @@ class TestCascadePropagation:
     def test_simple_two_level(self):
         """Parent feeds level A → gamma → ground. 100% absolute."""
         cascade = {
-            200.0: [{"daughter_level": 0.0, "energy": 200.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None}],
+            200.0: [
+                {
+                    "daughter_level": 0.0,
+                    "energy": 200.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                }
+            ],
         }
         results = compute_absolute_intensities({200.0: 1.0}, cascade)
         assert len(results) == 1
@@ -102,8 +131,24 @@ class TestCascadePropagation:
     def test_three_level_cascade(self):
         """300 keV level → 200 keV → ground, no branching."""
         cascade = {
-            300.0: [{"daughter_level": 200.0, "energy": 100.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None}],
-            200.0: [{"daughter_level": 0.0, "energy": 200.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None}],
+            300.0: [
+                {
+                    "daughter_level": 200.0,
+                    "energy": 100.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                }
+            ],
+            200.0: [
+                {
+                    "daughter_level": 0.0,
+                    "energy": 200.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                }
+            ],
         }
         results = compute_absolute_intensities({300.0: 1.0}, cascade)
         assert len(results) == 2
@@ -115,10 +160,30 @@ class TestCascadePropagation:
         """Level 300 branches 70/30 to two daughter levels."""
         cascade = {
             300.0: [
-                {"daughter_level": 200.0, "energy": 100.0, "intensity_pct": 70.0, "icc_total": 0.0, "multipolarity": None},
-                {"daughter_level": 0.0, "energy": 300.0, "intensity_pct": 30.0, "icc_total": 0.0, "multipolarity": None},
+                {
+                    "daughter_level": 200.0,
+                    "energy": 100.0,
+                    "intensity_pct": 70.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                },
+                {
+                    "daughter_level": 0.0,
+                    "energy": 300.0,
+                    "intensity_pct": 30.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                },
             ],
-            200.0: [{"daughter_level": 0.0, "energy": 200.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None}],
+            200.0: [
+                {
+                    "daughter_level": 0.0,
+                    "energy": 200.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                }
+            ],
         }
         results = compute_absolute_intensities({300.0: 1.0}, cascade)
         by_energy = {r["energy"]: r["intensity_pct"] for r in results}
@@ -129,7 +194,15 @@ class TestCascadePropagation:
     def test_partial_feeding(self):
         """Parent feeds level with branching = 0.5 (50%)."""
         cascade = {
-            100.0: [{"daughter_level": 0.0, "energy": 100.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None}],
+            100.0: [
+                {
+                    "daughter_level": 0.0,
+                    "energy": 100.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                }
+            ],
         }
         results = compute_absolute_intensities({100.0: 0.5}, cascade)
         assert results[0]["intensity_pct"] == pytest.approx(50.0)
@@ -141,7 +214,15 @@ class TestIccNormalization:
     def test_high_icc_steals_photon_fraction(self):
         """A gamma with ICC=1.0 emits 50% as photon, 50% as IC electron."""
         cascade = {
-            100.0: [{"daughter_level": 0.0, "energy": 100.0, "intensity_pct": 100.0, "icc_total": 1.0, "multipolarity": None}],
+            100.0: [
+                {
+                    "daughter_level": 0.0,
+                    "energy": 100.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 1.0,
+                    "multipolarity": None,
+                }
+            ],
         }
         results = compute_absolute_intensities({100.0: 1.0}, cascade)
         # Total transition = 100 × (1+1) = 200, branch = 1.0
@@ -153,9 +234,21 @@ class TestIccNormalization:
         cascade = {
             200.0: [
                 # Gamma A: photon intensity 10, ICC=9 → total_transition = 10×10 = 100
-                {"daughter_level": 100.0, "energy": 100.0, "intensity_pct": 10.0, "icc_total": 9.0, "multipolarity": None},
+                {
+                    "daughter_level": 100.0,
+                    "energy": 100.0,
+                    "intensity_pct": 10.0,
+                    "icc_total": 9.0,
+                    "multipolarity": None,
+                },
                 # Gamma B: photon intensity 100, ICC=0 → total_transition = 100×1 = 100
-                {"daughter_level": 0.0, "energy": 200.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None},
+                {
+                    "daughter_level": 0.0,
+                    "energy": 200.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                },
             ],
         }
         results = compute_absolute_intensities({200.0: 1.0}, cascade)
@@ -173,22 +266,50 @@ class TestITHandling:
     def test_it_feeds_isomeric_level(self):
         """IT from metastable state feeds the isomeric level energy."""
         decay_detailed = _make_decay_detailed([])  # no detail rows for IT
-        decay_summary = _make_decay_summary([{
-            "Z": 43, "A": 99, "state": "m", "decay_mode": "IT",
-            "daughter_Z": 43, "daughter_A": 99, "branching": 1.0,
-        }])
-        nuclides = _make_nuclides([{
-            "Z": 43, "A": 99, "state": "m", "level_keV": 150.0,
-        }])
-        radiation = _make_radiation([{
-            "Z": 43, "A": 99, "rad_type": "gamma",
-            "energy_keV": 150.0, "intensity_pct": 100.0,
-            "parent_level_keV": 150.0, "daughter_level_keV": 0.0,
-            "icc_total": 0.0,
-        }])
+        decay_summary = _make_decay_summary(
+            [
+                {
+                    "Z": 43,
+                    "A": 99,
+                    "state": "m",
+                    "decay_mode": "IT",
+                    "daughter_Z": 43,
+                    "daughter_A": 99,
+                    "branching": 1.0,
+                }
+            ]
+        )
+        nuclides = _make_nuclides(
+            [
+                {
+                    "Z": 43,
+                    "A": 99,
+                    "state": "m",
+                    "level_keV": 150.0,
+                }
+            ]
+        )
+        radiation = _make_radiation(
+            [
+                {
+                    "Z": 43,
+                    "A": 99,
+                    "rad_type": "gamma",
+                    "energy_keV": 150.0,
+                    "intensity_pct": 100.0,
+                    "parent_level_keV": 150.0,
+                    "daughter_level_keV": 0.0,
+                    "icc_total": 0.0,
+                }
+            ]
+        )
         result = build_for_parent(
-            43, 99, "m",
-            decay_detailed, decay_summary, nuclides,
+            43,
+            99,
+            "m",
+            decay_detailed,
+            decay_summary,
+            nuclides,
             radiation_cache={43: radiation},
         )
         assert result.height == 1
@@ -212,10 +333,20 @@ class TestOutputSchema:
     def test_columns_match_spec(self):
         """Output columns match the documented schema."""
         expected = [
-            "parent_Z", "parent_A", "parent_state", "decay_mode",
-            "daughter_Z", "daughter_A", "rad_type", "energy_keV",
-            "intensity_pct", "icc_total", "parent_level_keV",
-            "daughter_level_keV", "multipolarity", "rad_subtype",
+            "parent_Z",
+            "parent_A",
+            "parent_state",
+            "decay_mode",
+            "daughter_Z",
+            "daughter_A",
+            "rad_type",
+            "energy_keV",
+            "intensity_pct",
+            "icc_total",
+            "parent_level_keV",
+            "daughter_level_keV",
+            "multipolarity",
+            "rad_subtype",
         ]
         assert _OUTPUT_COLUMNS == expected
 
@@ -226,7 +357,15 @@ class TestConversionElectrons:
     def test_ce_emitted_when_icc_nonzero(self):
         """A gamma with ICC=1 produces equal gamma + CE intensities."""
         cascade = {
-            100.0: [{"daughter_level": 0.0, "energy": 100.0, "intensity_pct": 100.0, "icc_total": 1.0, "multipolarity": None}],
+            100.0: [
+                {
+                    "daughter_level": 0.0,
+                    "energy": 100.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 1.0,
+                    "multipolarity": None,
+                }
+            ],
         }
         results = compute_absolute_intensities({100.0: 1.0}, cascade)
         by_type = {r["rad_type"]: r["intensity_pct"] for r in results}
@@ -236,7 +375,15 @@ class TestConversionElectrons:
     def test_no_ce_when_icc_zero(self):
         """No CE rows when ICC = 0."""
         cascade = {
-            100.0: [{"daughter_level": 0.0, "energy": 100.0, "intensity_pct": 100.0, "icc_total": 0.0, "multipolarity": None}],
+            100.0: [
+                {
+                    "daughter_level": 0.0,
+                    "energy": 100.0,
+                    "intensity_pct": 100.0,
+                    "icc_total": 0.0,
+                    "multipolarity": None,
+                }
+            ],
         }
         results = compute_absolute_intensities({100.0: 1.0}, cascade)
         types = {r["rad_type"] for r in results}
@@ -248,7 +395,9 @@ class TestEdgeCases:
 
     def test_no_feeding_returns_empty(self):
         result = build_for_parent(
-            99, 999, "",
+            99,
+            999,
+            "",
             _make_decay_detailed([]),
             _make_decay_summary([]),
             _make_nuclides([]),
@@ -258,13 +407,24 @@ class TestEdgeCases:
 
     def test_feeding_but_no_radiation(self):
         """Parent decays to daughter but no radiation data for daughter."""
-        decay_detailed = _make_decay_detailed([{
-            "Z": 27, "A": 60, "parent_ex_kev": 0.0,
-            "decay_mode": "beta-", "daughter_Z": 28, "daughter_A": 60,
-            "daughter_ex_kev": 1000.0, "branching": 1.0,
-        }])
+        decay_detailed = _make_decay_detailed(
+            [
+                {
+                    "Z": 27,
+                    "A": 60,
+                    "parent_ex_kev": 0.0,
+                    "decay_mode": "beta-",
+                    "daughter_Z": 28,
+                    "daughter_A": 60,
+                    "daughter_ex_kev": 1000.0,
+                    "branching": 1.0,
+                }
+            ]
+        )
         result = build_for_parent(
-            27, 60, "",
+            27,
+            60,
+            "",
             decay_detailed,
             _make_decay_summary([]),
             _make_nuclides([]),
@@ -286,9 +446,7 @@ class TestCo60:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter(
-            (pl.col("parent_A") == 60) & (pl.col("parent_state") == "")
-        )
+        return df.filter((pl.col("parent_A") == 60) & (pl.col("parent_state") == ""))
 
     def test_1173_keV(self, co60: pl.DataFrame):
         """1173 keV gamma: NuDat = 99.85%."""
@@ -320,16 +478,12 @@ class TestTc99m:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter(
-            (pl.col("parent_A") == 99) & (pl.col("parent_state") == "m")
-        )
+        return df.filter((pl.col("parent_A") == 99) & (pl.col("parent_state") == "m"))
 
     def test_140_keV(self, tc99m: pl.DataFrame):
         """140.5 keV gamma: NuDat = 89.06%."""
         it_rows = tc99m.filter(
-            (pl.col("decay_mode") == "IT")
-            & (pl.col("rad_type") == "gamma")
-            & pl.col("energy_keV").is_between(140, 141)
+            (pl.col("decay_mode") == "IT") & (pl.col("rad_type") == "gamma") & pl.col("energy_keV").is_between(140, 141)
         )
         assert it_rows.height == 1
         assert it_rows["intensity_pct"][0] == pytest.approx(89.06, rel=0.005)
@@ -350,16 +504,13 @@ class TestEu152:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter(
-            (pl.col("parent_A") == 152) & (pl.col("parent_state") == "")
-        )
+        return df.filter((pl.col("parent_A") == 152) & (pl.col("parent_state") == ""))
 
     def _sum_intensity(self, df: pl.DataFrame, e_low: float, e_high: float) -> float:
         """Sum gamma intensity_pct across all decay modes for an energy."""
-        return df.filter(
-            (pl.col("rad_type") == "gamma")
-            & pl.col("energy_keV").is_between(e_low, e_high)
-        )["intensity_pct"].sum()
+        return df.filter((pl.col("rad_type") == "gamma") & pl.col("energy_keV").is_between(e_low, e_high))[
+            "intensity_pct"
+        ].sum()
 
     def test_121_keV_ec(self, eu152: pl.DataFrame):
         """121.8 keV (EC→Sm-152): NuDat = 28.58%, summed across all EC shells."""
@@ -419,9 +570,7 @@ class TestNa22:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter(
-            (pl.col("parent_A") == 22) & (pl.col("parent_state") == "")
-        )
+        return df.filter((pl.col("parent_A") == 22) & (pl.col("parent_state") == ""))
 
     def test_511_keV(self, na22: pl.DataFrame):
         """Na-22 511 keV: NuDat = 179.79% (2 photons per β⁺)."""
@@ -447,9 +596,7 @@ class TestCo60Beta:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter(
-            (pl.col("parent_A") == 60) & (pl.col("parent_state") == "")
-        )
+        return df.filter((pl.col("parent_A") == 60) & (pl.col("parent_state") == ""))
 
     def test_beta_minus_endpoint(self, co60: pl.DataFrame):
         """Co-60 β⁻ main: endpoint 317 keV, 99.88%."""
@@ -469,9 +616,7 @@ class TestRa226Alpha:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter(
-            (pl.col("parent_A") == 226) & (pl.col("parent_state") == "")
-        )
+        return df.filter((pl.col("parent_A") == 226) & (pl.col("parent_state") == ""))
 
     def test_alpha_energy(self, ra226: pl.DataFrame):
         """Ra-226 α: NuDat = 4784.3 keV, 94.45%."""
