@@ -56,7 +56,7 @@ pub use electron::{ElectronDb, ElectronProcess};
 pub use error::Error;
 pub use meta::{
     AbundanceEntry, AbundancesDb, CoincidenceEntry, CoincidenceFilter, CoincidencesDb, DecayDb,
-    DecayEntry, DoseDb, Emission, EmissionEntry, GammaCandidate, RadiationDb,
+    DecayEntry, DoseConstant, DoseDb, Emission, EmissionEntry, GammaCandidate, RadiationDb,
 };
 pub use photon::{PhotonDb, Process};
 pub use relaxation::{RelaxationDb, Transition, TransitionType};

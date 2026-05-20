@@ -37,6 +37,8 @@ use crate::interp::{log_log_interp, sort_paired_vecs, XYTable};
 pub struct StoppingDb {
     /// (source, target_Z) -> (energy_MeV sorted, dedx sorted)
     nist: HashMap<(String, u32), XYTable>,
+    /// (source, compound_name) -> (energy_MeV sorted, dedx sorted)
+    compounds: HashMap<(String, String), XYTable>,
     /// (proj_Z, target_Z) -> (energy_MeV_u sorted, dedx sorted)
     catima: HashMap<(u32, u32), XYTable>,
     /// (proj_Z, target_Z) -> Bohr straggling dΩ²/d(ρx) [MeV² cm²/g] (constant per pair)
@@ -60,10 +62,12 @@ impl StoppingDb {
         }
 
         let nist = Self::load_nist(dir)?;
+        let compounds = Self::load_compounds(dir)?;
         let (catima, catima_strag) = Self::load_catima(dir)?;
 
         Ok(Self {
             nist,
+            compounds,
             catima,
             catima_strag,
         })
@@ -81,6 +85,22 @@ impl StoppingDb {
     #[inline]
     pub fn dedx(&self, source: &str, target_z: u32, energy_mev: f64) -> f64 {
         match self.nist.get(&(source.to_string(), target_z)) {
+            Some((e, s)) => log_log_interp(e, s, energy_mev),
+            None => f64::NAN,
+        }
+    }
+
+    /// Mass stopping power [MeV cm²/g] for a NIST compound material.
+    ///
+    /// `source`: `"PSTAR_compound"` or `"ASTAR_compound"`.
+    /// `compound`: NIST compound name in UPPER_SNAKE_CASE (e.g., `"WATER_LIQUID"`).
+    /// Returns `f64::NAN` if the (source, compound) combination is not loaded.
+    #[inline]
+    pub fn compound_dedx(&self, source: &str, compound: &str, energy_mev: f64) -> f64 {
+        match self
+            .compounds
+            .get(&(source.to_string(), compound.to_string()))
+        {
             Some((e, s)) => log_log_interp(e, s, energy_mev),
             None => f64::NAN,
         }
@@ -147,6 +167,61 @@ impl StoppingDb {
                     #[allow(clippy::needless_range_loop)]
                     for i in 0..batch.num_rows() {
                         let key = (src[i].unwrap_or("").to_string(), z.value(i) as u32);
+                        let entry = map.entry(key).or_default();
+                        entry.0.push(e.value(i));
+                        entry.1.push(s.value(i));
+                    }
+                }
+            }
+        }
+
+        for (e_vec, s_vec) in map.values_mut() {
+            sort_paired_vecs(e_vec, s_vec);
+        }
+
+        Ok(map)
+    }
+
+    fn load_compounds(dir: &Path) -> crate::Result<HashMap<(String, String), XYTable>> {
+        let mut map: HashMap<(String, String), XYTable> = HashMap::new();
+        let compounds_dir = dir.join("compounds");
+        if !compounds_dir.exists() {
+            return Ok(map);
+        }
+
+        for entry in fs::read_dir(&compounds_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("parquet") {
+                continue;
+            }
+
+            let file = fs::File::open(&path)?;
+            let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+
+            for batch in reader {
+                let batch = batch?;
+
+                let src_col_ref = batch.column_by_name("source");
+                let src_values = src_col_ref.and_then(|c| crate::interp::as_string_array(c));
+                let cmp_col_ref = batch.column_by_name("compound");
+                let cmp_values = cmp_col_ref.and_then(|c| crate::interp::as_string_array(c));
+                let e_col = batch
+                    .column_by_name("energy_MeV")
+                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+                let s_col = batch
+                    .column_by_name("dedx")
+                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+
+                if let (Some(src), Some(cmp), Some(e), Some(s)) =
+                    (src_values, cmp_values, e_col, s_col)
+                {
+                    #[allow(clippy::needless_range_loop)]
+                    for i in 0..batch.num_rows() {
+                        let key = (
+                            src[i].unwrap_or("").to_string(),
+                            cmp[i].unwrap_or("").to_string(),
+                        );
                         let entry = map.entry(key).or_default();
                         entry.0.push(e.value(i));
                         entry.1.push(s.value(i));
@@ -282,6 +357,23 @@ mod tests {
                 "α Cu at {e} MeV: got {got}, NIST {expected}, rel err {rel}",
             );
         }
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn compound_water_positive() {
+        let db = StoppingDb::open(data_dir()).unwrap();
+        let s = db.compound_dedx("PSTAR_compound", "WATER_LIQUID", 10.0);
+        assert!(s.is_finite() && s > 0.0, "PSTAR water 10 MeV: {s}");
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn compound_miss_returns_nan() {
+        let db = StoppingDb::open(data_dir()).unwrap();
+        assert!(db
+            .compound_dedx("PSTAR_compound", "NONEXISTENT", 10.0)
+            .is_nan());
     }
 
     #[test]

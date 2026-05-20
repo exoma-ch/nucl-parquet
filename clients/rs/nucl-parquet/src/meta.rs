@@ -262,13 +262,22 @@ impl DecayDb {
 // DoseDb
 // ---------------------------------------------------------------------------
 
+/// Dose rate constant for a nuclide, with source attribution.
+#[derive(Debug, Clone)]
+pub struct DoseConstant {
+    /// Dose rate constant in µSv·m²/(MBq·h).
+    pub k: f64,
+    /// Source attribution: `"ensdf"`, `"it-approx"`, or `"zero"`.
+    pub source: String,
+}
+
 /// Dose rate constant database (µSv·m²·MBq⁻¹·h⁻¹).
 ///
 /// Thread-safe: `Send + Sync`. Share via `Arc<DoseDb>`.
 #[derive(Clone)]
 pub struct DoseDb {
-    /// (Z, A, state) -> dose constant in µSv·m²/(MBq·h)
-    data: HashMap<(u32, u32, String), f64>,
+    /// (Z, A, state) -> (dose constant, source)
+    data: HashMap<(u32, u32, String), DoseConstant>,
 }
 
 unsafe impl Send for DoseDb {}
@@ -278,7 +287,7 @@ impl DoseDb {
     /// Load dose constant data from `meta/dose_constants.parquet`.
     pub fn open(data_dir: impl AsRef<Path>) -> crate::Result<Self> {
         let path = data_dir.as_ref().join("dose_constants.parquet");
-        let mut data: HashMap<(u32, u32, String), f64> = HashMap::new();
+        let mut data: HashMap<(u32, u32, String), DoseConstant> = HashMap::new();
 
         let file = fs::File::open(&path)?;
         let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
@@ -297,17 +306,27 @@ impl DoseDb {
             let k_col = batch
                 .column_by_name("k_uSv_m2_MBq_h")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+            let src_col_ref = batch.column_by_name("source");
+            let src_values = src_col_ref.and_then(|c| crate::interp::as_string_array(c));
 
             if let (Some(z), Some(a), Some(state), Some(k)) = (z_col, a_col, state_values, k_col) {
                 #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
+                    let source = src_values
+                        .as_ref()
+                        .and_then(|s| s[i])
+                        .unwrap_or("")
+                        .to_string();
                     data.insert(
                         (
                             z.value(i) as u32,
                             a.value(i) as u32,
                             state[i].unwrap_or("").to_string(),
                         ),
-                        k.value(i),
+                        DoseConstant {
+                            k: k.value(i),
+                            source,
+                        },
                     );
                 }
             }
@@ -316,12 +335,11 @@ impl DoseDb {
         Ok(Self { data })
     }
 
-    /// Dose rate constant [µSv·m²/(MBq·h)] for nuclide (Z, A, state).
+    /// Dose rate constant with source attribution for nuclide (Z, A, state).
     ///
     /// Returns `None` if the nuclide is not in the database.
-    /// Returns `Some(0.0)` for stable nuclides or those with no gamma emission.
-    pub fn dose_constant(&self, z: u32, a: u32, state: &str) -> Option<f64> {
-        self.data.get(&(z, a, state.to_string())).copied()
+    pub fn dose_constant(&self, z: u32, a: u32, state: &str) -> Option<&DoseConstant> {
+        self.data.get(&(z, a, state.to_string()))
     }
 }
 
@@ -1199,8 +1217,10 @@ mod tests {
     #[ignore = "requires nucl-parquet data files"]
     fn dose_i131_positive() {
         let db = DoseDb::open(meta_dir()).unwrap();
-        let k = db.dose_constant(53, 131, ""); // I-131
-        assert!(k.is_some(), "I-131 should have a dose constant");
-        assert!(k.unwrap() > 0.0, "I-131 dose constant should be positive");
+        let dc = db.dose_constant(53, 131, ""); // I-131
+        assert!(dc.is_some(), "I-131 should have a dose constant");
+        let dc = dc.unwrap();
+        assert!(dc.k > 0.0, "I-131 dose constant should be positive");
+        assert_eq!(dc.source, "ensdf", "I-131 source should be 'ensdf'");
     }
 }
