@@ -258,7 +258,37 @@ def _check_invariants(data_dir: Path) -> None:
     neg = radiation.filter(pl.col("intensity_pct") < 0)
     assert neg.height == 0, f"radiation intensity_pct < 0: {neg.head(5).to_dicts()}"
 
-    logger.info("Sweep invariants pass: parent_level_keV, IT-on-ground, phantom isomer, dedup, non-negative intensity")
+    # 6. decay.parquet half-lives must agree with nuclides catalog (#203).
+    # G4 RadioactiveDecay carries per-transition half-lives that are sometimes
+    # wrong (e.g. Sc-44 ground/metastable swapped). After the catalog override
+    # in build_decay_table, they should match. Flag any >10% disagreement.
+    decay = pl.read_parquet(data_dir / "meta" / "decay.parquet")
+    decay_hl = (
+        decay.select("Z", "A", "state", "half_life_s").unique(["Z", "A", "state"]).rename({"half_life_s": "dec_hl"})
+    )
+    nuc_hl = (
+        nuclides.select("Z", "A", "state", "half_life_s")
+        .rename({"half_life_s": "nuc_hl"})
+        .with_columns(
+            pl.col("Z").cast(pl.Int32),
+            pl.col("A").cast(pl.Int32),
+        )
+    )
+    joined = decay_hl.join(nuc_hl, on=["Z", "A", "state"], how="inner").filter(
+        (pl.col("dec_hl").is_finite())
+        & (pl.col("nuc_hl").is_finite())
+        & (pl.col("dec_hl") > 0)
+        & (pl.col("nuc_hl") > 0)
+    )
+    mismatches = joined.filter(((pl.col("dec_hl") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10)
+    assert mismatches.height == 0, (
+        f"decay.parquet half-lives disagree with nuclides catalog for {mismatches.height} "
+        f"(Z,A,state) entries (>10%): {mismatches.head(5).to_dicts()}"
+    )
+
+    logger.info(
+        "Sweep invariants pass: parent_level_keV, IT-on-ground, phantom isomer, dedup, non-negative intensity, half-life agreement"
+    )
 
 
 def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, merge_only: bool = False) -> None:

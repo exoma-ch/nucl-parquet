@@ -341,11 +341,30 @@ def build_decay_table(src: pl.DataFrame, nuclides_path: Path) -> pl.DataFrame:
     # Drop parents that didn't map to "" or "m": not representable in v0.10.x.
     kept = with_daughter_state.filter(pl.col("state").is_not_null())
 
+    # Override half_life_s with the authoritative nuclides catalog value.
+    # G4 RadioactiveDecay carries per-transition half-lives that are sometimes
+    # wrong (e.g. Sc-44 ground/metastable swapped). G4ENSDFSTATE (nuclides.parquet)
+    # is canonical. Falls back to the G4 value if no catalog match exists.
+    nuclides = (
+        pl.read_parquet(nuclides_path, columns=["Z", "A", "state", "half_life_s"])
+        .rename({"half_life_s": "_catalog_hl", "Z": "_nuc_z", "A": "_nuc_a", "state": "_nuc_state"})
+        .with_columns(
+            pl.col("_nuc_z").cast(pl.Int32),
+            pl.col("_nuc_a").cast(pl.Int32),
+        )
+    )
+    kept = kept.join(
+        nuclides,
+        left_on=[pl.col("parent_z").cast(pl.Int32), pl.col("parent_a").cast(pl.Int32), pl.col("state")],
+        right_on=["_nuc_z", "_nuc_a", "_nuc_state"],
+        how="left",
+    )
+
     out = kept.select(
         pl.col("parent_z").cast(pl.Int32).alias("Z"),
         pl.col("parent_a").cast(pl.Int32).alias("A"),
         pl.col("state"),
-        _convert_half_life(pl.col("half_life_s")).alias("half_life_s"),
+        _convert_half_life(pl.col("_catalog_hl").fill_null(pl.col("half_life_s"))).alias("half_life_s"),
         _build_mode_mapping_expr(pl.col("decay_mode")).alias("decay_mode"),
         # daughter_z=-1 (SpFission) → null; otherwise int32.
         pl.when(pl.col("daughter_z") < 0).then(None).otherwise(pl.col("daughter_z").cast(pl.Int32)).alias("daughter_Z"),
