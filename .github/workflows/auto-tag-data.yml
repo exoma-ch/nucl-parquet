@@ -78,12 +78,13 @@ jobs:
           git tag -a "${TAG}" -m "Auto-tagged from data/catalog.json::data_version on merge"
           git push origin "${TAG}"
 
-      # GITHUB_TOKEN-created tags don't trigger push events for other
-      # workflows (GitHub's infinite-loop prevention). Explicitly dispatch
-      # the release workflow so the tarball gets built without manual intervention.
+      # GITHUB_TOKEN can't dispatch workflow_dispatch events on other
+      # workflows (403 "Resource not accessible by integration"). Use
+      # the DATA_RELEASE_PAT (fine-grained PAT scoped to this repo with
+      # Actions: write + Contents: write) instead.
       - name: Trigger release-data workflow
         if: steps.detect.outputs.tag != ''
         env:
           TAG: ${{ steps.detect.outputs.tag }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DATA_RELEASE_PAT }}
         run: gh workflow run release-data.yml -f tag="${TAG}"
