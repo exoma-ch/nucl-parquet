@@ -167,6 +167,11 @@ impl CrossSectionDb {
     pub fn num_reactions(&self) -> usize {
         self.reactions.len()
     }
+
+    /// Iterate all reaction channel keys: (target_A, residual_Z, residual_A, state).
+    pub fn reaction_keys(&self) -> impl Iterator<Item = &(u32, u32, u32, String)> {
+        self.reactions.keys()
+    }
 }
 
 /// Derive target Z from an XS file path by extracting the element symbol.

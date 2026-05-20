@@ -110,6 +110,28 @@ impl StoppingDb {
             .unwrap_or(f64::NAN)
     }
 
+    // --- Raw table access (for consumers that do their own interpolation) ---
+
+    /// Raw (energy_MeV, dedx) table for a NIST source + target_Z.
+    ///
+    /// Returns `None` if the (source, target_Z) combination is not loaded.
+    /// Energy array is sorted ascending.
+    pub fn nist_table(&self, source: &str, target_z: u32) -> Option<&XYTable> {
+        self.nist.get(&(source.to_string(), target_z))
+    }
+
+    /// Iterate all loaded (source, target_Z) pairs in the NIST tables.
+    pub fn nist_keys(&self) -> impl Iterator<Item = (&str, u32)> {
+        self.nist.keys().map(|(s, z)| (s.as_str(), *z))
+    }
+
+    /// Raw (energy_MeV_u, dedx) table for a CatIMA (proj_Z, target_Z) pair.
+    ///
+    /// Returns `None` if the pair is not loaded.
+    pub fn catima_table(&self, proj_z: u32, target_z: u32) -> Option<&XYTable> {
+        self.catima.get(&(proj_z, target_z))
+    }
+
     // --- Internal loaders ---
 
     fn load_nist(dir: &Path) -> crate::Result<HashMap<(String, u32), XYTable>> {
