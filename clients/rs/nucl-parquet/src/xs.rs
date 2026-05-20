@@ -163,6 +163,13 @@ impl CrossSectionDb {
         self.target_z
     }
 
+    /// Iterate all loaded reaction channel keys: `(target_A, residual_Z, residual_A, state)`.
+    pub fn reaction_keys(&self) -> impl Iterator<Item = (u32, u32, u32, &str)> + '_ {
+        self.reactions
+            .keys()
+            .map(|(ta, rz, ra, s)| (*ta, *rz, *ra, s.as_str()))
+    }
+
     /// Number of distinct reaction channels loaded.
     pub fn num_reactions(&self) -> usize {
         self.reactions.len()
