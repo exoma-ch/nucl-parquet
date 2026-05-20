@@ -43,10 +43,6 @@ pub struct ParquetStore {
     cache: RwLock<HashMap<String, Arc<Vec<Value>>>>,
 }
 
-// All data is behind RwLock; safe to share.
-unsafe impl Send for ParquetStore {}
-unsafe impl Sync for ParquetStore {}
-
 impl ParquetStore {
     /// Create a new store rooted at `data_dir`. No I/O until first query.
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
@@ -62,7 +58,7 @@ impl ParquetStore {
     pub fn load(&self, rel_path: &str) -> crate::Result<Arc<Vec<Value>>> {
         // Fast path: check read lock.
         {
-            let c = self.cache.read().unwrap();
+            let c = self.cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(rows) = c.get(rel_path) {
                 return Ok(Arc::clone(rows));
             }
@@ -75,7 +71,7 @@ impl ParquetStore {
         }
         let rows = Arc::new(parse_parquet_file(&path)?);
 
-        let mut c = self.cache.write().unwrap();
+        let mut c = self.cache.write().unwrap_or_else(|e| e.into_inner());
         c.entry(rel_path.to_string())
             .or_insert_with(|| Arc::clone(&rows));
         Ok(rows)
@@ -199,6 +195,15 @@ pub fn column_value_to_json(col: &dyn Array, idx: usize) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn _assert_send<T: Send>() {}
+    fn _assert_sync<T: Sync>() {}
+
+    #[test]
+    fn parquet_store_is_send_sync() {
+        _assert_send::<ParquetStore>();
+        _assert_sync::<ParquetStore>();
+    }
 
     fn data_dir() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))

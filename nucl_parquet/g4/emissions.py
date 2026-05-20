@@ -466,6 +466,8 @@ def build_for_parent(
             )
 
     # --- 511 keV annihilation from β⁺ ---
+    # decay.parquet has at most one beta+ row per (Z, A, state) — the sum is
+    # defensive but in practice returns a single value.
     beta_plus_rows = decay_summary.filter(
         (pl.col("Z") == parent_z)
         & (pl.col("A") == parent_a)
