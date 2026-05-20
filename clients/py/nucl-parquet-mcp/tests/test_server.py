@@ -49,7 +49,7 @@ class TestCatalog:
         cat = _ensure_catalog()
         libs = cat["libraries"]
         assert len(libs) >= 15
-        assert "tendl-2024" in libs
+        assert "tendl-2023-iso" in libs
         assert "endfb-8.1" in libs
         assert "exfor" in libs
 
@@ -79,7 +79,7 @@ class TestDuckDB:
         data = json.loads(result)
         assert len(data) >= 15
         ids = [lib["id"] for lib in data]
-        assert "tendl-2024" in ids
+        assert "tendl-2023-iso" in ids
 
     async def test_list_isotopes_invalid_library(self):
         with pytest.raises(ValueError, match="Unknown library"):
@@ -175,11 +175,11 @@ class TestDuckDB:
 
     async def test_get_cross_sections_invalid_element(self):
         with pytest.raises(ValueError, match="Invalid element"):
-            await get_cross_sections("tendl-2024", "p", "'; DROP TABLE decay; --")
+            await get_cross_sections("tendl-2023-iso", "p", "'; DROP TABLE decay; --")
 
     async def test_get_cross_sections_invalid_projectile(self):
         with pytest.raises(ValueError, match="Invalid projectile"):
-            await get_cross_sections("tendl-2024", "x", "Cu")
+            await get_cross_sections("tendl-2023-iso", "x", "Cu")
 
     async def test_describe_schema(self):
         result = await describe_schema()

@@ -1012,6 +1012,7 @@ version = "0.13.2"
 dependencies = [
  "approx",
  "arrow",
+ "bytes",
  "parquet",
  "reqwest",
  "serde",

@@ -5,10 +5,10 @@
   "data_sha256": "af2486fc319e4be0deb53285addf4d4da217eb4fc2ce2932c57306d350cf9f38",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
-    "tendl-2024": {
-      "name": "TENDL-2024",
-      "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)",
-      "source_url": "https://tendl.web.psi.ch/tendl_2024/tendl2024.html",
+    "tendl-2023-iso": {
+      "name": "TENDL-2023 + Aug 2024 isomeric correction",
+      "description": "TENDL-2023 neutron sublibrary with August 2024 patch restoring isomeric production in MF-10 (ground/metastable state splitting for ~15k products). No neutron sublibrary. Use alongside tendl-2025 for isomeric ratios not available in the newer release.",
+      "source_url": "https://tendl.web.psi.ch/tendl_2023/tendl2023.html",
       "projectiles": [
         "p",
         "d",
@@ -17,8 +17,9 @@
         "a"
       ],
       "data_type": "cross_sections",
-      "version": "2024",
-      "path": "tendl-2024/xs/"
+      "version": "2023-iso",
+      "path": "tendl-2023-iso/xs/",
+      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release \u2014 it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
     },
     "endfb-8.1": {
       "name": "ENDF/B-VIII.1",
@@ -333,6 +334,14 @@
         "fetcher": "nucl_parquet/build_stopping_compounds.py",
         "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
       }
+    },
+    "summing_partners": {
+      "path": "meta/ensdf/summing_partners/",
+      "layout": "one file per daughter element symbol \u2014 meta/ensdf/summing_partners/{Symbol}.parquet",
+      "schema": ["Z", "A", "parent_state", "parent_decay_mode", "emission1_rad_type", "emission1_energy_keV", "emission1_intensity", "emission1_icc_total", "emission1_shell", "emission2_rad_type", "emission2_energy_keV", "emission2_intensity", "emission2_icc_total", "emission2_shell", "parent_level_keV", "intermediate_level_keV", "final_level_keV", "pair_intensity", "icc_correction_factor", "pure_emission_joint_intensity"],
+      "source": "Derived from coincidences/{Symbol}.parquet with ICC correction factors. \u03b3-\u03b3 pairs canonicalized (E1 \u2264 E2), X-ray/Auger \u2297 \u03b3 pairs from mixed_coincidences.",
+      "coverage": "104 elements, ~9.3M rows. All ground + metastable parent decay channels.",
+      "note": "ICC-corrected summing partner pairs for HPGe true-coincidence-summing (TCS) corrections. icc_correction_factor = 1/((1+\u03b1\u2081)\u00d7(1+\u03b1\u2082)) for \u03b3-\u03b3; 1/(1+\u03b1\u2082) for xray\u2297\u03b3. pure_emission_joint_intensity = pair_intensity \u00d7 icc_correction_factor. Filed by daughter element (Co-60 cascades under Ni). Validated: Eu-152 344 keV \u226510 partners, Co-60 1173/1333 ICC \u2248 0.9997."
     },
     "emissions": {
       "path": "meta/ensdf/emissions/",
