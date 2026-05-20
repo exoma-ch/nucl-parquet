@@ -279,8 +279,8 @@ def _check_invariants(data_dir: Path) -> None:
     mismatches = joined.filter(
         ((pl.col("half_life_s") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10
     )
-    # Budget: pre-fix had ~60 from the swap bug. Post-fix, 2 remain from
-    # genuine G4 evaluation differences (Li-4 resonance, Ir-192m level).
+    # Budget: pre-fix had ~60 from the swap bug. Post-fix, 2 remain:
+    # Li-4 (resonance width evaluation), Ir-192m (unfixed swap, strata#711).
     assert mismatches.height <= 5, (
         f"decay ↔ nuclides half-life mismatch (>10%): {mismatches.height} rows "
         f"(budget: 5, pre-fix baseline: ~60); "

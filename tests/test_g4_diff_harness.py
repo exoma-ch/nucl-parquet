@@ -296,12 +296,11 @@ def test_decay_nuclides_halflife_agreement(decay: pl.DataFrame, nuclides: pl.Dat
     where ground and metastable half-lives are swapped at the source —
     permanently, regardless of which layer introduces the error.
 
-    Known upstream G4 disagreements (ENSDFSTATE vs RadioactiveDecay
-    carry different evaluations for a handful of nuclides) are accepted
-    via a small budget. The pre-fix dataset had ~60 mismatches from the
-    swap bug; the budget of 5 catches any regression while tolerating
-    genuine evaluation differences (e.g. Li-4 resonance width,
-    Ir-192m level assignment)."""
+    Known upstream G4 disagreements are accepted via a small budget.
+    The pre-fix dataset had ~60 mismatches from the swap bug; the
+    budget of 5 catches any regression while tolerating unfixed
+    upstream cases (Li-4 resonance width, Ir-192m unfixed swap —
+    gerchowl/strata#711)."""
     decay_hl = decay.select("Z", "A", "state", "half_life_s").unique(subset=["Z", "A", "state"])
     nuclides_hl = nuclides.filter(
         pl.col("half_life_s").is_not_null()
@@ -320,9 +319,10 @@ def test_decay_nuclides_halflife_agreement(decay: pl.DataFrame, nuclides: pl.Dat
         ((pl.col("half_life_s") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10
     )
     # Budget: the pre-fix dataset had ~60 mismatches from the swap bug.
-    # Post-fix, 2 remain from genuine G4 evaluation differences:
+    # Post-fix, 2 remain as unfixed upstream G4 disagreements:
     #   - Li-4 (Z=3,A=4): unbound resonance, different width evaluations
-    #   - Ir-192m (Z=77,A=192): m1/m2 level assignment ambiguity
+    #   - Ir-192m (Z=77,A=192): unfixed swap — decay carries ground half-life
+    #     (6.38e6 s) on state='m'; nuclides correctly has 87 s (gerchowl/strata#711)
     # Budget of 5 catches any regression while tolerating known upstream quirks.
     assert mismatches.height <= 5, (
         f"decay ↔ nuclides half-life mismatch (>10%): {mismatches.height} rows "
