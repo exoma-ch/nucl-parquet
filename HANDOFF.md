@@ -1,57 +1,49 @@
-# Handoff — 2026-05-19 Absolute emissions (#196)
+# Handoff — 2026-05-20 SSoT refactoring (#206)
 
 ## Session summary
-Implemented absolute per-decay photon emission intensities — a parent-keyed
-materialized table that provides NuDat-equivalent gamma intensities.
 
-### What changed
+Implementing the `data → client → MCP` SSoT refactoring for the Rust stack.
 
-**Builder** (`nucl_parquet/g4/emissions.py`):
-- Reads `decay_detailed.parquet`, `decay.parquet`, `nuclides.parquet`, `radiation/{Symbol}.parquet`
-- Produces `emissions/{Symbol}.parquet` — filed by **parent** element symbol
-- Cascade propagation: top-down level population with ICC-weighted branch fractions
-- IT special case: feeding from `decay.parquet` summary + `nuclides.level_keV`
-- 105 element files, ~173k rows total, builds in <2s
+### Completed
 
-**Pipeline integration**:
-- `build_all.py`: added step after `summing_partners`
-- `loader.py`: registered `emissions` DuckDB view + `emissions()` Python helper
-- `__init__.py`: exported `emissions` helper
+**Phase 1: ParquetStore in client (#210)**
+- New `clients/rs/nucl-parquet/src/store.rs` (~200 lines)
+  - `ParquetStore::new(data_dir)` — generic cached Parquet→JSON reader
+  - `ParquetStore::load(rel_path)` → `Arc<Vec<Value>>` (cached)
+  - `ParquetStore::load_filtered(rel_path, filters)` → filtered rows
+  - `ParquetStore::schema(rel_path)` → column names + types
+  - `Filter::Eq`, `Filter::Near`, `Filter::Gte`
+  - `parse_parquet_file()`, `column_value_to_json()` — moved from MCP
+- Made `z_to_symbol()` public in `meta.rs`
+- Added `serde_json`, `bytes` as runtime deps in client Cargo.toml
+- Exported `ParquetStore`, `Filter`, `z_to_symbol` from lib.rs
+- 5 integration tests pass (load, filter, schema, per-element, cache)
 
-**MCP tools** (all three servers):
-- Python: `get_emissions(parent_z, parent_a, parent_state, decay_mode, energy_keV, tolerance_keV, min_intensity_pct)`
-- TypeScript: same tool via DuckDB view
-- Rust: same tool via local Parquet + arrow reader
+**Earlier in session:**
+- #195 merged (summing_partners)
+- #197 merged (absolute emissions — all 8 rad_types)
+- #198 merged (COINCIDENCE_SQL state filter)
+- #201 auto-merged (compound_dedx + DoseConstant source)
+- #204 created (decay half-life override)
+- #205 created (raw table accessors)
+- data-2026.5.2 released
+- #193, #196, #50 closed
 
-**Tests**:
-- Python: 11 unit tests (cascade propagation, ICC normalization, IT handling, edge cases, schema)
-  + 11 @data acceptance tests (Co-60, Tc-99m, Eu-152 vs NuDat)
-- TypeScript: 2 DuckDB integration tests (Co-60 absolute intensity, Eu-152 EC shell summing)
-- Rust: 1 integration test (Co-60 via get_emissions tool)
+### In progress
 
-### NuDat validation
+**Phase 2: Refactor Rust MCP (#207)**
+- Replace 13 tool handlers' `load_parquet_rows` → `store.load_filtered()`
+- Remove MCP's `load_parquet_rows`, `parse_parquet_bytes`, `column_value_to_json`, `Cache`, `Z_TO_SYMBOL`
+- Remove `parquet`, `arrow`, `bytes` deps from MCP Cargo.toml
+- Branch: `feat/rs-parquet-store`
 
-| Nuclide | Gamma (keV) | Our calc | NuDat | Δ |
-|---------|-------------|----------|-------|---|
-| Co-60 | 1173.2 | 99.86% | 99.85% | +0.01% |
-| Co-60 | 1332.5 | 99.98% | 99.98% | exact |
-| Tc-99m | 140.5 | 89.04% | 89.06% | -0.02% |
-| Eu-152 | 121.8 | 28.49% | 28.58% | -0.3% |
-| Eu-152 | 344.3 (β⁻→Gd) | 26.58% | 26.50% | +0.3% |
+### Key files
+- `clients/rs/nucl-parquet/src/store.rs` — new ParquetStore (done)
+- `clients/rs/nucl-parquet-mcp/src/main.rs` — MCP refactoring (in progress)
+- Plan: `.claude/plans/snappy-snacking-cookie.md`
 
-### Key design decisions
-1. **New table, not modifying `radiation/`**: radiation is emitter-keyed (daughter);
-   absolute intensity is parent-specific. Separate table avoids row multiplication
-   and breaking coincidences/summing_partners pipeline.
-2. **Per-shell EC modes preserved**: Eu-152 121.8 keV gamma has separate rows for
-   KshellEC, LshellEC, MshellEC, beta+. Sum matches NuDat. More granular than NuDat.
-3. **ICC-weighted normalization**: G4 intensity is photon-only; total transition
-   rate = intensity × (1+ICC). This is the key insight for correct branch fractions.
-
-### Algorithm
-```
-For each parent (Z, A, state):
-  1. Build feeding: decay_detailed → daughter level populations; IT → isomeric level
-  2. Walk cascade top-down: branch_frac = intensity×(1+ICC) / Σ(intensity×(1+ICC))
-  3. Absolute photon: population × branch_frac × 1/(1+ICC) × 100
-```
+### Remaining sub-issues (#206 epic)
+- #208 TS MCP: extract registerViews to client
+- #209 Python MCP: fix bypasses
+- #211 Z-to-symbol dedup
+- #212 CI: data release triggers tests

@@ -22,7 +22,7 @@ static Z_TO_SYMBOL: [&str; 119] = [
     "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
 ];
 
-fn z_to_symbol(z: u32) -> Option<&'static str> {
+pub fn z_to_symbol(z: u32) -> Option<&'static str> {
     if z == 0 || z as usize >= Z_TO_SYMBOL.len() {
         None
     } else {
