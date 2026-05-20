@@ -51,6 +51,7 @@ import polars as pl
 from nucl_parquet.download import data_dir as _resolve_data_dir
 from nucl_parquet.g4 import (
     coincidences,
+    emissions,
     ensdfstate,
     mixed_coincidences,
     photon_evap_gammas,
@@ -314,8 +315,8 @@ def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, me
         levels_df = pl.read_parquet(strata_dir / "photon_evap_levels.parquet")
         nuclides_df = pl.read_parquet(data_dir / "meta" / "ensdf" / "nuclides.parquet")
         eadl_dir = data_dir / "meta" / "eadl"
-        emissions = xray_auger.synthesize_xray_auger(decay_detailed, gammas_df, levels_df, nuclides_df, eadl_dir)
-        xray_auger.write_radiation_atomic(emissions, nuclides_df, data_dir / "meta" / "ensdf" / "radiation_atomic")
+        xray_auger_df = xray_auger.synthesize_xray_auger(decay_detailed, gammas_df, levels_df, nuclides_df, eadl_dir)
+        xray_auger.write_radiation_atomic(xray_auger_df, nuclides_df, data_dir / "meta" / "ensdf" / "radiation_atomic")
 
     logger.info("[merge] radiation_atomic/ ⇨ radiation/ (per #74 design memo Integration contract)")
     n_files, n_added = merge_radiation_atomic(data_dir)
