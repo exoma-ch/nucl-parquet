@@ -51,6 +51,7 @@ import polars as pl
 from nucl_parquet.download import data_dir as _resolve_data_dir
 from nucl_parquet.g4 import (
     coincidences,
+    emissions,
     ensdfstate,
     mixed_coincidences,
     photon_evap_gammas,
@@ -258,7 +259,40 @@ def _check_invariants(data_dir: Path) -> None:
     neg = radiation.filter(pl.col("intensity_pct") < 0)
     assert neg.height == 0, f"radiation intensity_pct < 0: {neg.head(5).to_dicts()}"
 
-    logger.info("Sweep invariants pass: parent_level_keV, IT-on-ground, phantom isomer, dedup, non-negative intensity")
+    # 6. Decay ↔ nuclides half-life agreement (#203). Join on (Z, A, state),
+    # compare half_life_s. Flag any >10% relative disagreement. This catches
+    # the G4 RadioactiveDecay half-life swap bug class permanently.
+    decay_hl = decay.select("Z", "A", "state", "half_life_s").unique(subset=["Z", "A", "state"])
+    nuclides_hl = nuclides.filter(
+        pl.col("half_life_s").is_not_null() & pl.col("half_life_s").is_finite() & (pl.col("half_life_s") > 0)
+    ).select(
+        pl.col("Z"),
+        pl.col("A"),
+        pl.col("state"),
+        pl.col("half_life_s").alias("nuc_hl"),
+    )
+    joined = decay_hl.join(nuclides_hl, on=["Z", "A", "state"], how="inner").filter(
+        pl.col("half_life_s").is_not_null() & pl.col("half_life_s").is_finite() & (pl.col("half_life_s") > 0)
+    )
+    mismatches = joined.filter(((pl.col("half_life_s") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10)
+    # Budget: pre-fix had ~60 from the swap bug. Post-fix, 2 remain:
+    # Li-4 (resonance width evaluation), Ir-192m (unfixed swap, strata#711).
+    assert mismatches.height <= 5, (
+        f"decay ↔ nuclides half-life mismatch (>10%): {mismatches.height} rows "
+        f"(budget: 5, pre-fix baseline: ~60); "
+        f"sample: {mismatches.head(10).to_dicts()}"
+    )
+    if mismatches.height > 0:
+        logger.warning(
+            "decay ↔ nuclides: %d half-life disagreements >10%% (within budget): %s",
+            mismatches.height,
+            mismatches.select("Z", "A", "state").to_dicts(),
+        )
+
+    logger.info(
+        "Sweep invariants pass: parent_level_keV, IT-on-ground, phantom isomer, "
+        "dedup, non-negative intensity, decay↔nuclides half-life"
+    )
 
 
 def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, merge_only: bool = False) -> None:
@@ -314,8 +348,8 @@ def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, me
         levels_df = pl.read_parquet(strata_dir / "photon_evap_levels.parquet")
         nuclides_df = pl.read_parquet(data_dir / "meta" / "ensdf" / "nuclides.parquet")
         eadl_dir = data_dir / "meta" / "eadl"
-        emissions = xray_auger.synthesize_xray_auger(decay_detailed, gammas_df, levels_df, nuclides_df, eadl_dir)
-        xray_auger.write_radiation_atomic(emissions, nuclides_df, data_dir / "meta" / "ensdf" / "radiation_atomic")
+        xray_auger_df = xray_auger.synthesize_xray_auger(decay_detailed, gammas_df, levels_df, nuclides_df, eadl_dir)
+        xray_auger.write_radiation_atomic(xray_auger_df, nuclides_df, data_dir / "meta" / "ensdf" / "radiation_atomic")
 
     logger.info("[merge] radiation_atomic/ ⇨ radiation/ (per #74 design memo Integration contract)")
     n_files, n_added = merge_radiation_atomic(data_dir)

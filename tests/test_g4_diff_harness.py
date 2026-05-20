@@ -284,3 +284,52 @@ def test_radiation_schema_is_union_of_sources(radiation: pl.DataFrame) -> None:
     assert set(radiation.columns) == expected, (
         f"radiation schema diverges from union: {set(radiation.columns) ^ expected}"
     )
+
+
+@_built
+def test_decay_nuclides_halflife_agreement(decay: pl.DataFrame, nuclides: pl.DataFrame) -> None:
+    """Sweep invariant (#203): every (Z, A, state) parent in decay.parquet
+    must have a half_life_s within 10% of the catalog value in
+    nuclides.parquet.
+
+    This catches the G4 RadioactiveDecay half-life swap bug class —
+    where ground and metastable half-lives are swapped at the source —
+    permanently, regardless of which layer introduces the error.
+
+    Known upstream G4 disagreements are accepted via a small budget.
+    The pre-fix dataset had ~60 mismatches from the swap bug; the
+    budget of 5 catches any regression while tolerating unfixed
+    upstream cases (Li-4 resonance width, Ir-192m unfixed swap —
+    gerchowl/strata#711)."""
+    decay_hl = decay.select("Z", "A", "state", "half_life_s").unique(subset=["Z", "A", "state"])
+    nuclides_hl = nuclides.filter(
+        pl.col("half_life_s").is_not_null() & pl.col("half_life_s").is_finite() & (pl.col("half_life_s") > 0)
+    ).select(
+        pl.col("Z"),
+        pl.col("A"),
+        pl.col("state"),
+        pl.col("half_life_s").alias("nuc_hl"),
+    )
+    joined = decay_hl.join(nuclides_hl, on=["Z", "A", "state"], how="inner").filter(
+        pl.col("half_life_s").is_not_null() & pl.col("half_life_s").is_finite() & (pl.col("half_life_s") > 0)
+    )
+    mismatches = joined.filter(((pl.col("half_life_s") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10)
+    # Budget: the pre-fix dataset had ~60 mismatches from the swap bug.
+    # Post-fix, 2 remain as unfixed upstream G4 disagreements:
+    #   - Li-4 (Z=3,A=4): unbound resonance, different width evaluations
+    #   - Ir-192m (Z=77,A=192): unfixed swap — decay carries ground half-life
+    #     (6.38e6 s) on state='m'; nuclides correctly has 87 s (gerchowl/strata#711)
+    # Budget of 5 catches any regression while tolerating known upstream quirks.
+    assert mismatches.height <= 5, (
+        f"decay ↔ nuclides half-life mismatch (>10%): {mismatches.height} rows "
+        f"(budget: 5, pre-fix baseline: ~60); "
+        f"sample: {mismatches.head(10).to_dicts()}"
+    )
+    if mismatches.height > 0:
+        import warnings
+
+        warnings.warn(
+            f"decay ↔ nuclides: {mismatches.height} half-life disagreements >10% "
+            f"(within budget of 5): {mismatches.select('Z', 'A', 'state').to_dicts()}",
+            stacklevel=1,
+        )

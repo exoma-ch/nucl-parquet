@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.2",
-  "data_sha256": "b74aff6c5d20a81f2dd83000b0b47616cd7ddb50c51a920b5213addeac89b40f",
+  "data_version": "2026.5.3",
+  "data_sha256": "af2486fc319e4be0deb53285addf4d4da217eb4fc2ce2932c57306d350cf9f38",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2024": {
@@ -239,7 +239,7 @@
       "name": "Geant4-derived nuclear structure + EM (via strata-data)",
       "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project — source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward (replaces the v0.10.x IAEA-LiveChart pipeline). v0.13+ also pulls the em/ subdir for ESTAR + Sternheimer density-effect data (issue #121). See ADR-0002.",
       "source_url": "https://huggingface.co/datasets/gerchowl/strata-data",
-      "revision": "e4ac11f7d4d60f235cf26286d6d0e87f86e3e3ad",
+      "revision": "6429aad4f3b731e884499e0217dd43b17bb75a86",
       "fetcher": "scripts/fetch_strata_nuclear.py",
       "data_type": "nuclear_structure_and_em",
       "files": [
