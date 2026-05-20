@@ -130,6 +130,27 @@ impl StoppingDb {
             .unwrap_or(f64::NAN)
     }
 
+    /// Raw NIST stopping power table for a (source, target_Z) pair.
+    ///
+    /// Returns `(energy_MeV[], dedx[])` sorted by energy, or `None` if not loaded.
+    #[inline]
+    pub fn nist_table(&self, source: &str, target_z: u32) -> Option<&XYTable> {
+        self.nist.get(&(source.to_string(), target_z))
+    }
+
+    /// Iterate all loaded NIST (source, target_Z) keys.
+    pub fn nist_keys(&self) -> impl Iterator<Item = (&str, u32)> + '_ {
+        self.nist.keys().map(|(s, z)| (s.as_str(), *z))
+    }
+
+    /// Raw CatIMA stopping power table for a (proj_Z, target_Z) pair.
+    ///
+    /// Returns `(energy_MeV_u[], dedx[])` sorted by energy, or `None` if not loaded.
+    #[inline]
+    pub fn catima_table(&self, proj_z: u32, target_z: u32) -> Option<&XYTable> {
+        self.catima.get(&(proj_z, target_z))
+    }
+
     // --- Internal loaders ---
 
     fn load_nist(dir: &Path) -> crate::Result<HashMap<(String, u32), XYTable>> {

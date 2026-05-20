@@ -54,6 +54,7 @@ mod xs;
 pub use data_dir::DataDir;
 pub use electron::{ElectronDb, ElectronProcess};
 pub use error::Error;
+pub use interp::XYTable;
 pub use meta::{
     AbundanceEntry, AbundancesDb, CoincidenceEntry, CoincidenceFilter, CoincidencesDb, DecayDb,
     DecayEntry, DoseConstant, DoseDb, Emission, EmissionEntry, GammaCandidate, RadiationDb,
