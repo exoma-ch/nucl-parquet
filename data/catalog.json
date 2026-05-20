@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.3",
-  "data_sha256": "af2486fc319e4be0deb53285addf4d4da217eb4fc2ce2932c57306d350cf9f38",
+  "data_version": "2026.5.4",
+  "data_sha256": "a4edf294f82c4b540c7fbe443a97e2c793a05bee08c256a89224c261377fbfb3",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2023-iso": {
@@ -19,7 +19,7 @@
       "data_type": "cross_sections",
       "version": "2023-iso",
       "path": "tendl-2023-iso/xs/",
-      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release \u2014 it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
+      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release — it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
     },
     "endfb-8.1": {
       "name": "ENDF/B-VIII.1",
@@ -296,7 +296,14 @@
       ],
       "sources_note": "PSTAR/ASTAR/ESTAR are NIST ICRU-49/37 tables (reproducible via nucl_parquet.build_stopping). dSTAR/tSTAR are velocity-scaled from PSTAR (exact for electronic stopping). ³He has no NIST table — routes through catima in the loader. catima_* are pycatima tables for common heavy-ion beams; the full 92×92 MeV/u matrix is at catima_full_matrix.",
       "catima": {
-        "schema": ["proj_Z", "proj_A", "target_Z", "energy_MeV_u", "dedx", "straggling"],
+        "schema": [
+          "proj_Z",
+          "proj_A",
+          "target_Z",
+          "energy_MeV_u",
+          "dedx",
+          "straggling"
+        ],
         "proj_Z_range": [
           1,
           99
@@ -308,56 +315,140 @@
         "energy_unit": "MeV/u",
         "n_isotopes": 399,
         "n_rows": 7341600,
-        "isotope_inventory": "All stable + primordial isotopes (abundance > 0 in meta/abundances.parquet, 287 nuclides) \u222a all ground-state nuclides with T\u00bd > 1 year in meta/decay.parquet (covers Np/Pu/Am/Cm/Bk/Cf/Es transuranics up to Z=99, plus every long-lived radio-isotope of lower-Z elements) \u222a beam/medical allowlist (C-11, N-13, O-15, F-18, P-32). For Z values with no T\u00bd>1yr isotope (At, Rn, Fr), the longest-lived ground state is shipped as fallback.",
-        "isotope_note": "Rows are keyed on (proj_Z, proj_A). At E/A > 0.1 MeV/u dedx is isotope-agnostic to <0.1%; below ~0.01 MeV/u nuclear-stopping reduced-mass effects cause real (up to ~15%) isotope dependence, captured by the per-isotope rows. Querying (Z, A) outside the inventory raises KeyError \u2014 extend nucl_parquet.build_heavy_ions._BEAM_ALLOWLIST or lower _LONGLIVED_THRESHOLD_S and rebuild."
+        "isotope_inventory": "All stable + primordial isotopes (abundance > 0 in meta/abundances.parquet, 287 nuclides) ∪ all ground-state nuclides with T½ > 1 year in meta/decay.parquet (covers Np/Pu/Am/Cm/Bk/Cf/Es transuranics up to Z=99, plus every long-lived radio-isotope of lower-Z elements) ∪ beam/medical allowlist (C-11, N-13, O-15, F-18, P-32). For Z values with no T½>1yr isotope (At, Rn, Fr), the longest-lived ground state is shipped as fallback.",
+        "isotope_note": "Rows are keyed on (proj_Z, proj_A). At E/A > 0.1 MeV/u dedx is isotope-agnostic to <0.1%; below ~0.01 MeV/u nuclear-stopping reduced-mass effects cause real (up to ~15%) isotope dependence, captured by the per-isotope rows. Querying (Z, A) outside the inventory raises KeyError — extend nucl_parquet.build_heavy_ions._BEAM_ALLOWLIST or lower _LONGLIVED_THRESHOLD_S and rebuild."
       },
       "electron_stopping": {
         "path": "stopping/em/electron_stopping.parquet",
-        "schema": ["name", "g4_name", "is_element", "target_Z", "energy_MeV", "collision_sp_mev_cm2_g", "radiative_sp_mev_cm2_g", "total_sp_mev_cm2_g", "density_effect_delta"],
-        "source": "gerchowl/strata-data em/estar_long.parquet (Geant4 EM data \u2192 ESTAR-equivalent)",
+        "schema": [
+          "name",
+          "g4_name",
+          "is_element",
+          "target_Z",
+          "energy_MeV",
+          "collision_sp_mev_cm2_g",
+          "radiative_sp_mev_cm2_g",
+          "total_sp_mev_cm2_g",
+          "density_effect_delta"
+        ],
+        "source": "gerchowl/strata-data em/estar_long.parquet (Geant4 EM data → ESTAR-equivalent)",
         "coverage": "98 elements (Z=1..98) + ~183 compounds (ICRU tissue/detector materials, water, air, etc.)",
-        "energy_range_MeV": [0.001, 10000.0],
+        "energy_range_MeV": [
+          0.001,
+          10000.0
+        ],
         "note": "target_Z is NULL for compounds; query elements by target_Z, compounds by name. Both collision + radiative + total stopping power columns are populated."
       },
       "density_effect_params": {
         "path": "stopping/em/density_effect_params.parquet",
-        "schema": ["name", "I_eV", "C", "X0", "X1", "a", "k", "delta0", "density_gcm3", "state", "Zeff", "nElements"],
+        "schema": [
+          "name",
+          "I_eV",
+          "C",
+          "X0",
+          "X1",
+          "a",
+          "k",
+          "delta0",
+          "density_gcm3",
+          "state",
+          "Zeff",
+          "nElements"
+        ],
         "source": "gerchowl/strata-data em/density_effect.parquet (Sternheimer parameterization)",
         "coverage": "278 materials covering the standard Geant4 NIST_MATERIAL set (elements with G4_ prefix, plus ICRU compounds)",
-        "note": "Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList. For elements Zeff equals Z. Use these params to evaluate the density-effect correction \u03b4 above the validity range of tabulated dedx."
+        "note": "Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList. For elements Zeff equals Z. Use these params to evaluate the density-effect correction δ above the validity range of tabulated dedx."
       },
       "compounds": {
         "path": "stopping/compounds/",
-        "schema": ["source", "matno", "compound", "energy_MeV", "dedx"],
-        "sources": ["PSTAR_compounds", "ASTAR_compounds"],
+        "schema": [
+          "source",
+          "matno",
+          "compound",
+          "energy_MeV",
+          "dedx"
+        ],
+        "sources": [
+          "PSTAR_compounds",
+          "ASTAR_compounds"
+        ],
         "source_url": "https://physics.nist.gov/PhysRefData/Star/Text/method.html",
         "fetcher": "nucl_parquet/build_stopping_compounds.py",
-        "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
+        "note": "NIST-measured proton and α stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, …). Direct drop-in replacement for naive Bragg additivity (Σ wᵢ · elemental_dedx) which is 5–10% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
       }
     },
     "summing_partners": {
       "path": "meta/ensdf/summing_partners/",
-      "layout": "one file per daughter element symbol \u2014 meta/ensdf/summing_partners/{Symbol}.parquet",
-      "schema": ["Z", "A", "parent_state", "parent_decay_mode", "emission1_rad_type", "emission1_energy_keV", "emission1_intensity", "emission1_icc_total", "emission1_shell", "emission2_rad_type", "emission2_energy_keV", "emission2_intensity", "emission2_icc_total", "emission2_shell", "parent_level_keV", "intermediate_level_keV", "final_level_keV", "pair_intensity", "icc_correction_factor", "pure_emission_joint_intensity"],
-      "source": "Derived from coincidences/{Symbol}.parquet with ICC correction factors. \u03b3-\u03b3 pairs canonicalized (E1 \u2264 E2), X-ray/Auger \u2297 \u03b3 pairs from mixed_coincidences.",
+      "layout": "one file per daughter element symbol — meta/ensdf/summing_partners/{Symbol}.parquet",
+      "schema": [
+        "Z",
+        "A",
+        "parent_state",
+        "parent_decay_mode",
+        "emission1_rad_type",
+        "emission1_energy_keV",
+        "emission1_intensity",
+        "emission1_icc_total",
+        "emission1_shell",
+        "emission2_rad_type",
+        "emission2_energy_keV",
+        "emission2_intensity",
+        "emission2_icc_total",
+        "emission2_shell",
+        "parent_level_keV",
+        "intermediate_level_keV",
+        "final_level_keV",
+        "pair_intensity",
+        "icc_correction_factor",
+        "pure_emission_joint_intensity"
+      ],
+      "source": "Derived from coincidences/{Symbol}.parquet with ICC correction factors. γ-γ pairs canonicalized (E1 ≤ E2), X-ray/Auger ⊗ γ pairs from mixed_coincidences.",
       "coverage": "104 elements, ~9.3M rows. All ground + metastable parent decay channels.",
-      "note": "ICC-corrected summing partner pairs for HPGe true-coincidence-summing (TCS) corrections. icc_correction_factor = 1/((1+\u03b1\u2081)\u00d7(1+\u03b1\u2082)) for \u03b3-\u03b3; 1/(1+\u03b1\u2082) for xray\u2297\u03b3. pure_emission_joint_intensity = pair_intensity \u00d7 icc_correction_factor. Filed by daughter element (Co-60 cascades under Ni). Validated: Eu-152 344 keV \u226510 partners, Co-60 1173/1333 ICC \u2248 0.9997."
+      "note": "ICC-corrected summing partner pairs for HPGe true-coincidence-summing (TCS) corrections. icc_correction_factor = 1/((1+α₁)×(1+α₂)) for γ-γ; 1/(1+α₂) for xray⊗γ. pure_emission_joint_intensity = pair_intensity × icc_correction_factor. Filed by daughter element (Co-60 cascades under Ni). Validated: Eu-152 344 keV ≥10 partners, Co-60 1173/1333 ICC ≈ 0.9997."
     },
     "emissions": {
       "path": "meta/ensdf/emissions/",
-      "layout": "one file per parent element symbol \u2014 meta/ensdf/emissions/{Symbol}.parquet",
-      "schema": ["parent_Z", "parent_A", "parent_state", "decay_mode", "daughter_Z", "daughter_A", "rad_type", "energy_keV", "intensity_pct", "icc_total", "parent_level_keV", "daughter_level_keV", "multipolarity", "rad_subtype"],
-      "source": "Cascade propagation through G4 PhotonEvaporation level schemes, fed by decay_detailed.parquet branching ratios. X-ray/Auger from radiation/ (xray_auger.py). \u03b2/\u03b1 endpoints from decay_detailed Q-values.",
+      "layout": "one file per parent element symbol — meta/ensdf/emissions/{Symbol}.parquet",
+      "schema": [
+        "parent_Z",
+        "parent_A",
+        "parent_state",
+        "decay_mode",
+        "daughter_Z",
+        "daughter_A",
+        "rad_type",
+        "energy_keV",
+        "intensity_pct",
+        "icc_total",
+        "parent_level_keV",
+        "daughter_level_keV",
+        "multipolarity",
+        "rad_subtype"
+      ],
+      "source": "Cascade propagation through G4 PhotonEvaporation level schemes, fed by decay_detailed.parquet branching ratios. X-ray/Auger from radiation/ (xray_auger.py). β/α endpoints from decay_detailed Q-values.",
       "coverage": "All ground + metastable parents with known decays, Z=1..117. ~711k rows across 117 elements.",
-      "note": "NuDat-equivalent one-stop-shop: absolute per-decay emission intensities (0\u2013100%) for gamma, CE, X-ray, Auger, 511 keV annihilation, \u03b2\u207b/\u03b2\u207a endpoints, and \u03b1 kinetic energies. Filed by PARENT element (Co-60 in Co.parquet). Key physics: G4 intensity is photon-only relative; total transition rate = intensity \u00d7 (1+ICC). Validated against NuDat: Co-60 1173 keV \u00b10.01%, Tc-99m 140 keV \u00b10.02%, Eu-152 121.8 keV \u00b10.3%, Na-22 511 keV \u00b10.07%, Ra-226 \u03b1 4784 keV."
+      "note": "NuDat-equivalent one-stop-shop: absolute per-decay emission intensities (0–100%) for gamma, CE, X-ray, Auger, 511 keV annihilation, β⁻/β⁺ endpoints, and α kinetic energies. Filed by PARENT element (Co-60 in Co.parquet). Key physics: G4 intensity is photon-only relative; total transition rate = intensity × (1+ICC). Validated against NuDat: Co-60 1173 keV ±0.01%, Tc-99m 140 keV ±0.02%, Eu-152 121.8 keV ±0.3%, Na-22 511 keV ±0.07%, Ra-226 α 4784 keV."
     },
     "beta_spectra": {
       "path": "meta/ensdf/beta_spectra/",
-      "layout": "one file per parent element symbol \u2014 meta/ensdf/beta_spectra/{Symbol}.parquet",
-      "schema": ["Z", "A", "state", "transition_idx", "decay_mode", "forbiddenness", "endpoint_keV", "branching", "energy_keV", "dN_dE", "cumulative", "shape_factor_approx"],
+      "layout": "one file per parent element symbol — meta/ensdf/beta_spectra/{Symbol}.parquet",
+      "schema": [
+        "Z",
+        "A",
+        "state",
+        "transition_idx",
+        "decay_mode",
+        "forbiddenness",
+        "endpoint_keV",
+        "branching",
+        "energy_keV",
+        "dN_dE",
+        "cumulative",
+        "shape_factor_approx"
+      ],
       "source": "Endpoint Q-values + forbiddenness from strata radioactive_decay.parquet; spectrum shape from Fermi function (relativistic, with shape factors for unique 1st/2nd forbidden)",
-      "coverage": "All \u03b2-minus and \u03b2+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions \u00d7 200 energy bins each",
-      "note": "dN/dE is normalized per transition: \u222b dN/dE \u00b7 dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions (K-40, Tc-99, Re-187, Cl-36, etc.) use S(E)=1 as a documented approximation \u2014 filter on shape_factor_approx=True to find them. For \u03b2+ transitions, endpoint_keV is the positron kinetic-energy endpoint (strata's q_value_kev minus 2\u00b7m_e c\u00b2 = 1022 keV). State 'm' marks metastable parents (inferred from parent_ex_kev > 0). Validated: P-32 mean E = 694.9 (NNDC 694.9, exact); F-18 \u03b2+ mean E = 250 keV (NNDC 249.8); Bi-210 mean E = 390 (NNDC 389)."
+      "coverage": "All β-minus and β+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions × 200 energy bins each",
+      "note": "dN/dE is normalized per transition: ∫ dN/dE · dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions (K-40, Tc-99, Re-187, Cl-36, etc.) use S(E)=1 as a documented approximation — filter on shape_factor_approx=True to find them. For β+ transitions, endpoint_keV is the positron kinetic-energy endpoint (strata's q_value_kev minus 2·m_e c² = 1022 keV). State 'm' marks metastable parents (inferred from parent_ex_kev > 0). Validated: P-32 mean E = 694.9 (NNDC 694.9, exact); F-18 β+ mean E = 250 keV (NNDC 249.8); Bi-210 mean E = 390 (NNDC 389)."
     },
     "em": {
       "path": "em/",
@@ -366,10 +457,15 @@
         "electron_brem_sb_dcs": "electron_brem_sb_dcs.parquet"
       },
       "electron_brem_sb_dcs": {
-        "schema": ["target_Z", "electron_kev", "kappa", "dcs"],
-        "source": "gerchowl/strata-data em/brem_sb_dcs.parquet (republishes G4EMLOW brem_SB.dat \u2192 Seltzer-Berger 1985)",
-        "coverage": "Z=1..92, 57 incident-electron energies (1 keV..10 GeV log-spaced), 32 \u03ba values",
-        "note": "SCALED differential cross section per Berger & Seltzer (1985): dcs = (d\u03c3/d\u03ba) \u00d7 \u03b2\u00b2 / Z\u00b2, where \u03ba = E_\u03b3 / T_electron and \u03b2 is the electron velocity. The Z\u00b2 is factored out so values are O(1-10) across all Z. To recover the raw d\u03c3/d\u03ba multiply by Z\u00b2/\u03b2\u00b2. Companion to electron_brem (integrated \u03c3). Cite Seltzer & Berger, Nucl. Instrum. Meth. B12 (1985) 95."
+        "schema": [
+          "target_Z",
+          "electron_kev",
+          "kappa",
+          "dcs"
+        ],
+        "source": "gerchowl/strata-data em/brem_sb_dcs.parquet (republishes G4EMLOW brem_SB.dat → Seltzer-Berger 1985)",
+        "coverage": "Z=1..92, 57 incident-electron energies (1 keV..10 GeV log-spaced), 32 κ values",
+        "note": "SCALED differential cross section per Berger & Seltzer (1985): dcs = (dσ/dκ) × β² / Z², where κ = E_γ / T_electron and β is the electron velocity. The Z² is factored out so values are O(1-10) across all Z. To recover the raw dσ/dκ multiply by Z²/β². Companion to electron_brem (integrated σ). Cite Seltzer & Berger, Nucl. Instrum. Meth. B12 (1985) 95."
       }
     }
   }
