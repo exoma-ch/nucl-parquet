@@ -377,7 +377,7 @@ def fetch_element(
 ) -> int:
     """Fetch all EXFOR data for an element + projectile, write Parquet."""
     # Get target masses from TENDL to know which isotopes to query
-    tendl_path = ROOT / "tendl-2024" / "xs" / f"{projectile}_{element}.parquet"
+    tendl_path = ROOT / "tendl-2023-iso" / "xs" / f"{projectile}_{element}.parquet"
     target_masses: list[int] = [0]  # Always query natural element (mass=0)
 
     if tendl_path.exists():
@@ -443,7 +443,7 @@ def fetch_element(
 
 def get_tendl_elements(projectile: str) -> list[str]:
     """Get list of elements available in TENDL for a projectile."""
-    xs_dir = ROOT / "tendl-2024" / "xs"
+    xs_dir = ROOT / "tendl-2023-iso" / "xs"
     elements = []
     for f in sorted(xs_dir.glob(f"{projectile}_*.parquet")):
         elem = f.stem.split("_", 1)[1]

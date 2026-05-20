@@ -112,15 +112,15 @@ impl ParquetStore {
 
 fn matches_filter(row: &Value, filter: &Filter) -> bool {
     match filter {
-        Filter::Eq(col, expected) => row.get(col).map_or(false, |v| v == expected),
+        Filter::Eq(col, expected) => row.get(col).is_some_and(|v| v == expected),
         Filter::Near(col, target, tolerance) => row
             .get(col)
             .and_then(|v| v.as_f64())
-            .map_or(false, |v| (v - target).abs() < *tolerance),
+            .is_some_and(|v| (v - target).abs() < *tolerance),
         Filter::Gte(col, threshold) => row
             .get(col)
             .and_then(|v| v.as_f64())
-            .map_or(false, |v| v >= *threshold),
+            .is_some_and(|v| v >= *threshold),
     }
 }
 

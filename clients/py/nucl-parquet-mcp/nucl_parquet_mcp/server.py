@@ -132,7 +132,7 @@ async def list_isotopes(library: str, projectile: str) -> str:
     """List available target elements for a library and projectile.
 
     Args:
-        library: Library ID, e.g. 'tendl-2024', 'endfb-8.1'.
+        library: Library ID, e.g. 'tendl-2025', 'endfb-8.1'.
         projectile: Projectile type: n, p, d, t, h, a, g.
     """
     cat = _ensure_catalog()
@@ -172,7 +172,7 @@ async def get_cross_sections(
     Returns energy (MeV) and cross-section (mb) with reaction product info.
 
     Args:
-        library: Library ID, e.g. 'tendl-2024'.
+        library: Library ID, e.g. 'tendl-2025'.
         projectile: Projectile: n, p, d, t, h, a, g.
         element: Target element symbol, e.g. 'Cu', 'Fe'.
         max_rows: Maximum rows to return (default 500).

@@ -31,7 +31,7 @@ describe("catalog", () => {
     const cat = ensureCatalog();
     const libs = cat.libraries;
     expect(Object.keys(libs).length).toBeGreaterThanOrEqual(15);
-    expect(libs).toHaveProperty("tendl-2024");
+    expect(libs).toHaveProperty("tendl-2023-iso");
     expect(libs).toHaveProperty("endfb-8.1");
     expect(libs).toHaveProperty("exfor");
   });

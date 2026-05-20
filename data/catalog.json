@@ -5,10 +5,10 @@
   "data_sha256": "af2486fc319e4be0deb53285addf4d4da217eb4fc2ce2932c57306d350cf9f38",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
-    "tendl-2024": {
-      "name": "TENDL-2024",
-      "description": "TALYS Evaluated Nuclear Data Library 2024 (IAEA/PSI)",
-      "source_url": "https://tendl.web.psi.ch/tendl_2024/tendl2024.html",
+    "tendl-2023-iso": {
+      "name": "TENDL-2023 + Aug 2024 isomeric correction",
+      "description": "TENDL-2023 neutron sublibrary with August 2024 patch restoring isomeric production in MF-10 (ground/metastable state splitting for ~15k products). No neutron sublibrary. Use alongside tendl-2025 for isomeric ratios not available in the newer release.",
+      "source_url": "https://tendl.web.psi.ch/tendl_2023/tendl2023.html",
       "projectiles": [
         "p",
         "d",
@@ -17,8 +17,9 @@
         "a"
       ],
       "data_type": "cross_sections",
-      "version": "2024",
-      "path": "tendl-2024/xs/"
+      "version": "2023-iso",
+      "path": "tendl-2023-iso/xs/",
+      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release \u2014 it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
     },
     "endfb-8.1": {
       "name": "ENDF/B-VIII.1",

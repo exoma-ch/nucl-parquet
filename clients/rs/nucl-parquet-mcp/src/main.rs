@@ -280,7 +280,7 @@ fn tool_definitions() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "library": { "type": "string", "description": "Library ID, e.g. 'tendl-2024'" },
+                        "library": { "type": "string", "description": "Library ID, e.g. 'tendl-2025'" },
                         "projectile": { "type": "string", "description": "Projectile: n, p, d, t, h, a, g" }
                     },
                     "required": ["library", "projectile"]
@@ -1011,7 +1011,7 @@ mod tests {
         let data_dir = test_data_dir();
         let cat = load_catalog(&data_dir).unwrap();
         assert!(cat.libraries.len() >= 15);
-        assert!(cat.libraries.contains_key("tendl-2024"));
+        assert!(cat.libraries.contains_key("tendl-2025"));
         assert!(cat.libraries.contains_key("endfb-8.1"));
         assert!(cat.libraries.contains_key("exfor"));
     }
@@ -1128,7 +1128,7 @@ mod tests {
         assert!(resp.error.is_none());
         let content = resp.result.unwrap();
         let text = content["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("TENDL-2024"));
+        assert!(text.contains("TENDL-2023"));
     }
 
     #[tokio::test]

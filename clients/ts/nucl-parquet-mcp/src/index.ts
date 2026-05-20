@@ -342,7 +342,7 @@ server.tool(
   "list_isotopes",
   "List available target elements for a given library and projectile. Returns element symbols.",
   {
-    library: z.string().describe("Library ID, e.g. 'tendl-2024', 'endfb-8.1'"),
+    library: z.string().describe("Library ID, e.g. 'tendl-2025', 'endfb-8.1'"),
     projectile: z.string().describe("Projectile: n, p, d, t, h, a, g"),
   },
   async ({ library, projectile }) => {
@@ -378,7 +378,7 @@ server.tool(
   "get_cross_sections",
   "Get nuclear reaction cross-section data for a specific target element. Returns energy (MeV) and cross-section (mb) arrays with reaction product info.",
   {
-    library: z.string().describe("Library ID, e.g. 'tendl-2024'"),
+    library: z.string().describe("Library ID, e.g. 'tendl-2025'"),
     projectile: z.string().describe("Projectile: n, p, d, t, h, a, g"),
     element: z.string().describe("Target element symbol, e.g. 'Cu', 'Fe', 'Au'"),
     max_rows: z.number().optional().describe("Max rows to return (default 500)"),
