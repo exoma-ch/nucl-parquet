@@ -303,21 +303,17 @@ def test_decay_nuclides_halflife_agreement(decay: pl.DataFrame, nuclides: pl.Dat
     gerchowl/strata#711)."""
     decay_hl = decay.select("Z", "A", "state", "half_life_s").unique(subset=["Z", "A", "state"])
     nuclides_hl = nuclides.filter(
-        pl.col("half_life_s").is_not_null()
-        & pl.col("half_life_s").is_finite()
-        & (pl.col("half_life_s") > 0)
+        pl.col("half_life_s").is_not_null() & pl.col("half_life_s").is_finite() & (pl.col("half_life_s") > 0)
     ).select(
-        pl.col("Z"), pl.col("A"), pl.col("state"),
+        pl.col("Z"),
+        pl.col("A"),
+        pl.col("state"),
         pl.col("half_life_s").alias("nuc_hl"),
     )
     joined = decay_hl.join(nuclides_hl, on=["Z", "A", "state"], how="inner").filter(
-        pl.col("half_life_s").is_not_null()
-        & pl.col("half_life_s").is_finite()
-        & (pl.col("half_life_s") > 0)
+        pl.col("half_life_s").is_not_null() & pl.col("half_life_s").is_finite() & (pl.col("half_life_s") > 0)
     )
-    mismatches = joined.filter(
-        ((pl.col("half_life_s") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10
-    )
+    mismatches = joined.filter(((pl.col("half_life_s") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10)
     # Budget: the pre-fix dataset had ~60 mismatches from the swap bug.
     # Post-fix, 2 remain as unfixed upstream G4 disagreements:
     #   - Li-4 (Z=3,A=4): unbound resonance, different width evaluations
