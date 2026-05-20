@@ -259,7 +259,44 @@ def _check_invariants(data_dir: Path) -> None:
     neg = radiation.filter(pl.col("intensity_pct") < 0)
     assert neg.height == 0, f"radiation intensity_pct < 0: {neg.head(5).to_dicts()}"
 
-    logger.info("Sweep invariants pass: parent_level_keV, IT-on-ground, phantom isomer, dedup, non-negative intensity")
+    # 6. Decay ↔ nuclides half-life agreement (#203). Join on (Z, A, state),
+    # compare half_life_s. Flag any >10% relative disagreement. This catches
+    # the G4 RadioactiveDecay half-life swap bug class permanently.
+    decay_hl = decay.select("Z", "A", "state", "half_life_s").unique(subset=["Z", "A", "state"])
+    nuclides_hl = nuclides.filter(
+        pl.col("half_life_s").is_not_null()
+        & pl.col("half_life_s").is_finite()
+        & (pl.col("half_life_s") > 0)
+    ).select(
+        pl.col("Z"), pl.col("A"), pl.col("state"),
+        pl.col("half_life_s").alias("nuc_hl"),
+    )
+    joined = decay_hl.join(nuclides_hl, on=["Z", "A", "state"], how="inner").filter(
+        pl.col("half_life_s").is_not_null()
+        & pl.col("half_life_s").is_finite()
+        & (pl.col("half_life_s") > 0)
+    )
+    mismatches = joined.filter(
+        ((pl.col("half_life_s") - pl.col("nuc_hl")).abs() / pl.col("nuc_hl")) > 0.10
+    )
+    # Budget: pre-fix had ~60 from the swap bug. Post-fix, 2 remain from
+    # genuine G4 evaluation differences (Li-4 resonance, Ir-192m level).
+    assert mismatches.height <= 5, (
+        f"decay ↔ nuclides half-life mismatch (>10%): {mismatches.height} rows "
+        f"(budget: 5, pre-fix baseline: ~60); "
+        f"sample: {mismatches.head(10).to_dicts()}"
+    )
+    if mismatches.height > 0:
+        logger.warning(
+            "decay ↔ nuclides: %d half-life disagreements >10%% (within budget): %s",
+            mismatches.height,
+            mismatches.select("Z", "A", "state").to_dicts(),
+        )
+
+    logger.info(
+        "Sweep invariants pass: parent_level_keV, IT-on-ground, phantom isomer, "
+        "dedup, non-negative intensity, decay↔nuclides half-life"
+    )
 
 
 def build_all(data_dir: Path | None = None, *, skip_converters: bool = False, merge_only: bool = False) -> None:
