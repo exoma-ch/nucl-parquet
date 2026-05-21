@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.14.1...nucl-parquet-ts-v0.14.2) (2026-05-21)
+
+
+### Features
+
+* **parity:** Cross-language golden-file fixtures — closes [#176](https://github.com/exoma-ch/nucl-parquet/issues/176) ([#191](https://github.com/exoma-ch/nucl-parquet/issues/191)) ([179476d](https://github.com/exoma-ch/nucl-parquet/commit/179476d13d3466fd1e513563a95304a6b303a86a))
+
 ## [0.14.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.14.0...nucl-parquet-ts-v0.14.1) (2026-05-15)
 
 

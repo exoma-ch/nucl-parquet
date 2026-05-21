@@ -1,9 +1,9 @@
 {
-  ".": "0.14.1",
-  "clients/py/nucl-parquet-mcp": "0.13.2",
-  "clients/rs/nucl-parquet": "0.13.2",
-  "clients/rs/nucl-parquet-mcp": "0.13.3",
-  "clients/ts/nucl-parquet": "0.14.1",
-  "clients/ts/nucl-parquet-mcp": "0.13.3",
+  ".": "0.14.2",
+  "clients/py/nucl-parquet-mcp": "0.13.3",
+  "clients/rs/nucl-parquet": "0.13.3",
+  "clients/rs/nucl-parquet-mcp": "0.13.4",
+  "clients/ts/nucl-parquet": "0.14.2",
+  "clients/ts/nucl-parquet-mcp": "0.13.4",
   "clients/go/nucl-parquet": "0.13.1"
 }
