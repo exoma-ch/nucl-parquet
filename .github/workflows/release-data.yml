@@ -21,6 +21,11 @@ permissions:
   contents: write
 
 jobs:
+  # Run the full CI test suite to verify clients work with the released data.
+  verify:
+    name: Verify clients
+    uses: ./.github/workflows/ci.yml
+
   data-asset:
     name: Build & upload data tarball
     runs-on: ubuntu-latest
