@@ -8,7 +8,7 @@ Usage:
     db = nucl_parquet.connect()
 
     # Cross-section query:
-    db.sql("SELECT * FROM tendl_2024 WHERE target_A=63 AND residual_Z=30")
+    db.sql("SELECT * FROM tendl_2023_iso WHERE target_A=63 AND residual_Z=30")
 
     # Compare all libraries:
     db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_A=63 AND residual_Z=30")
@@ -207,172 +207,31 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         union_sql = " UNION ALL ".join(f"SELECT * FROM {v}" for v in lib_views)
         db.execute(f"CREATE VIEW xs AS {union_sql}")
 
-    # --- Shared meta files ---
-    _register_parquet(db, data_dir / "meta" / "abundances.parquet", "abundances")
-    _register_parquet(db, data_dir / "meta" / "decay.parquet", "decay")
-    _register_parquet(db, data_dir / "meta" / "elements.parquet", "elements")
+    # --- Catalog-driven view registration ---
+    # All views declared in catalog.json::views — single source of truth.
+    # New data tables become queryable by adding an entry to catalog.json,
+    # no code changes needed in any client (Python, TypeScript, Rust).
+    for view_name, view_def in catalog.get("views", {}).items():
+        view_path = view_def["path"]
+        view_type = view_def.get("type", "file")
+        if view_type == "glob":
+            _register_glob(db, data_dir / view_path, view_name)
+        else:
+            _register_parquet(db, data_dir / view_path, view_name)
 
-    # --- Stopping powers ---
-    # Per-source files: stopping/PSTAR.parquet, ASTAR.parquet, ESTAR.parquet,
-    # dSTAR.parquet, tSTAR.parquet, catima_*.parquet — all reproducible from
-    # nucl_parquet/build_stopping.py (NIST CGI) + build_light_ions.py + the
-    # pycatima-based build_heavy_ions.py.
-    # catima.parquet (92×92 MeV/u table, different schema) lives in stopping/catima/.
-    # ³He routes through catima (no NIST table); α through NIST ASTAR (#137).
-    _register_glob(db, data_dir / "stopping", "stopping")
-    _register_parquet(db, data_dir / "stopping" / "catima" / "catima.parquet", "catima_stopping")
-    # NIST compound tables for protons and α (matno 99-279). Different schema
-    # from the elemental `stopping` glob — keyed on (matno, compound) — so they
-    # ship under stopping/compounds/ and are registered as separate views.
-    _register_parquet(db, data_dir / "stopping" / "compounds" / "PSTAR_compounds.parquet", "pstar_compounds")
-    _register_parquet(db, data_dir / "stopping" / "compounds" / "ASTAR_compounds.parquet", "astar_compounds")
-    # Electron stopping with collision/radiative split + ~180 compounds (from
-    # strata-data em/, rebuilt by build_em_stopping.py). Legacy ESTAR.parquet
-    # in stopping/ keeps the four-column schema for backwards compatibility.
-    _register_parquet(db, data_dir / "stopping" / "em" / "electron_stopping.parquet", "electron_stopping")
-    _register_parquet(db, data_dir / "stopping" / "em" / "density_effect_params.parquet", "density_effect_params")
+    # --- Special views that need logic beyond simple registration ---
 
-    # --- ENSDF data ---
+    # ground_states: when nuclides.parquet exists, override the file-based
+    # ground_states view with a filtered view of nuclides (state='').
     nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
     if nuclides_path.exists():
-        _register_parquet(db, nuclides_path, "nuclides")
-        db.execute("CREATE VIEW ground_states AS SELECT * FROM nuclides WHERE state = ''")
-    else:
-        # Fallback for data dirs without nuclides.parquet
-        _register_parquet(db, data_dir / "meta" / "ensdf" / "ground_states.parquet", "ground_states")
-    _register_glob(db, data_dir / "meta" / "ensdf" / "gammas", "ensdf_gammas")
-    _register_glob(db, data_dir / "meta" / "ensdf" / "levels", "ensdf_levels")
-    _register_glob(db, data_dir / "meta" / "ensdf" / "radiation", "radiation")
-    _register_glob(db, data_dir / "meta" / "ensdf" / "coincidences", "coincidences")
-    # ICC-corrected summing partners for HPGe TCS corrections (#177).
-    _register_glob(db, data_dir / "meta" / "ensdf" / "summing_partners", "summing_partners")
-    # Absolute per-decay photon emission intensities, parent-keyed (#196).
-    _register_glob(db, data_dir / "meta" / "ensdf" / "emissions", "emissions")
-    # Pre-tabulated β-decay continuous spectra per transition (#78). Companion
-    # to `radiation` (which has discrete γ/X-ray/Auger lines): `beta_spectra`
-    # has the continuous β kinetic-energy distribution sampled on 200 bins
-    # per transition, normalized so ∫ dN/dE = 1.
-    _register_glob(db, data_dir / "meta" / "ensdf" / "beta_spectra", "beta_spectra")
+        db.execute("CREATE OR REPLACE VIEW ground_states AS SELECT * FROM nuclides WHERE state = ''")
 
-    # --- NUDEX neutron-capture primary gammas (v0.14 epic #115) ---
-    _register_parquet(db, data_dir / "meta" / "capture_gammas.parquet", "capture_gammas")
-    _register_parquet(
-        db,
-        data_dir / "meta" / "capture_gammas_summary.parquet",
-        "capture_gammas_summary",
-    )
-
-    # --- NUDEX per-shell internal-conversion factors (v0.14 epic #115) ---
-    _register_parquet(db, data_dir / "meta" / "icc_factors.parquet", "icc_factors")
-
-    # --- NUDEX level-density parameters (v0.14 epic #115) ---
-    _register_parquet(db, data_dir / "meta" / "level_density_bfm.parquet", "level_density_bfm")
-    _register_parquet(db, data_dir / "meta" / "level_density_ctm.parquet", "level_density_ctm")
-    _register_parquet(
-        db,
-        data_dir / "meta" / "level_density_params.parquet",
-        "level_density_params",
-    )
-
-    # --- NUDEX photon strength functions (v0.14 epic #115) ---
-    # `psf_e1` is the IAEA-recommended modern default; the others are alternates
-    # for systematic-uncertainty studies.
-    _register_parquet(db, data_dir / "meta" / "psf_e1.parquet", "psf_e1")
-    _register_parquet(db, data_dir / "meta" / "psf_gdr_lor.parquet", "psf_gdr_lor")
-    _register_parquet(db, data_dir / "meta" / "psf_gdr_mlo.parquet", "psf_gdr_mlo")
-    _register_parquet(db, data_dir / "meta" / "psf_gdr_slo.parquet", "psf_gdr_slo")
-    _register_parquet(db, data_dir / "meta" / "psf_gdr_theor.parquet", "psf_gdr_theor")
-    _register_parquet(db, data_dir / "meta" / "psf_photonuclear.parquet", "psf_photonuclear")
-
-    # --- NUDEX shell corrections + runtime metadata (closes #77) ---
-    # `nudex_shellcor` carries microscopic shell corrections + ground-state
-    # deformation params (β₂, β₄) used by Hauser-Feshbach codes.
-    # `nudex_special_inputs` / `nudex_general_stat` are NUDEX runtime
-    # configuration overrides — ship for audit + completeness.
-    _register_parquet(db, data_dir / "meta" / "nudex_shellcor.parquet", "nudex_shellcor")
-    _register_parquet(db, data_dir / "meta" / "nudex_special_inputs.parquet", "nudex_special_inputs")
-    _register_parquet(db, data_dir / "meta" / "nudex_general_stat.parquet", "nudex_general_stat")
-
-    # --- NUDEX full ENSDF level schemes (v0.14 epic #115) ---
-    # `nudex_levels` (richer ENSDF source) coexists with `ensdf_levels` (the
-    # PhotonEvaporation summary used by G4 transport). Pick by query class:
-    # ensdf_levels for transport-aligned queries; nudex_levels for spectroscopy.
-    _register_parquet(db, data_dir / "meta" / "nudex_levels.parquet", "nudex_levels")
-    _register_parquet(db, data_dir / "meta" / "nudex_level_gammas.parquet", "nudex_level_gammas")
-    _register_parquet(db, data_dir / "meta" / "nudex_isotopes.parquet", "nudex_isotopes")
-
-    # --- Spectrum-averaged cross-sections ---
-    _register_parquet(db, data_dir / "meta" / "spectrum_xs.parquet", "spectrum_xs")
-
-    # --- Neutron KERMA factors ---
-    _register_glob(db, data_dir / "meta" / "kerma", "kerma")
-
-    # --- Neutron total/elastic cross-sections ---
-    _register_glob(db, data_dir / "meta" / "neutron_total", "neutron_total")
-
-    # --- Dose constants ---
-    _register_parquet(db, data_dir / "meta" / "dose_constants.parquet", "dose_constants")
-
-    # --- XCOM photon attenuation ---
-    _register_parquet(db, data_dir / "meta" / "xcom_elements.parquet", "xcom_elements")
-    _register_parquet(db, data_dir / "meta" / "xcom_compounds.parquet", "xcom_compounds")
-    # Elemental compositions for the xcom_compounds materials (#113). Join
-    # on `material` to break a compound's photon attenuation into per-process
-    # σ via Bragg additivity.
-    _register_parquet(db, data_dir / "meta" / "compound_compositions.parquet", "compound_compositions")
-
-    # --- EPDL97 photon interaction data ---
-    _register_glob(db, data_dir / "meta" / "epdl97" / "photon_xs", "epdl_photon_xs")
-    _register_glob(db, data_dir / "meta" / "epdl97" / "form_factors", "epdl_form_factors")
-    _register_glob(db, data_dir / "meta" / "epdl97" / "scattering_fn", "epdl_scattering_fn")
-    _register_glob(db, data_dir / "meta" / "epdl97" / "anomalous", "epdl_anomalous")
-    _register_glob(db, data_dir / "meta" / "epdl97" / "subshell_pe", "epdl_subshell_pe")
-
-    # --- EADL atomic relaxation / fluorescence ---
-    # Canonical name: atomic_relaxation. eadl_transitions kept as an alias for
-    # callers from v0.11 and earlier. fluorescence is the radiative subset;
-    # Auger lines stay in atomic_relaxation, query `WHERE transition_type='auger'`.
+    # EADL aliases: eadl_transitions (v0.11 compat) + fluorescence (radiative subset)
     eadl_dir = data_dir / "meta" / "eadl"
     if eadl_dir.exists() and list(eadl_dir.glob("*.parquet")):
-        _register_glob(db, eadl_dir, "atomic_relaxation")
         db.execute("CREATE VIEW eadl_transitions AS SELECT * FROM atomic_relaxation")
         db.execute("CREATE VIEW fluorescence AS SELECT * FROM atomic_relaxation WHERE transition_type = 'radiative'")
-
-    # --- EEDL electron interaction data ---
-    _register_glob(db, data_dir / "meta" / "eedl", "eedl_electron_xs")
-
-    # --- G4EMLOW photon-matter cross-sections (v0.12 epic #95) ---
-    _register_parquet(db, data_dir / "em" / "photon_pair.parquet", "photon_pair")
-    _register_parquet(db, data_dir / "em" / "photon_rayleigh_cdf.parquet", "photon_rayleigh_cdf")
-    _register_parquet(db, data_dir / "em" / "xray_form_factor.parquet", "xray_form_factor")
-    _register_parquet(db, data_dir / "em" / "photon_compton.parquet", "photon_compton")
-    _register_parquet(
-        db,
-        data_dir / "em" / "compton_scattering_function.parquet",
-        "compton_scattering_function",
-    )
-    _register_parquet(
-        db,
-        data_dir / "em" / "compton_doppler_profiles.parquet",
-        "compton_doppler_profiles",
-    )
-    _register_parquet(db, data_dir / "em" / "photon_pe.parquet", "photon_pe")
-    _register_parquet(
-        db,
-        data_dir / "em" / "photon_pe_high_z_params.parquet",
-        "photon_pe_high_z_params",
-    )
-    _register_parquet(db, data_dir / "em" / "photon_pe_angular.parquet", "photon_pe_angular")
-    # Total photoelectric XS (per strata#600 fix) — preferred over photon_pe
-    # for attenuation queries; photon_pe stays for K-shell/L-shell breakdown.
-    _register_parquet(db, data_dir / "em" / "photon_pe_total.parquet", "photon_pe_total")
-
-    # --- G4EMLOW electron-matter cross-sections (v0.13 epic #114) ---
-    _register_parquet(db, data_dir / "em" / "electron_brem.parquet", "electron_brem")
-    # Seltzer-Berger differential cross section dσ/dκ for bremsstrahlung
-    # photon emission. Companion to electron_brem (integrated σ): the DCS
-    # lets MC samplers draw photon energies, not just total σ. See #118.
-    _register_parquet(db, data_dir / "em" / "electron_brem_sb_dcs.parquet", "electron_brem_sb_dcs")
 
     return db
 

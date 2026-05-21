@@ -507,6 +507,14 @@
       "path": "meta/compound_compositions.parquet",
       "type": "file"
     },
+    "compton_doppler_profiles": {
+      "path": "em/compton_doppler_profiles.parquet",
+      "type": "file"
+    },
+    "compton_scattering_function": {
+      "path": "em/compton_scattering_function.parquet",
+      "type": "file"
+    },
     "decay": {
       "path": "meta/decay.parquet",
       "type": "file"
@@ -577,7 +585,8 @@
     },
     "ground_states": {
       "path": "meta/ensdf/ground_states.parquet",
-      "type": "file"
+      "type": "file",
+      "note": "Fallback; when nuclides.parquet exists, clients override this with a filtered view"
     },
     "icc_factors": {
       "path": "meta/icc_factors.parquet",
@@ -645,6 +654,10 @@
     },
     "photon_pe_angular": {
       "path": "em/photon_pe_angular.parquet",
+      "type": "file"
+    },
+    "photon_pe_high_z_params": {
+      "path": "em/photon_pe_high_z_params.parquet",
       "type": "file"
     },
     "photon_pe_total": {

@@ -1,8 +1,8 @@
 //! nucl-parquet MCP server — wraps the nucl-parquet crate with local data.
 //!
-//! SSoT refactor (epic #173, Sub-D #178): reads local Parquet files via the
-//! nucl-parquet crate and raw arrow-parquet for tables not yet covered by
-//! typed DBs. No HTTP fetching — data resolved from $NUCL_PARQUET_DATA,
+//! SSoT refactor (#206): uses `ParquetStore` from the nucl-parquet client
+//! library for all Parquet I/O. The MCP is a thin JSON-RPC shell — no
+//! direct arrow/parquet dependencies. Data resolved from $NUCL_PARQUET_DATA,
 //! ~/.nucl-parquet/, or the repo data/ directory.
 
 use std::collections::HashMap;
@@ -11,14 +11,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use arrow::array::{
-    Array, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    StringArray, UInt8Array,
-};
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use nucl_parquet::{Filter, ParquetStore};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::Mutex;
 
 // ---------------------------------------------------------------------------
 // Data directory resolution
@@ -98,122 +93,6 @@ fn load_catalog(data_dir: &Path) -> Result<Catalog, String> {
 }
 
 // ---------------------------------------------------------------------------
-// Z → element symbol
-// ---------------------------------------------------------------------------
-
-#[rustfmt::skip]
-static Z_TO_SYMBOL: [&str; 100] = [
-    "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
-    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
-    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
-    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
-    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-    "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
-];
-
-fn z_to_symbol(z: i64) -> Option<&'static str> {
-    if z < 1 || z as usize >= Z_TO_SYMBOL.len() {
-        None
-    } else {
-        Some(Z_TO_SYMBOL[z as usize])
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Local Parquet file reader (replaces HTTP fetch)
-// ---------------------------------------------------------------------------
-
-type Cache = Arc<Mutex<HashMap<String, Vec<serde_json::Value>>>>;
-
-async fn load_parquet_rows(
-    cache: &Cache,
-    file_path: &str,
-) -> Result<Vec<serde_json::Value>, String> {
-    {
-        let c = cache.lock().await;
-        if let Some(rows) = c.get(file_path) {
-            return Ok(rows.clone());
-        }
-    }
-
-    let path = PathBuf::from(file_path);
-    if !path.exists() {
-        return Err(format!("File not found: {file_path}"));
-    }
-    let data = fs::read(&path).map_err(|e| format!("Read error: {e}"))?;
-    let rows = parse_parquet_bytes(data)?;
-
-    let mut c = cache.lock().await;
-    c.insert(file_path.to_string(), rows.clone());
-    Ok(rows)
-}
-
-fn parse_parquet_bytes(data: Vec<u8>) -> Result<Vec<serde_json::Value>, String> {
-    let data = bytes::Bytes::from(data);
-    let reader = ParquetRecordBatchReaderBuilder::try_new(data)
-        .map_err(|e| format!("Parquet open error: {e}"))?
-        .build()
-        .map_err(|e| format!("Parquet reader error: {e}"))?;
-
-    let mut rows = Vec::new();
-    for batch_result in reader {
-        let batch = batch_result.map_err(|e| format!("Batch read error: {e}"))?;
-        let schema = batch.schema();
-        for row_idx in 0..batch.num_rows() {
-            let mut obj = serde_json::Map::new();
-            for (col_idx, field) in schema.fields().iter().enumerate() {
-                let col = batch.column(col_idx);
-                let val = column_value_to_json(col.as_ref(), row_idx);
-                obj.insert(field.name().clone(), val);
-            }
-            rows.push(serde_json::Value::Object(obj));
-        }
-    }
-    Ok(rows)
-}
-
-fn column_value_to_json(col: &dyn Array, idx: usize) -> serde_json::Value {
-    if col.is_null(idx) {
-        return serde_json::Value::Null;
-    }
-    if let Some(a) = col.as_any().downcast_ref::<Float64Array>() {
-        let v = a.value(idx);
-        serde_json::Value::Number(
-            serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0)),
-        )
-    } else if let Some(a) = col.as_any().downcast_ref::<Float32Array>() {
-        let v = a.value(idx) as f64;
-        serde_json::Value::Number(
-            serde_json::Number::from_f64(v).unwrap_or_else(|| serde_json::Number::from(0)),
-        )
-    } else if let Some(a) = col.as_any().downcast_ref::<Int64Array>() {
-        serde_json::Value::Number(a.value(idx).into())
-    } else if let Some(a) = col.as_any().downcast_ref::<Int32Array>() {
-        serde_json::Value::Number(a.value(idx).into())
-    } else if let Some(a) = col.as_any().downcast_ref::<Int16Array>() {
-        serde_json::Value::Number((a.value(idx) as i64).into())
-    } else if let Some(a) = col.as_any().downcast_ref::<UInt8Array>() {
-        serde_json::Value::Number((a.value(idx) as i64).into())
-    } else if let Some(a) = col.as_any().downcast_ref::<BooleanArray>() {
-        serde_json::Value::Bool(a.value(idx))
-    } else if let Some(a) = col.as_any().downcast_ref::<StringArray>() {
-        serde_json::Value::String(a.value(idx).to_string())
-    } else {
-        // Fallback: try casting to Utf8 (handles dictionary-encoded strings from Parquet)
-        if let Ok(cast) = arrow::compute::cast(col, &arrow::datatypes::DataType::Utf8) {
-            if let Some(s) = cast.as_any().downcast_ref::<StringArray>() {
-                return serde_json::Value::String(s.value(idx).to_string());
-            }
-        }
-        serde_json::Value::String(format!("{col:?}"))
-    }
-}
-
-// ---------------------------------------------------------------------------
 // JSON-RPC types
 // ---------------------------------------------------------------------------
 
@@ -260,6 +139,30 @@ impl JsonRpcResponse {
             error: Some(JsonRpcError { code, message }),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: truncate + format result
+// ---------------------------------------------------------------------------
+
+fn format_result(
+    rows: Vec<serde_json::Value>,
+    max_rows: usize,
+    extra: serde_json::Value,
+) -> serde_json::Value {
+    let total = rows.len();
+    let truncated = total > max_rows;
+    let display: Vec<_> = rows.into_iter().take(max_rows).collect();
+
+    let mut result = extra;
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("total".into(), serde_json::json!(total));
+        obj.insert("truncated".into(), serde_json::json!(truncated));
+        obj.insert("rows".into(), serde_json::json!(display));
+    }
+    serde_json::json!({
+        "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }]
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -440,10 +343,10 @@ fn tool_definitions() -> serde_json::Value {
 // Tool dispatch
 // ---------------------------------------------------------------------------
 
-async fn handle_tool_call(
+fn handle_tool_call(
     data_dir: &Path,
     catalog: &Catalog,
-    cache: &Cache,
+    store: &ParquetStore,
     name: &str,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
@@ -513,12 +416,7 @@ async fn handle_tool_call(
                 .ok_or("missing 'element'")?;
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
 
-            // Input validation
-            if !matches!(projectile, "n" | "p" | "d" | "t" | "h" | "a" | "g") {
-                return Err(format!("Invalid projectile: {projectile}"));
-            }
-            let element_re = regex_lite(element);
-            if !element_re {
+            if !is_valid_element(element) {
                 return Err(format!("Invalid element: {element}"));
             }
 
@@ -526,15 +424,15 @@ async fn handle_tool_call(
                 .libraries
                 .get(library)
                 .ok_or_else(|| format!("Unknown library: {library}"))?;
-            let path = data_dir.join(format!("{}{projectile}_{element}.parquet", lib.path));
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let total = rows.len();
-            let truncated = total > max_rows;
-            let display: Vec<_> = rows.into_iter().take(max_rows).collect();
-            let result = serde_json::json!({ "library": library, "projectile": projectile, "element": element, "total": total, "truncated": truncated, "rows": display });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            let rel_path = format!("{}{projectile}_{element}.parquet", lib.path);
+            let rows = store
+                .load(&rel_path)
+                .map_err(|e| format!("{e}"))?;
+            Ok(format_result(
+                (*rows).clone(),
+                max_rows,
+                serde_json::json!({ "library": library, "projectile": projectile, "element": element }),
+            ))
         }
         "get_decay_data" => {
             let z = args.get("z").and_then(|v| v.as_i64());
@@ -542,46 +440,38 @@ async fn handle_tool_call(
             if z.is_none() && a.is_none() {
                 return Err("Provide at least z or a".to_string());
             }
-            let path = data_dir.join("meta/decay.parquet");
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = rows
-                .into_iter()
-                .filter(|row| {
-                    if let Some(zv) = z {
-                        if row.get("Z").and_then(|v| v.as_i64()) != Some(zv) {
-                            return false;
-                        }
-                    }
-                    if let Some(av) = a {
-                        if row.get("A").and_then(|v| v.as_i64()) != Some(av) {
-                            return false;
-                        }
-                    }
-                    true
-                })
-                .collect();
-            let result =
-                serde_json::json!({ "z": z, "a": a, "count": filtered.len(), "rows": filtered });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            let mut filters = Vec::new();
+            if let Some(zv) = z {
+                filters.push(Filter::Eq("Z".into(), serde_json::json!(zv)));
+            }
+            if let Some(av) = a {
+                filters.push(Filter::Eq("A".into(), serde_json::json!(av)));
+            }
+            let rows = store
+                .load_filtered("meta/decay.parquet", &filters)
+                .map_err(|e| format!("{e}"))?;
+            Ok(format_result(
+                rows,
+                500,
+                serde_json::json!({ "z": z, "a": a }),
+            ))
         }
         "get_abundances" => {
             let z = args
                 .get("z")
                 .and_then(|v| v.as_i64())
                 .ok_or("missing 'z'")?;
-            let path = data_dir.join("meta/abundances.parquet");
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = rows
-                .into_iter()
-                .filter(|row| row.get("Z").and_then(|v| v.as_i64()) == Some(z))
-                .collect();
-            let result =
-                serde_json::json!({ "z": z, "count": filtered.len(), "isotopes": filtered });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            let rows = store
+                .load_filtered(
+                    "meta/abundances.parquet",
+                    &[Filter::Eq("Z".into(), serde_json::json!(z))],
+                )
+                .map_err(|e| format!("{e}"))?;
+            Ok(format_result(
+                rows,
+                500,
+                serde_json::json!({ "z": z }),
+            ))
         }
         "get_stopping_power" => {
             let source = args
@@ -592,28 +482,30 @@ async fn handle_tool_call(
                 .get("target_z")
                 .and_then(|v| v.as_i64())
                 .ok_or("missing 'target_z'")?;
-            let path = match source {
-                "PSTAR" => data_dir.join("stopping/PSTAR.parquet"),
-                "ASTAR" => data_dir.join("stopping/ASTAR.parquet"),
-                "ESTAR" => data_dir.join("stopping/ESTAR.parquet"),
-                "dSTAR" => data_dir.join("stopping/dSTAR.parquet"),
-                "tSTAR" => data_dir.join("stopping/tSTAR.parquet"),
-                "catima" => data_dir.join("stopping/catima/catima.parquet"),
+            let rel_path = match source {
+                "PSTAR" => "stopping/PSTAR.parquet",
+                "ASTAR" => "stopping/ASTAR.parquet",
+                "ESTAR" => "stopping/ESTAR.parquet",
+                "dSTAR" => "stopping/dSTAR.parquet",
+                "tSTAR" => "stopping/tSTAR.parquet",
+                "catima" => "stopping/catima/catima.parquet",
                 other => {
                     return Err(format!(
                         "Unknown source {other:?}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima"
                     ))
                 }
             };
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = rows
-                .into_iter()
-                .filter(|row| row.get("target_Z").and_then(|v| v.as_i64()) == Some(target_z))
-                .collect();
-            let result = serde_json::json!({ "source": source, "target_z": target_z, "count": filtered.len(), "rows": filtered });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            let rows = store
+                .load_filtered(
+                    rel_path,
+                    &[Filter::Eq("target_Z".into(), serde_json::json!(target_z))],
+                )
+                .map_err(|e| format!("{e}"))?;
+            Ok(format_result(
+                rows,
+                500,
+                serde_json::json!({ "source": source, "target_z": target_z }),
+            ))
         }
         "get_radiation" | "get_coincidences" => {
             let z = args
@@ -622,28 +514,26 @@ async fn handle_tool_call(
                 .ok_or("missing 'z'")?;
             let a = args.get("a").and_then(|v| v.as_i64());
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
+            let symbol = nucl_parquet::z_to_symbol(z as u32)
+                .ok_or_else(|| format!("Z={z} out of range"))?;
             let subdir = if name == "get_radiation" {
                 "radiation"
             } else {
                 "coincidences"
             };
-            let path = data_dir.join(format!("meta/ensdf/{subdir}/{symbol}.parquet"));
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = if let Some(av) = a {
-                rows.into_iter()
-                    .filter(|r| r.get("A").and_then(|v| v.as_i64()) == Some(av))
-                    .collect()
-            } else {
-                rows
-            };
-            let total = filtered.len();
-            let truncated = total > max_rows;
-            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
-            let result = serde_json::json!({ "z": z, "a": a, "symbol": symbol, "total": total, "truncated": truncated, "rows": display });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            let rel_path = format!("meta/ensdf/{subdir}/{symbol}.parquet");
+            let mut filters = Vec::new();
+            if let Some(av) = a {
+                filters.push(Filter::Eq("A".into(), serde_json::json!(av)));
+            }
+            let rows = store
+                .load_filtered(&rel_path, &filters)
+                .map_err(|e| format!("{e}"))?;
+            Ok(format_result(
+                rows,
+                max_rows,
+                serde_json::json!({ "z": z, "a": a, "symbol": symbol }),
+            ))
         }
         "get_summing_partners" => {
             let z = args
@@ -661,11 +551,15 @@ async fn handle_tool_call(
                 .unwrap_or(0.5);
             let e1_type = args.get("emission1_rad_type").and_then(|v| v.as_str());
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
-            let path = data_dir.join(format!("meta/ensdf/summing_partners/{symbol}.parquet"));
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = rows
-                .into_iter()
+            let symbol = nucl_parquet::z_to_symbol(z as u32)
+                .ok_or_else(|| format!("Z={z} out of range"))?;
+            let rel_path = format!("meta/ensdf/summing_partners/{symbol}.parquet");
+
+            // Load all rows for this element and filter in code (energy tolerance
+            // and multi-column OR require post-load filtering beyond Filter::Eq).
+            let all = store.load(&rel_path).map_err(|e| format!("{e}"))?;
+            let filtered: Vec<_> = all
+                .iter()
                 .filter(|r| {
                     if r.get("A").and_then(|v| v.as_i64()) != Some(a) {
                         return false;
@@ -690,14 +584,13 @@ async fn handle_tool_call(
                     }
                     true
                 })
+                .cloned()
                 .collect();
-            let total = filtered.len();
-            let truncated = total > max_rows;
-            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
-            let result = serde_json::json!({ "z": z, "a": a, "primary_energy_keV": primary_energy, "total": total, "truncated": truncated, "rows": display });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            Ok(format_result(
+                filtered,
+                max_rows,
+                serde_json::json!({ "z": z, "a": a, "primary_energy_keV": primary_energy }),
+            ))
         }
         "get_emissions" => {
             let parent_z = args
@@ -723,55 +616,37 @@ async fn handle_tool_call(
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0);
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let symbol =
-                z_to_symbol(parent_z).ok_or_else(|| format!("Z={parent_z} out of range"))?;
-            let path = data_dir.join(format!("meta/ensdf/emissions/{symbol}.parquet"));
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = rows
-                .into_iter()
-                .filter(|r| {
-                    if r.get("parent_A").and_then(|v| v.as_i64()) != Some(parent_a) {
-                        return false;
-                    }
-                    let rs = r.get("parent_state").and_then(|v| v.as_str()).unwrap_or("");
-                    if rs != parent_state {
-                        return false;
-                    }
-                    if let Some(dm) = decay_mode_filter {
-                        if r.get("decay_mode").and_then(|v| v.as_str()) != Some(dm) {
-                            return false;
-                        }
-                    }
-                    if let Some(ef) = energy_filter {
-                        let e = r.get("energy_keV").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                        if (e - ef).abs() >= tolerance {
-                            return false;
-                        }
-                    }
-                    let intensity = r
-                        .get("intensity_pct")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0);
-                    if intensity < min_intensity {
-                        return false;
-                    }
-                    true
-                })
-                .collect();
-            let total = filtered.len();
-            let truncated = total > max_rows;
-            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
-            let result = serde_json::json!({
-                "parent_z": parent_z,
-                "parent_a": parent_a,
-                "parent_state": parent_state,
-                "total": total,
-                "truncated": truncated,
-                "rows": display
-            });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            let symbol = nucl_parquet::z_to_symbol(parent_z as u32)
+                .ok_or_else(|| format!("Z={parent_z} out of range"))?;
+            let rel_path = format!("meta/ensdf/emissions/{symbol}.parquet");
+
+            // Build filters that ParquetStore can handle directly
+            let mut filters = vec![
+                Filter::Eq("parent_A".into(), serde_json::json!(parent_a)),
+                Filter::Eq("parent_state".into(), serde_json::json!(parent_state)),
+            ];
+            if let Some(dm) = decay_mode_filter {
+                filters.push(Filter::Eq("decay_mode".into(), serde_json::json!(dm)));
+            }
+            if let Some(ef) = energy_filter {
+                filters.push(Filter::Near("energy_keV".into(), ef, tolerance));
+            }
+            if min_intensity > 0.0 {
+                filters.push(Filter::Gte("intensity_pct".into(), min_intensity));
+            }
+
+            let rows = store
+                .load_filtered(&rel_path, &filters)
+                .map_err(|e| format!("{e}"))?;
+            Ok(format_result(
+                rows,
+                max_rows,
+                serde_json::json!({
+                    "parent_z": parent_z,
+                    "parent_a": parent_a,
+                    "parent_state": parent_state,
+                }),
+            ))
         }
         "get_beta_spectrum" => {
             let z = args
@@ -783,42 +658,46 @@ async fn handle_tool_call(
                 .and_then(|v| v.as_i64())
                 .ok_or("missing 'a'")?;
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let symbol = z_to_symbol(z).ok_or_else(|| format!("Z={z} out of range"))?;
-            let path = data_dir.join(format!("meta/ensdf/beta_spectra/{symbol}.parquet"));
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = rows
-                .into_iter()
-                .filter(|r| {
-                    r.get("Z").and_then(|v| v.as_i64()) == Some(z)
-                        && r.get("A").and_then(|v| v.as_i64()) == Some(a)
-                })
-                .collect();
-            let total = filtered.len();
-            let truncated = total > max_rows;
-            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
-            let result = serde_json::json!({ "z": z, "a": a, "symbol": symbol, "total": total, "truncated": truncated, "rows": display });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            let symbol = nucl_parquet::z_to_symbol(z as u32)
+                .ok_or_else(|| format!("Z={z} out of range"))?;
+            let rel_path = format!("meta/ensdf/beta_spectra/{symbol}.parquet");
+            let rows = store
+                .load_filtered(
+                    &rel_path,
+                    &[
+                        Filter::Eq("Z".into(), serde_json::json!(z)),
+                        Filter::Eq("A".into(), serde_json::json!(a)),
+                    ],
+                )
+                .map_err(|e| format!("{e}"))?;
+            Ok(format_result(
+                rows,
+                max_rows,
+                serde_json::json!({ "z": z, "a": a, "symbol": symbol }),
+            ))
         }
         "get_compound_compositions" => {
             let material = args.get("material").and_then(|v| v.as_str());
-            let path = data_dir.join("meta/compound_compositions.parquet");
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
             if let Some(mat) = material {
-                let filtered: Vec<_> = rows
-                    .into_iter()
-                    .filter(|r| r.get("material").and_then(|v| v.as_str()) == Some(mat))
-                    .collect();
-                if filtered.is_empty() {
+                let rows = store
+                    .load_filtered(
+                        "meta/compound_compositions.parquet",
+                        &[Filter::Eq("material".into(), serde_json::json!(mat))],
+                    )
+                    .map_err(|e| format!("{e}"))?;
+                if rows.is_empty() {
                     return Err(format!("Unknown material: {mat:?}"));
                 }
-                let result = serde_json::json!({ "material": mat, "count": filtered.len(), "composition": filtered });
-                Ok(
-                    serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-                )
+                Ok(format_result(
+                    rows,
+                    500,
+                    serde_json::json!({ "material": mat }),
+                ))
             } else {
-                let mut materials: Vec<String> = rows
+                let all = store
+                    .load("meta/compound_compositions.parquet")
+                    .map_err(|e| format!("{e}"))?;
+                let mut materials: Vec<String> = all
                     .iter()
                     .filter_map(|r| {
                         r.get("material")
@@ -844,10 +723,11 @@ async fn handle_tool_call(
                     "Provide target (compound name) or target_z (atomic number)".to_string()
                 );
             }
-            let path = data_dir.join("stopping/em/electron_stopping.parquet");
-            let rows = load_parquet_rows(cache, &path.to_string_lossy()).await?;
-            let filtered: Vec<_> = rows
-                .into_iter()
+            let all = store
+                .load("stopping/em/electron_stopping.parquet")
+                .map_err(|e| format!("{e}"))?;
+            let filtered: Vec<_> = all
+                .iter()
                 .filter(|r| {
                     if let Some(tz) = target_z {
                         r.get("target_Z").and_then(|v| v.as_i64()) == Some(tz)
@@ -858,21 +738,20 @@ async fn handle_tool_call(
                         false
                     }
                 })
+                .cloned()
                 .collect();
-            let total = filtered.len();
-            let truncated = total > max_rows;
-            let display: Vec<_> = filtered.into_iter().take(max_rows).collect();
-            let result = serde_json::json!({ "target": target, "target_z": target_z, "total": total, "truncated": truncated, "rows": display });
-            Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }] }),
-            )
+            Ok(format_result(
+                filtered,
+                max_rows,
+                serde_json::json!({ "target": target, "target_z": target_z }),
+            ))
         }
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
 
 /// Validate element symbol: 1-2 chars, first uppercase, second (if any) lowercase.
-fn regex_lite(element: &str) -> bool {
+fn is_valid_element(element: &str) -> bool {
     let bytes = element.as_bytes();
     match bytes.len() {
         1 => bytes[0].is_ascii_uppercase(),
@@ -885,10 +764,10 @@ fn regex_lite(element: &str) -> bool {
 // MCP protocol handler
 // ---------------------------------------------------------------------------
 
-async fn handle_request(
+fn handle_request(
     data_dir: &Path,
     catalog: &Catalog,
-    cache: &Cache,
+    store: &ParquetStore,
     req: JsonRpcRequest,
 ) -> Option<JsonRpcResponse> {
     let id = req.id.clone().unwrap_or(serde_json::Value::Null);
@@ -915,7 +794,7 @@ async fn handle_request(
                 .get("arguments")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
-            match handle_tool_call(data_dir, catalog, cache, name, &args).await {
+            match handle_tool_call(data_dir, catalog, store, name, &args) {
                 Ok(result) => Some(JsonRpcResponse::success(id, result)),
                 Err(e) => Some(JsonRpcResponse::error(id, -32000, e)),
             }
@@ -936,7 +815,7 @@ async fn handle_request(
 async fn main() {
     let data_dir = resolve_data_dir().expect("Failed to find data directory");
     let catalog = load_catalog(&data_dir).expect("Failed to load catalog");
-    let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+    let store = Arc::new(ParquetStore::new(&data_dir));
 
     let stdin = tokio::io::stdin();
     let mut reader = BufReader::new(stdin);
@@ -975,7 +854,7 @@ async fn main() {
             }
         };
 
-        if let Some(resp) = handle_request(&data_dir, &catalog, &cache, req).await {
+        if let Some(resp) = handle_request(&data_dir, &catalog, &store, req) {
             let out = serde_json::to_string(&resp).unwrap();
             let mut stdout = stdout.lock();
             let _ = writeln!(stdout, "{out}");
@@ -1041,14 +920,14 @@ mod tests {
 
     #[test]
     fn element_validation() {
-        assert!(regex_lite("Cu"));
-        assert!(regex_lite("H"));
-        assert!(regex_lite("Fe"));
-        assert!(!regex_lite("cu"));
-        assert!(!regex_lite("CU"));
-        assert!(!regex_lite(""));
-        assert!(!regex_lite("Abc"));
-        assert!(!regex_lite("'; DROP TABLE"));
+        assert!(is_valid_element("Cu"));
+        assert!(is_valid_element("H"));
+        assert!(is_valid_element("Fe"));
+        assert!(!is_valid_element("cu"));
+        assert!(!is_valid_element("CU"));
+        assert!(!is_valid_element(""));
+        assert!(!is_valid_element("Abc"));
+        assert!(!is_valid_element("'; DROP TABLE"));
     }
 
     #[test]
@@ -1070,20 +949,18 @@ mod tests {
         assert!(!json.contains("\"result\""));
     }
 
-    #[tokio::test]
-    async fn handle_initialize() {
+    #[test]
+    fn handle_initialize() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
             method: "initialize".into(),
             params: serde_json::json!({}),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         let result = resp.result.unwrap();
         assert_eq!(result["serverInfo"]["name"], "nucl-parquet");
         assert_eq!(
@@ -1092,92 +969,83 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn handle_tools_list() {
+    #[test]
+    fn handle_tools_list() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
             method: "tools/list".into(),
             params: serde_json::json!({}),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         let result = resp.result.unwrap();
         let tools = result["tools"].as_array().unwrap();
         assert_eq!(tools.len(), 13);
     }
 
-    #[tokio::test]
-    async fn handle_list_libraries() {
+    #[test]
+    fn handle_list_libraries() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
             method: "tools/call".into(),
             params: serde_json::json!({ "name": "list_libraries", "arguments": {} }),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         assert!(resp.error.is_none());
         let content = resp.result.unwrap();
         let text = content["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("TENDL-2023"));
     }
 
-    #[tokio::test]
-    async fn handle_get_abundances() {
+    #[test]
+    fn handle_get_abundances() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
             method: "tools/call".into(),
             params: serde_json::json!({ "name": "get_abundances", "arguments": { "z": 29 } }),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         assert!(resp.error.is_none());
         let content = resp.result.unwrap();
         let text = content["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("\"z\": 29"));
-        assert!(text.contains("\"count\": 2")); // Cu-63, Cu-65
+        assert!(text.contains("\"total\": 2")); // Cu-63, Cu-65
     }
 
-    #[tokio::test]
-    async fn handle_get_decay_data() {
+    #[test]
+    fn handle_get_decay_data() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
             method: "tools/call".into(),
             params: serde_json::json!({ "name": "get_decay_data", "arguments": { "z": 27, "a": 60 } }),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         assert!(resp.error.is_none());
         let content = resp.result.unwrap();
         let text = content["content"][0]["text"].as_str().unwrap();
-        // Co-60 has at least ground state + isomer
-        assert!(text.contains("\"count\":"));
+        assert!(text.contains("\"total\":"));
     }
 
-    #[tokio::test]
-    async fn handle_get_summing_partners() {
+    #[test]
+    fn handle_get_summing_partners() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
@@ -1187,13 +1055,10 @@ mod tests {
                 "arguments": { "z": 28, "a": 60, "emission1_rad_type": "gamma" }
             }),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         assert!(resp.error.is_none());
         let content = resp.result.unwrap();
         let text = content["content"][0]["text"].as_str().unwrap();
-        // Co-60 → Ni-60: should have the 1173/1333 keV pair
         assert!(text.contains("\"z\": 28"));
         assert!(text.contains("\"a\": 60"));
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
@@ -1204,11 +1069,11 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn handle_get_emissions() {
+    #[test]
+    fn handle_get_emissions() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
@@ -1218,9 +1083,7 @@ mod tests {
                 "arguments": { "parent_z": 27, "parent_a": 60 }
             }),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         assert!(resp.error.is_none());
         let content = resp.result.unwrap();
         let text = content["content"][0]["text"].as_str().unwrap();
@@ -1239,20 +1102,18 @@ mod tests {
         assert!(has_1173, "Expected Co-60 1173 keV gamma in emissions");
     }
 
-    #[tokio::test]
-    async fn handle_unknown_tool() {
+    #[test]
+    fn handle_unknown_tool() {
         let data_dir = test_data_dir();
         let catalog = load_catalog(&data_dir).unwrap();
-        let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+        let store = ParquetStore::new(&data_dir);
         let req = JsonRpcRequest {
             jsonrpc: "2.0".into(),
             id: Some(serde_json::json!(1)),
             method: "tools/call".into(),
             params: serde_json::json!({ "name": "nonexistent", "arguments": {} }),
         };
-        let resp = handle_request(&data_dir, &catalog, &cache, req)
-            .await
-            .unwrap();
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
         assert!(resp.error.is_some());
         assert!(resp.error.unwrap().message.contains("Unknown tool"));
     }
