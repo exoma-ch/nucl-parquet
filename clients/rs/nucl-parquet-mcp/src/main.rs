@@ -425,9 +425,7 @@ fn handle_tool_call(
                 .get(library)
                 .ok_or_else(|| format!("Unknown library: {library}"))?;
             let rel_path = format!("{}{projectile}_{element}.parquet", lib.path);
-            let rows = store
-                .load(&rel_path)
-                .map_err(|e| format!("{e}"))?;
+            let rows = store.load(&rel_path).map_err(|e| format!("{e}"))?;
             Ok(format_result(
                 (*rows).clone(),
                 max_rows,
@@ -467,11 +465,7 @@ fn handle_tool_call(
                     &[Filter::Eq("Z".into(), serde_json::json!(z))],
                 )
                 .map_err(|e| format!("{e}"))?;
-            Ok(format_result(
-                rows,
-                500,
-                serde_json::json!({ "z": z }),
-            ))
+            Ok(format_result(rows, 500, serde_json::json!({ "z": z })))
         }
         "get_stopping_power" => {
             let source = args
@@ -514,8 +508,8 @@ fn handle_tool_call(
                 .ok_or("missing 'z'")?;
             let a = args.get("a").and_then(|v| v.as_i64());
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let symbol = nucl_parquet::z_to_symbol(z as u32)
-                .ok_or_else(|| format!("Z={z} out of range"))?;
+            let symbol =
+                nucl_parquet::z_to_symbol(z as u32).ok_or_else(|| format!("Z={z} out of range"))?;
             let subdir = if name == "get_radiation" {
                 "radiation"
             } else {
@@ -551,8 +545,8 @@ fn handle_tool_call(
                 .unwrap_or(0.5);
             let e1_type = args.get("emission1_rad_type").and_then(|v| v.as_str());
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let symbol = nucl_parquet::z_to_symbol(z as u32)
-                .ok_or_else(|| format!("Z={z} out of range"))?;
+            let symbol =
+                nucl_parquet::z_to_symbol(z as u32).ok_or_else(|| format!("Z={z} out of range"))?;
             let rel_path = format!("meta/ensdf/summing_partners/{symbol}.parquet");
 
             // Load all rows for this element and filter in code (energy tolerance
@@ -658,8 +652,8 @@ fn handle_tool_call(
                 .and_then(|v| v.as_i64())
                 .ok_or("missing 'a'")?;
             let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).unwrap_or(500) as usize;
-            let symbol = nucl_parquet::z_to_symbol(z as u32)
-                .ok_or_else(|| format!("Z={z} out of range"))?;
+            let symbol =
+                nucl_parquet::z_to_symbol(z as u32).ok_or_else(|| format!("Z={z} out of range"))?;
             let rel_path = format!("meta/ensdf/beta_spectra/{symbol}.parquet");
             let rows = store
                 .load_filtered(

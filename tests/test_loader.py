@@ -35,20 +35,11 @@ def mini_data(tmp_path: Path) -> Path:
                 "path": "test-lib/xs/",
             },
         },
-        "shared": {
-            "meta": {
-                "path": "meta/",
-                "files": {
-                    "abundances": "abundances.parquet",
-                    "decay": "decay.parquet",
-                    "elements": "elements.parquet",
-                },
-            },
-            "stopping": {
-                "path": "stopping/",
-                "files": {"stopping": "stopping.parquet"},
-                "sources": ["PSTAR"],
-            },
+        "views": {
+            "abundances": {"path": "meta/abundances.parquet", "type": "file"},
+            "decay": {"path": "meta/decay.parquet", "type": "file"},
+            "elements": {"path": "meta/elements.parquet", "type": "file"},
+            "stopping": {"path": "stopping", "type": "glob"},
         },
     }
     (tmp_path / "catalog.json").write_text(json.dumps(catalog))
