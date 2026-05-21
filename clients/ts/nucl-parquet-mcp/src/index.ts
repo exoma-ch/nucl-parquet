@@ -226,30 +226,6 @@ async function query(
 }
 
 // ---------------------------------------------------------------------------
-// Z → element symbol
-// ---------------------------------------------------------------------------
-
-const Z_TO_SYMBOL = [
-  "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
-  "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
-  "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-  "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
-  "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-  "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-  "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-  "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
-  "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-  "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
-] as const;
-
-function zToSymbol(zNum: number): string {
-  if (zNum < 1 || zNum >= Z_TO_SYMBOL.length) {
-    throw new Error(`Z=${zNum} out of range (1-${Z_TO_SYMBOL.length - 1})`);
-  }
-  return Z_TO_SYMBOL[zNum];
-}
-
-// ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
 
