@@ -117,6 +117,22 @@ impl PhotonDb {
         })
     }
 
+    /// Construct from a single element's photon XS Parquet bytes.
+    ///
+    /// Loads only per-process cross-sections; form factors and scattering
+    /// functions will be empty. Use [`open`](Self::open) for the full dataset
+    /// including form factors and scattering functions.
+    pub fn from_bytes(data: &[u8]) -> crate::Result<Self> {
+        let bytes = bytes::Bytes::from(data.to_vec());
+        let mut xs_tables = HashMap::new();
+        Self::parse_xs_into(bytes, &mut xs_tables)?;
+        Ok(Self {
+            xs_tables,
+            form_factors: HashMap::new(),
+            scattering_fns: HashMap::new(),
+        })
+    }
+
     /// Interpolate cross-section [barns/atom] for element Z at energy E [MeV].
     ///
     /// Returns 0.0 if the element or process is not in the database.
@@ -209,102 +225,112 @@ impl PhotonDb {
             }
 
             let file = fs::File::open(&path)?;
-            let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+            Self::parse_xs_into(file, &mut tables)?;
+        }
 
-            // Accumulate rows per process
-            let mut process_data: HashMap<Process, (Vec<f64>, Vec<f64>)> = HashMap::new();
-            let mut z_val: Option<u8> = None;
+        Ok(tables)
+    }
 
-            for batch in reader {
-                let batch = batch?;
+    fn parse_xs_into(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+        tables: &mut HashMap<(u8, Process), XsTable>,
+    ) -> crate::Result<()> {
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
-                let z_col = batch
-                    .column_by_name("Z")
-                    .ok_or_else(|| Error::MissingColumn {
-                        file: path.clone(),
-                        column: "Z".into(),
-                    })?
-                    .as_any()
-                    .downcast_ref::<Int32Array>()
-                    .ok_or_else(|| Error::MissingColumn {
-                        file: path.clone(),
-                        column: "Z (wrong type)".into(),
-                    })?;
+        // Accumulate rows per process
+        let mut process_data: HashMap<Process, (Vec<f64>, Vec<f64>)> = HashMap::new();
+        let mut z_val: Option<u8> = None;
 
-                let e_col = batch
-                    .column_by_name("energy_MeV")
-                    .ok_or_else(|| Error::MissingColumn {
-                        file: path.clone(),
-                        column: "energy_MeV".into(),
-                    })?
-                    .as_any()
-                    .downcast_ref::<Float64Array>()
-                    .ok_or_else(|| Error::MissingColumn {
-                        file: path.clone(),
-                        column: "energy_MeV (wrong type)".into(),
-                    })?;
+        // Sentinel path for error messages when loading from bytes.
+        let sentinel = std::path::PathBuf::from("<bytes>");
 
-                let proc_col =
-                    batch
-                        .column_by_name("process")
-                        .ok_or_else(|| Error::MissingColumn {
-                            file: path.clone(),
-                            column: "process".into(),
-                        })?;
-                let proc_values = crate::interp::as_string_array(proc_col).ok_or_else(|| {
-                    Error::MissingColumn {
-                        file: path.clone(),
-                        column: "process (wrong type)".into(),
-                    }
+        for batch in reader {
+            let batch = batch?;
+
+            let z_col = batch
+                .column_by_name("Z")
+                .ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "Z".into(),
+                })?
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "Z (wrong type)".into(),
                 })?;
 
-                let xs_col = batch
-                    .column_by_name("xs_barns")
-                    .ok_or_else(|| Error::MissingColumn {
-                        file: path.clone(),
-                        column: "xs_barns".into(),
-                    })?
-                    .as_any()
-                    .downcast_ref::<Float64Array>()
-                    .ok_or_else(|| Error::MissingColumn {
-                        file: path.clone(),
-                        column: "xs_barns (wrong type)".into(),
-                    })?;
+            let e_col = batch
+                .column_by_name("energy_MeV")
+                .ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "energy_MeV".into(),
+                })?
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "energy_MeV (wrong type)".into(),
+                })?;
 
-                #[allow(clippy::needless_range_loop)]
-                for i in 0..batch.num_rows() {
-                    if z_val.is_none() {
-                        z_val = Some(z_col.value(i) as u8);
-                    }
+            let proc_col = batch
+                .column_by_name("process")
+                .ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "process".into(),
+                })?;
+            let proc_values =
+                crate::interp::as_string_array(proc_col).ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "process (wrong type)".into(),
+                })?;
 
-                    let proc_str = match proc_values[i] {
-                        Some(s) => s,
-                        None => continue,
-                    };
-                    if let Some(process) = Process::from_str(proc_str) {
-                        let entry = process_data.entry(process).or_default();
-                        entry.0.push(e_col.value(i));
-                        entry.1.push(xs_col.value(i));
-                    }
+            let xs_col = batch
+                .column_by_name("xs_barns")
+                .ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "xs_barns".into(),
+                })?
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .ok_or_else(|| Error::MissingColumn {
+                    file: sentinel.clone(),
+                    column: "xs_barns (wrong type)".into(),
+                })?;
+
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..batch.num_rows() {
+                if z_val.is_none() {
+                    z_val = Some(z_col.value(i) as u8);
                 }
-            }
 
-            if let Some(z) = z_val {
-                for (process, (mut energy, mut xs)) in process_data {
-                    // Sort by energy (should already be sorted, but ensure)
-                    let mut indices: Vec<usize> = (0..energy.len()).collect();
-                    indices.sort_by(|&a, &b| energy[a].partial_cmp(&energy[b]).unwrap());
-                    let sorted_e: Vec<f64> = indices.iter().map(|&i| energy[i]).collect();
-                    let sorted_xs: Vec<f64> = indices.iter().map(|&i| xs[i]).collect();
-                    energy = sorted_e;
-                    xs = sorted_xs;
-
-                    tables.insert((z, process), XsTable { energy, xs });
+                let proc_str = match proc_values[i] {
+                    Some(s) => s,
+                    None => continue,
+                };
+                if let Some(process) = Process::from_str(proc_str) {
+                    let entry = process_data.entry(process).or_default();
+                    entry.0.push(e_col.value(i));
+                    entry.1.push(xs_col.value(i));
                 }
             }
         }
 
-        Ok(tables)
+        if let Some(z) = z_val {
+            for (process, (mut energy, mut xs)) in process_data {
+                // Sort by energy (should already be sorted, but ensure)
+                let mut indices: Vec<usize> = (0..energy.len()).collect();
+                indices.sort_by(|&a, &b| energy[a].partial_cmp(&energy[b]).unwrap());
+                let sorted_e: Vec<f64> = indices.iter().map(|&i| energy[i]).collect();
+                let sorted_xs: Vec<f64> = indices.iter().map(|&i| xs[i]).collect();
+                energy = sorted_e;
+                xs = sorted_xs;
+
+                tables.insert((z, process), XsTable { energy, xs });
+            }
+        }
+
+        Ok(())
     }
 
     fn load_tab_tables(dir: &Path, value_col_name: &str) -> crate::Result<HashMap<u8, TabTable>> {
@@ -390,6 +416,48 @@ mod tests {
     // Integration tests require actual data files.
     // Run with: cargo test -- --ignored
     // from the nucl-parquet repo root.
+
+    fn data_meta_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("data")
+            .join("meta")
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn from_bytes_matches_open() {
+        let db_file = PhotonDb::open(data_meta_dir()).unwrap();
+        let xs_dir = data_meta_dir().join("epdl97").join("photon_xs");
+        let first_file = std::fs::read_dir(&xs_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| {
+                let p = e.path();
+                p.extension().and_then(|x| x.to_str()) == Some("parquet")
+                    && !p
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with("._"))
+            })
+            .expect("at least one photon_xs file");
+        let data = std::fs::read(first_file.path()).unwrap();
+        let db_bytes = PhotonDb::from_bytes(&data).unwrap();
+        // Find the Z loaded and compare a cross-section
+        for z in 1..=100u8 {
+            if db_bytes.has_element(z) {
+                let xs_file = db_file.cross_section(z, 0.511, Process::Total);
+                let xs_bytes = db_bytes.cross_section(z, 0.511, Process::Total);
+                assert!(
+                    (xs_file - xs_bytes).abs() < 1e-12,
+                    "Z={z} total XS mismatch: {xs_file} vs {xs_bytes}"
+                );
+                break;
+            }
+        }
+    }
 
     #[test]
     #[ignore = "requires nucl-parquet data files"]

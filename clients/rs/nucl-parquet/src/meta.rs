@@ -61,10 +61,21 @@ impl AbundancesDb {
     /// Load isotopic abundance data from `meta/abundances.parquet`.
     pub fn open(data_dir: impl AsRef<Path>) -> crate::Result<Self> {
         let path = data_dir.as_ref().join("abundances.parquet");
+        let file = fs::File::open(&path)?;
+        Self::parse(file)
+    }
+
+    /// Construct from in-memory Parquet bytes.
+    pub fn from_bytes(data: &[u8]) -> crate::Result<Self> {
+        Self::parse(bytes::Bytes::from(data.to_vec()))
+    }
+
+    fn parse(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<Self> {
         let mut data: HashMap<u32, Vec<AbundanceEntry>> = HashMap::new();
 
-        let file = fs::File::open(&path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -160,10 +171,21 @@ impl DecayDb {
     /// Load decay data from `meta/decay.parquet`.
     pub fn open(data_dir: impl AsRef<Path>) -> crate::Result<Self> {
         let path = data_dir.as_ref().join("decay.parquet");
+        let file = fs::File::open(&path)?;
+        Self::parse(file)
+    }
+
+    /// Construct from in-memory Parquet bytes.
+    pub fn from_bytes(data: &[u8]) -> crate::Result<Self> {
+        Self::parse(bytes::Bytes::from(data.to_vec()))
+    }
+
+    fn parse(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<Self> {
         let mut data: HashMap<(u32, u32), Vec<DecayEntry>> = HashMap::new();
 
-        let file = fs::File::open(&path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -287,10 +309,21 @@ impl DoseDb {
     /// Load dose constant data from `meta/dose_constants.parquet`.
     pub fn open(data_dir: impl AsRef<Path>) -> crate::Result<Self> {
         let path = data_dir.as_ref().join("dose_constants.parquet");
+        let file = fs::File::open(&path)?;
+        Self::parse(file)
+    }
+
+    /// Construct from in-memory Parquet bytes.
+    pub fn from_bytes(data: &[u8]) -> crate::Result<Self> {
+        Self::parse(bytes::Bytes::from(data.to_vec()))
+    }
+
+    fn parse(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<Self> {
         let mut data: HashMap<(u32, u32, String), DoseConstant> = HashMap::new();
 
-        let file = fs::File::open(&path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -474,10 +507,33 @@ impl CoincidencesDb {
         Ok(arc)
     }
 
+    /// Load a single element's coincidence data from in-memory Parquet bytes,
+    /// bypassing the lazy directory-based loader.
+    ///
+    /// The returned entries are cached under `z` for subsequent lookups via
+    /// [`pairs`](Self::pairs) and [`pairs_filtered`](Self::pairs_filtered).
+    pub fn from_element_bytes(
+        &self,
+        z: u32,
+        data: &[u8],
+    ) -> crate::Result<Arc<Vec<CoincidenceEntry>>> {
+        let bytes = bytes::Bytes::from(data.to_vec());
+        let entries = Self::parse_reader(bytes)?;
+        let arc = Arc::new(entries);
+        self.cache.write().unwrap().insert(z, Arc::clone(&arc));
+        Ok(arc)
+    }
+
     fn load_file(path: &Path) -> crate::Result<Vec<CoincidenceEntry>> {
-        let mut out: Vec<CoincidenceEntry> = Vec::new();
         let file = fs::File::open(path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        Self::parse_reader(file)
+    }
+
+    fn parse_reader(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<Vec<CoincidenceEntry>> {
+        let mut out: Vec<CoincidenceEntry> = Vec::new();
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -817,10 +873,37 @@ impl RadiationDb {
         Ok(arc)
     }
 
+    /// Load a single element's radiation data from in-memory Parquet bytes,
+    /// bypassing the lazy directory-based loader.
+    ///
+    /// The returned entries are cached under `z` for subsequent lookups via
+    /// [`emissions`](Self::emissions) and related methods.
+    ///
+    /// **Note:** the cross-isotope γ index used by [`identify_gamma`](Self::identify_gamma)
+    /// is built from on-disk files only. If you need `identify_gamma` with
+    /// bytes-only data, load via the standard `open()` path.
+    pub fn from_element_bytes(
+        &self,
+        z: u32,
+        data: &[u8],
+    ) -> crate::Result<Arc<Vec<EmissionEntry>>> {
+        let bytes = bytes::Bytes::from(data.to_vec());
+        let entries = Self::parse_reader(bytes)?;
+        let arc = Arc::new(entries);
+        self.cache.write().unwrap().insert(z, Arc::clone(&arc));
+        Ok(arc)
+    }
+
     fn load_file(path: &Path) -> crate::Result<Vec<EmissionEntry>> {
-        let mut out: Vec<EmissionEntry> = Vec::new();
         let file = fs::File::open(path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        Self::parse_reader(file)
+    }
+
+    fn parse_reader(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<Vec<EmissionEntry>> {
+        let mut out: Vec<EmissionEntry> = Vec::new();
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -1222,5 +1305,96 @@ mod tests {
         let dc = dc.unwrap();
         assert!(dc.k > 0.0, "I-131 dose constant should be positive");
         assert_eq!(dc.source, "ensdf", "I-131 source should be 'ensdf'");
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn abundances_from_bytes_matches_open() {
+        let path = meta_dir().join("abundances.parquet");
+        let db_file = AbundancesDb::open(meta_dir()).unwrap();
+        let data = std::fs::read(&path).unwrap();
+        let db_bytes = AbundancesDb::from_bytes(&data).unwrap();
+        // Cu-63 abundance should match
+        let ab_file = db_file.abundance(29, 63);
+        let ab_bytes = db_bytes.abundance(29, 63);
+        assert!(
+            (ab_file - ab_bytes).abs() < 1e-12,
+            "Cu-63 abundance mismatch: {ab_file} vs {ab_bytes}"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn decay_from_bytes_matches_open() {
+        let path = meta_dir().join("decay.parquet");
+        let db_file = DecayDb::open(meta_dir()).unwrap();
+        let data = std::fs::read(&path).unwrap();
+        let db_bytes = DecayDb::from_bytes(&data).unwrap();
+        let modes_file = db_file.modes(29, 64, "");
+        let modes_bytes = db_bytes.modes(29, 64, "");
+        assert_eq!(
+            modes_file.len(),
+            modes_bytes.len(),
+            "Cu-64 decay mode count mismatch"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn dose_from_bytes_matches_open() {
+        let path = meta_dir().join("dose_constants.parquet");
+        let db_file = DoseDb::open(meta_dir()).unwrap();
+        let data = std::fs::read(&path).unwrap();
+        let db_bytes = DoseDb::from_bytes(&data).unwrap();
+        let dc_file = db_file.dose_constant(53, 131, "").unwrap();
+        let dc_bytes = db_bytes.dose_constant(53, 131, "").unwrap();
+        assert!(
+            (dc_file.k - dc_bytes.k).abs() < 1e-12,
+            "I-131 dose constant mismatch: {} vs {}",
+            dc_file.k,
+            dc_bytes.k
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn coincidences_from_element_bytes() {
+        let db = CoincidencesDb::open(meta_dir()).unwrap();
+        // Load Ni (Z=28) from file normally
+        let pairs_file = db.pairs(28, 60).unwrap();
+        // Now load from bytes
+        let path = meta_dir()
+            .join("ensdf")
+            .join("coincidences")
+            .join("Ni.parquet");
+        let data = std::fs::read(&path).unwrap();
+        let db2 = CoincidencesDb::open(meta_dir()).unwrap();
+        db2.from_element_bytes(28, &data).unwrap();
+        let pairs_bytes = db2.pairs(28, 60).unwrap();
+        assert_eq!(
+            pairs_file.len(),
+            pairs_bytes.len(),
+            "Ni-60 coincidence pair count mismatch"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn radiation_from_element_bytes() {
+        let db = RadiationDb::open(meta_dir()).unwrap();
+        let lines_file = db.emissions(28, 60, "").unwrap();
+        let path = meta_dir()
+            .join("ensdf")
+            .join("radiation")
+            .join("Ni.parquet");
+        let data = std::fs::read(&path).unwrap();
+        let db2 = RadiationDb::open(meta_dir()).unwrap();
+        db2.from_element_bytes(28, &data).unwrap();
+        let lines_bytes = db2.emissions(28, 60, "").unwrap();
+        assert_eq!(
+            lines_file.len(),
+            lines_bytes.len(),
+            "Ni-60 emission line count mismatch"
+        );
     }
 }

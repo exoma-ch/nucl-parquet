@@ -51,6 +51,28 @@ impl XcomDb {
         })
     }
 
+    /// Construct from in-memory Parquet bytes.
+    ///
+    /// `elements_data` is the contents of `xcom_elements.parquet`.
+    /// `compounds_data` is the contents of `xcom_compounds.parquet` (pass an
+    /// empty slice to omit compounds).
+    pub fn from_bytes(elements_data: &[u8], compounds_data: &[u8]) -> crate::Result<Self> {
+        let (elem_mu_rho, elem_mu_en_rho) =
+            Self::parse_elements(bytes::Bytes::from(elements_data.to_vec()))?;
+        let (comp_mu_rho, comp_mu_en_rho) = if compounds_data.is_empty() {
+            (HashMap::new(), HashMap::new())
+        } else {
+            Self::parse_compounds(bytes::Bytes::from(compounds_data.to_vec()))?
+        };
+
+        Ok(Self {
+            elem_mu_rho,
+            elem_mu_en_rho,
+            comp_mu_rho,
+            comp_mu_en_rho,
+        })
+    }
+
     /// Mass attenuation coefficient µ/ρ [cm²/g] for element Z.
     ///
     /// Returns `f64::NAN` if the element is not loaded.
@@ -108,11 +130,17 @@ impl XcomDb {
     // --- Internal loaders ---
 
     fn load_elements(path: &Path) -> crate::Result<(HashMap<u8, XYTable>, HashMap<u8, XYTable>)> {
+        let file = fs::File::open(path)?;
+        Self::parse_elements(file)
+    }
+
+    fn parse_elements(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<(HashMap<u8, XYTable>, HashMap<u8, XYTable>)> {
         let mut mu_rho: HashMap<u8, XYTable> = HashMap::new();
         let mut mu_en: HashMap<u8, XYTable> = HashMap::new();
 
-        let file = fs::File::open(path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -158,11 +186,17 @@ impl XcomDb {
     fn load_compounds(
         path: &Path,
     ) -> crate::Result<(HashMap<String, XYTable>, HashMap<String, XYTable>)> {
+        let file = fs::File::open(path)?;
+        Self::parse_compounds(file)
+    }
+
+    fn parse_compounds(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<(HashMap<String, XYTable>, HashMap<String, XYTable>)> {
         let mut mu_rho: HashMap<String, XYTable> = HashMap::new();
         let mut mu_en: HashMap<String, XYTable> = HashMap::new();
 
-        let file = fs::File::open(path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -252,5 +286,35 @@ mod tests {
         );
         let mu = db.compound_mu_rho("water", 0.1);
         assert!(mu.is_finite() && mu > 0.0, "water mu/rho at 0.1 MeV: {mu}");
+    }
+
+    fn data_meta_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("data")
+            .join("meta")
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn from_bytes_matches_open() {
+        let db_file = XcomDb::open(data_meta_dir()).unwrap();
+        let elem_data = std::fs::read(data_meta_dir().join("xcom_elements.parquet")).unwrap();
+        let comp_data = std::fs::read(data_meta_dir().join("xcom_compounds.parquet")).unwrap();
+        let db_bytes = XcomDb::from_bytes(&elem_data, &comp_data).unwrap();
+        let mu_file = db_file.mu_rho(29, 0.1);
+        let mu_bytes = db_bytes.mu_rho(29, 0.1);
+        assert!(
+            (mu_file - mu_bytes).abs() < 1e-12,
+            "Cu mu/rho mismatch: {mu_file} vs {mu_bytes}"
+        );
+        let mu_water_file = db_file.compound_mu_rho("water", 0.1);
+        let mu_water_bytes = db_bytes.compound_mu_rho("water", 0.1);
+        assert!(
+            (mu_water_file - mu_water_bytes).abs() < 1e-12,
+            "water mu/rho mismatch: {mu_water_file} vs {mu_water_bytes}"
+        );
     }
 }

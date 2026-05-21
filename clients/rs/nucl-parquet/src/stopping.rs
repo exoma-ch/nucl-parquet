@@ -73,6 +73,28 @@ impl StoppingDb {
         })
     }
 
+    /// Construct from in-memory NIST Parquet bytes (a single `*.parquet` file
+    /// containing `source`, `target_Z`, `energy_MeV`, `dedx` columns).
+    ///
+    /// Compounds and CatIMA data will be empty. Suitable for loading a single
+    /// PSTAR/ASTAR/ESTAR/dSTAR/tSTAR file from bytes.
+    pub fn from_bytes(data: &[u8]) -> crate::Result<Self> {
+        let bytes = bytes::Bytes::from(data.to_vec());
+        let mut nist: HashMap<(String, u32), XYTable> = HashMap::new();
+        Self::parse_nist_into(bytes, &mut nist)?;
+
+        for (e_vec, s_vec) in nist.values_mut() {
+            sort_paired_vecs(e_vec, s_vec);
+        }
+
+        Ok(Self {
+            nist,
+            compounds: HashMap::new(),
+            catima: HashMap::new(),
+            catima_strag: HashMap::new(),
+        })
+    }
+
     /// Mass stopping power [MeV cm²/g] for a NIST source.
     ///
     /// Valid `source` values: `"PSTAR"`, `"ASTAR"`, `"ESTAR"`, `"dSTAR"`, `"tSTAR"`.
@@ -167,33 +189,7 @@ impl StoppingDb {
             }
 
             let file = fs::File::open(&path)?;
-            let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
-
-            for batch in reader {
-                let batch = batch?;
-
-                let src_col_ref = batch.column_by_name("source");
-                let src_values = src_col_ref.and_then(|c| crate::interp::as_string_array(c));
-                let z_col = batch
-                    .column_by_name("target_Z")
-                    .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-                let e_col = batch
-                    .column_by_name("energy_MeV")
-                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-                let s_col = batch
-                    .column_by_name("dedx")
-                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-
-                if let (Some(src), Some(z), Some(e), Some(s)) = (src_values, z_col, e_col, s_col) {
-                    #[allow(clippy::needless_range_loop)]
-                    for i in 0..batch.num_rows() {
-                        let key = (src[i].unwrap_or("").to_string(), z.value(i) as u32);
-                        let entry = map.entry(key).or_default();
-                        entry.0.push(e.value(i));
-                        entry.1.push(s.value(i));
-                    }
-                }
-            }
+            Self::parse_nist_into(file, &mut map)?;
         }
 
         for (e_vec, s_vec) in map.values_mut() {
@@ -201,6 +197,41 @@ impl StoppingDb {
         }
 
         Ok(map)
+    }
+
+    fn parse_nist_into(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+        map: &mut HashMap<(String, u32), XYTable>,
+    ) -> crate::Result<()> {
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
+
+        for batch in reader {
+            let batch = batch?;
+
+            let src_col_ref = batch.column_by_name("source");
+            let src_values = src_col_ref.and_then(|c| crate::interp::as_string_array(c));
+            let z_col = batch
+                .column_by_name("target_Z")
+                .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
+            let e_col = batch
+                .column_by_name("energy_MeV")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+            let s_col = batch
+                .column_by_name("dedx")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+
+            if let (Some(src), Some(z), Some(e), Some(s)) = (src_values, z_col, e_col, s_col) {
+                #[allow(clippy::needless_range_loop)]
+                for i in 0..batch.num_rows() {
+                    let key = (src[i].unwrap_or("").to_string(), z.value(i) as u32);
+                    let entry = map.entry(key).or_default();
+                    entry.0.push(e.value(i));
+                    entry.1.push(s.value(i));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn load_compounds(dir: &Path) -> crate::Result<HashMap<(String, String), XYTable>> {
@@ -395,6 +426,36 @@ mod tests {
         assert!(db
             .compound_dedx("PSTAR_compound", "NONEXISTENT", 10.0)
             .is_nan());
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn from_bytes_matches_open() {
+        let db_file = StoppingDb::open(data_dir()).unwrap();
+        // Read the first NIST parquet file
+        let first_file = std::fs::read_dir(data_dir())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| {
+                let p = e.path();
+                !p.is_dir() && p.extension().and_then(|x| x.to_str()) == Some("parquet")
+            })
+            .expect("at least one stopping file");
+        let data = std::fs::read(first_file.path()).unwrap();
+        let db_bytes = StoppingDb::from_bytes(&data).unwrap();
+        // Find a loaded (source, Z) and compare
+        for (source, z) in db_bytes.nist_keys().take(3) {
+            let val_file = db_file.dedx(source, z, 10.0);
+            let val_bytes = db_bytes.dedx(source, z, 10.0);
+            if val_file.is_finite() && val_bytes.is_finite() {
+                assert!(
+                    (val_file - val_bytes).abs() / val_file < 1e-10,
+                    "{source} Z={z} dedx mismatch: {val_file} vs {val_bytes}"
+                );
+                return;
+            }
+        }
+        panic!("no matching NIST key found");
     }
 
     #[test]

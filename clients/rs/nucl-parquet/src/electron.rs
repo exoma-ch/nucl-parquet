@@ -59,72 +59,89 @@ impl ElectronDb {
             }
 
             let file = fs::File::open(&path)?;
-            let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+            Self::parse_one_into(file, &mut xs_tables)?;
+        }
 
-            let mut process_data: HashMap<ElectronProcess, (Vec<f64>, Vec<f64>)> = HashMap::new();
-            let mut z_val: Option<u8> = None;
+        Ok(Self { xs_tables })
+    }
 
-            for batch in reader {
-                let batch = batch?;
+    /// Construct from a single element's EEDL Parquet bytes.
+    ///
+    /// The element Z is determined from the `Z` column in the data.
+    pub fn from_bytes(data: &[u8]) -> crate::Result<Self> {
+        let bytes = bytes::Bytes::from(data.to_vec());
+        let mut xs_tables = HashMap::new();
+        Self::parse_one_into(bytes, &mut xs_tables)?;
+        Ok(Self { xs_tables })
+    }
 
-                let z_col = batch
-                    .column_by_name("Z")
-                    .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-                let e_col = batch
-                    .column_by_name("energy_MeV")
-                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-                let proc_col_ref = batch.column_by_name("process");
-                let proc_values = proc_col_ref.and_then(|c| crate::interp::as_string_array(c));
-                let xs_col = batch
-                    .column_by_name("xs_barns")
-                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+    #[allow(clippy::type_complexity)]
+    fn parse_one_into(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+        xs_tables: &mut HashMap<(u8, ElectronProcess), (Vec<f64>, Vec<f64>)>,
+    ) -> crate::Result<()> {
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
-                if let (Some(z), Some(e), Some(proc), Some(xs)) =
-                    (z_col, e_col, proc_values, xs_col)
-                {
-                    #[allow(clippy::needless_range_loop)]
-                    for i in 0..batch.num_rows() {
-                        if z_val.is_none() {
-                            z_val = Some(z.value(i) as u8);
-                        }
-                        let proc_str = match proc[i] {
-                            Some(s) => s,
-                            None => continue,
-                        };
-                        let process = match proc_str {
-                            "elastic" => Some(ElectronProcess::Elastic),
-                            "bremsstrahlung" => Some(ElectronProcess::Bremsstrahlung),
-                            "excitation" => Some(ElectronProcess::Excitation),
-                            _ if proc_str.starts_with("ionization") => {
-                                Some(ElectronProcess::Ionization)
-                            }
-                            _ => None,
-                        };
-                        if let Some(p) = process {
-                            let entry = process_data.entry(p).or_default();
-                            entry.0.push(e.value(i));
-                            entry.1.push(xs.value(i));
-                        }
+        let mut process_data: HashMap<ElectronProcess, (Vec<f64>, Vec<f64>)> = HashMap::new();
+        let mut z_val: Option<u8> = None;
+
+        for batch in reader {
+            let batch = batch?;
+
+            let z_col = batch
+                .column_by_name("Z")
+                .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
+            let e_col = batch
+                .column_by_name("energy_MeV")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+            let proc_col_ref = batch.column_by_name("process");
+            let proc_values = proc_col_ref.and_then(|c| crate::interp::as_string_array(c));
+            let xs_col = batch
+                .column_by_name("xs_barns")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+
+            if let (Some(z), Some(e), Some(proc), Some(xs)) = (z_col, e_col, proc_values, xs_col) {
+                #[allow(clippy::needless_range_loop)]
+                for i in 0..batch.num_rows() {
+                    if z_val.is_none() {
+                        z_val = Some(z.value(i) as u8);
                     }
-                }
-            }
-
-            if let Some(z) = z_val {
-                // Subshell ionization rows share the same energy grid; sum them.
-                if let Some((energies, xs_vals)) = process_data.remove(&ElectronProcess::Ionization)
-                {
-                    let summed = sum_by_energy(&energies, &xs_vals);
-                    process_data.insert(ElectronProcess::Ionization, summed);
-                }
-
-                for (process, (mut energies, mut xs)) in process_data {
-                    sort_paired_vecs(&mut energies, &mut xs);
-                    xs_tables.insert((z, process), (energies, xs));
+                    let proc_str = match proc[i] {
+                        Some(s) => s,
+                        None => continue,
+                    };
+                    let process = match proc_str {
+                        "elastic" => Some(ElectronProcess::Elastic),
+                        "bremsstrahlung" => Some(ElectronProcess::Bremsstrahlung),
+                        "excitation" => Some(ElectronProcess::Excitation),
+                        _ if proc_str.starts_with("ionization") => {
+                            Some(ElectronProcess::Ionization)
+                        }
+                        _ => None,
+                    };
+                    if let Some(p) = process {
+                        let entry = process_data.entry(p).or_default();
+                        entry.0.push(e.value(i));
+                        entry.1.push(xs.value(i));
+                    }
                 }
             }
         }
 
-        Ok(Self { xs_tables })
+        if let Some(z) = z_val {
+            // Subshell ionization rows share the same energy grid; sum them.
+            if let Some((energies, xs_vals)) = process_data.remove(&ElectronProcess::Ionization) {
+                let summed = sum_by_energy(&energies, &xs_vals);
+                process_data.insert(ElectronProcess::Ionization, summed);
+            }
+
+            for (process, (mut energies, mut xs)) in process_data {
+                sort_paired_vecs(&mut energies, &mut xs);
+                xs_tables.insert((z, process), (energies, xs));
+            }
+        }
+
+        Ok(())
     }
 
     /// Cross-section [barns/atom] for element Z at energy E [MeV] for a given process.
@@ -254,5 +271,40 @@ mod tests {
             xs.is_finite() && xs > 0.0,
             "Cu bremsstrahlung XS at 1 MeV: {xs}"
         );
+    }
+
+    fn data_meta_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("data")
+            .join("meta")
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn from_bytes_matches_open() {
+        let db_file = ElectronDb::open(data_meta_dir()).unwrap();
+        let eedl_dir = data_meta_dir().join("eedl");
+        let first_file = std::fs::read_dir(&eedl_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.path().extension().and_then(|x| x.to_str()) == Some("parquet"))
+            .expect("at least one EEDL file");
+        let data = std::fs::read(first_file.path()).unwrap();
+        let db_bytes = ElectronDb::from_bytes(&data).unwrap();
+        // Find the Z loaded and compare
+        for z in 1..=100u8 {
+            if db_bytes.has_element(z) {
+                let xs_file = db_file.cross_section(z, 1.0, ElectronProcess::Elastic);
+                let xs_bytes = db_bytes.cross_section(z, 1.0, ElectronProcess::Elastic);
+                assert!(
+                    (xs_file - xs_bytes).abs() < 1e-12,
+                    "Z={z} elastic XS mismatch: {xs_file} vs {xs_bytes}"
+                );
+                break;
+            }
+        }
     }
 }
