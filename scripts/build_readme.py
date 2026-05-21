@@ -34,6 +34,7 @@ def load_catalog() -> dict:
 # Libraries table
 # ---------------------------------------------------------------------------
 
+
 def build_libraries_table(catalog: dict) -> str:
     """Build markdown table of cross-section libraries from catalog."""
     lines = [
@@ -62,14 +63,20 @@ def build_libraries_table(catalog: dict) -> str:
 def _projectile_display(p: str) -> str:
     """Convert projectile code to display name."""
     return {
-        "n": "n", "p": "p", "d": "d", "t": "t",
-        "h": "\u00b3He", "a": "\u03b1", "g": "\u03b3",
+        "n": "n",
+        "p": "p",
+        "d": "d",
+        "t": "t",
+        "h": "\u00b3He",
+        "a": "\u03b1",
+        "g": "\u03b3",
     }.get(p, p)
 
 
 # ---------------------------------------------------------------------------
 # Views / data inventory table
 # ---------------------------------------------------------------------------
+
 
 def build_views_table(catalog: dict) -> str:
     """Build markdown table of all registered views from catalog.views."""
@@ -89,10 +96,10 @@ def build_views_table(catalog: dict) -> str:
         lines.append(f"| `{name}` | {path} | {vtype} |")
 
     # Add derived views not in catalog
-    lines.append(f"| `xs` | union of all XS libraries | derived |")
-    lines.append(f"| `ground_states` | filtered from `nuclides` | derived |")
-    lines.append(f"| `eadl_transitions` | alias for `atomic_relaxation` | derived |")
-    lines.append(f"| `fluorescence` | filtered from `atomic_relaxation` | derived |")
+    lines.append("| `xs` | union of all XS libraries | derived |")
+    lines.append("| `ground_states` | filtered from `nuclides` | derived |")
+    lines.append("| `eadl_transitions` | alias for `atomic_relaxation` | derived |")
+    lines.append("| `fluorescence` | filtered from `atomic_relaxation` | derived |")
 
     return "\n".join(lines)
 
@@ -109,11 +116,13 @@ AUTO_RE = re.compile(
 
 def inject_sections(readme_text: str, sections: dict[str, str]) -> str:
     """Replace content between AUTO markers with generated sections."""
+
     def replacer(m: re.Match) -> str:
         tag = m.group(2)
         if tag in sections:
             return f"{m.group(1)}{sections[tag]}\n{m.group(3)}"
         return m.group(0)
+
     return AUTO_RE.sub(replacer, readme_text)
 
 

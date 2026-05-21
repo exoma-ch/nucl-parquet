@@ -20,7 +20,5 @@ def test_readme_matches_catalog():
         cwd=ROOT,
     )
     assert result.returncode == 0, (
-        f"README has drifted from catalog.json.\n"
-        f"Run: python scripts/build_readme.py --write\n"
-        f"stderr: {result.stderr}"
+        f"README has drifted from catalog.json.\nRun: python scripts/build_readme.py --write\nstderr: {result.stderr}"
     )
