@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.14.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.14.1...nucl-parquet-py-v0.14.2) (2026-05-21)
+
+
+### Features
+
+* **emissions:** Absolute per-decay photon intensities ([#196](https://github.com/exoma-ch/nucl-parquet/issues/196)) ([#197](https://github.com/exoma-ch/nucl-parquet/issues/197)) ([4e73770](https://github.com/exoma-ch/nucl-parquet/commit/4e73770865792faaaae3d64f2d6013dc57991953))
+* **parity:** Cross-language golden-file fixtures — closes [#176](https://github.com/exoma-ch/nucl-parquet/issues/176) ([#191](https://github.com/exoma-ch/nucl-parquet/issues/191)) ([179476d](https://github.com/exoma-ch/nucl-parquet/commit/179476d13d3466fd1e513563a95304a6b303a86a))
+* **rs-client:** ParquetStore — generic cached Parquet→JSON reader ([#210](https://github.com/exoma-ch/nucl-parquet/issues/210)) ([#213](https://github.com/exoma-ch/nucl-parquet/issues/213)) ([e851056](https://github.com/exoma-ch/nucl-parquet/commit/e851056382a91a74492cbc248fc3a2120a8b87b8))
+* **ssot:** Catalog-driven view registration + Rust MCP ParquetStore ([#206](https://github.com/exoma-ch/nucl-parquet/issues/206), [#207](https://github.com/exoma-ch/nucl-parquet/issues/207), [#217](https://github.com/exoma-ch/nucl-parquet/issues/217)) ([#218](https://github.com/exoma-ch/nucl-parquet/issues/218)) ([3fde8a4](https://github.com/exoma-ch/nucl-parquet/commit/3fde8a4a05cb7986b61dce3d2feeff97dbed9950))
+* **tcs:** Materialized summing_partners table ([#177](https://github.com/exoma-ch/nucl-parquet/issues/177)) ([#195](https://github.com/exoma-ch/nucl-parquet/issues/195)) ([4d021c2](https://github.com/exoma-ch/nucl-parquet/commit/4d021c2dc2ca8e1c3a9524d90451f7e377e88bfb))
+
+
+### Bug Fixes
+
+* **ci:** Auto-tag dispatches release-data workflow directly ([#189](https://github.com/exoma-ch/nucl-parquet/issues/189)) ([e7d5675](https://github.com/exoma-ch/nucl-parquet/commit/e7d567540b0c7405e2381141cbf7675040f879b7))
+* **ci:** Use DATA_RELEASE_PAT for auto-tag workflow dispatch ([#215](https://github.com/exoma-ch/nucl-parquet/issues/215)) ([9ef99e5](https://github.com/exoma-ch/nucl-parquet/commit/9ef99e50f9829036b6d8a88e6109cdc1f83c09bb))
+* **coincidences:** Filter COINCIDENCE_SQL on parent_state ([#50](https://github.com/exoma-ch/nucl-parquet/issues/50)) ([#198](https://github.com/exoma-ch/nucl-parquet/issues/198)) ([a7df2ec](https://github.com/exoma-ch/nucl-parquet/commit/a7df2ec4d5c8a002420fafd681874d5cc161b2a9))
+* **data:** Correct 34 swapped ground/metastable half-lives ([#203](https://github.com/exoma-ch/nucl-parquet/issues/203)) ([d2489a5](https://github.com/exoma-ch/nucl-parquet/commit/d2489a52ef766965923aa823f0b6d29023724928))
+
 ## [0.14.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.14.0...nucl-parquet-py-v0.14.1) (2026-05-15)
 
 
