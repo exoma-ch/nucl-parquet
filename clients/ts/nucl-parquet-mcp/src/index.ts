@@ -57,8 +57,16 @@ interface Library {
   path?: string;
 }
 
+interface ViewDef {
+  path: string;
+  type?: "file" | "glob";
+  optional?: boolean;
+  note?: string;
+}
+
 interface Catalog {
   libraries: Record<string, Library>;
+  views?: Record<string, ViewDef>;
   [key: string]: unknown;
 }
 
@@ -122,97 +130,33 @@ function registerViews(db: duckdb.Database, dataDir: string): void {
     db.run(`CREATE VIEW xs AS ${union}`);
   }
 
-  // --- Shared meta ---
-  registerParquet(db, join(dataDir, "meta", "abundances.parquet"), "abundances");
-  registerParquet(db, join(dataDir, "meta", "decay.parquet"), "decay");
-  registerParquet(db, join(dataDir, "meta", "elements.parquet"), "elements");
+  // --- Catalog-driven view registration ---
+  // All views declared in catalog.json::views — single source of truth.
+  // New data tables become queryable by adding an entry to catalog.json,
+  // no code changes needed in any client (Python, TypeScript, Rust).
+  for (const [viewName, viewDef] of Object.entries(catalog.views ?? {})) {
+    const viewPath = join(dataDir, viewDef.path);
+    if (viewDef.type === "glob") {
+      registerGlob(db, viewPath, viewName);
+    } else {
+      registerParquet(db, viewPath, viewName);
+    }
+  }
 
-  // --- Stopping powers ---
-  registerGlob(db, join(dataDir, "stopping"), "stopping");
-  registerParquet(db, join(dataDir, "stopping", "catima", "catima.parquet"), "catima_stopping");
-  registerParquet(db, join(dataDir, "stopping", "compounds", "PSTAR_compounds.parquet"), "pstar_compounds");
-  registerParquet(db, join(dataDir, "stopping", "compounds", "ASTAR_compounds.parquet"), "astar_compounds");
-  registerParquet(db, join(dataDir, "stopping", "em", "electron_stopping.parquet"), "electron_stopping");
-  registerParquet(db, join(dataDir, "stopping", "em", "density_effect_params.parquet"), "density_effect_params");
+  // --- Special views that need logic beyond simple registration ---
 
-  // --- ENSDF data ---
+  // ground_states: when nuclides.parquet exists, override with filtered view
   const nuclidesPath = join(dataDir, "meta", "ensdf", "nuclides.parquet");
   if (existsSync(nuclidesPath)) {
-    registerParquet(db, nuclidesPath, "nuclides");
-    db.run("CREATE VIEW ground_states AS SELECT * FROM nuclides WHERE state = ''");
-  } else {
-    registerParquet(db, join(dataDir, "meta", "ensdf", "ground_states.parquet"), "ground_states");
+    db.run("CREATE OR REPLACE VIEW ground_states AS SELECT * FROM nuclides WHERE state = ''");
   }
-  registerGlob(db, join(dataDir, "meta", "ensdf", "gammas"), "ensdf_gammas");
-  registerGlob(db, join(dataDir, "meta", "ensdf", "levels"), "ensdf_levels");
-  registerGlob(db, join(dataDir, "meta", "ensdf", "radiation"), "radiation");
-  registerGlob(db, join(dataDir, "meta", "ensdf", "coincidences"), "coincidences");
-  registerGlob(db, join(dataDir, "meta", "ensdf", "summing_partners"), "summing_partners");
-  registerGlob(db, join(dataDir, "meta", "ensdf", "emissions"), "emissions");
-  registerGlob(db, join(dataDir, "meta", "ensdf", "beta_spectra"), "beta_spectra");
 
-  // --- NUDEX data ---
-  registerParquet(db, join(dataDir, "meta", "capture_gammas.parquet"), "capture_gammas");
-  registerParquet(db, join(dataDir, "meta", "capture_gammas_summary.parquet"), "capture_gammas_summary");
-  registerParquet(db, join(dataDir, "meta", "icc_factors.parquet"), "icc_factors");
-  registerParquet(db, join(dataDir, "meta", "level_density_bfm.parquet"), "level_density_bfm");
-  registerParquet(db, join(dataDir, "meta", "level_density_ctm.parquet"), "level_density_ctm");
-  registerParquet(db, join(dataDir, "meta", "level_density_params.parquet"), "level_density_params");
-  registerParquet(db, join(dataDir, "meta", "psf_e1.parquet"), "psf_e1");
-  registerParquet(db, join(dataDir, "meta", "psf_gdr_lor.parquet"), "psf_gdr_lor");
-  registerParquet(db, join(dataDir, "meta", "psf_gdr_mlo.parquet"), "psf_gdr_mlo");
-  registerParquet(db, join(dataDir, "meta", "psf_gdr_slo.parquet"), "psf_gdr_slo");
-  registerParquet(db, join(dataDir, "meta", "psf_gdr_theor.parquet"), "psf_gdr_theor");
-  registerParquet(db, join(dataDir, "meta", "psf_photonuclear.parquet"), "psf_photonuclear");
-  registerParquet(db, join(dataDir, "meta", "nudex_shellcor.parquet"), "nudex_shellcor");
-  registerParquet(db, join(dataDir, "meta", "nudex_special_inputs.parquet"), "nudex_special_inputs");
-  registerParquet(db, join(dataDir, "meta", "nudex_general_stat.parquet"), "nudex_general_stat");
-  registerParquet(db, join(dataDir, "meta", "nudex_levels.parquet"), "nudex_levels");
-  registerParquet(db, join(dataDir, "meta", "nudex_level_gammas.parquet"), "nudex_level_gammas");
-  registerParquet(db, join(dataDir, "meta", "nudex_isotopes.parquet"), "nudex_isotopes");
-  registerParquet(db, join(dataDir, "meta", "spectrum_xs.parquet"), "spectrum_xs");
-
-  // --- Kerma, neutron, dose ---
-  registerGlob(db, join(dataDir, "meta", "kerma"), "kerma");
-  registerGlob(db, join(dataDir, "meta", "neutron_total"), "neutron_total");
-  registerParquet(db, join(dataDir, "meta", "dose_constants.parquet"), "dose_constants");
-
-  // --- XCOM / compound ---
-  registerParquet(db, join(dataDir, "meta", "xcom_elements.parquet"), "xcom_elements");
-  registerParquet(db, join(dataDir, "meta", "xcom_compounds.parquet"), "xcom_compounds");
-  registerParquet(db, join(dataDir, "meta", "compound_compositions.parquet"), "compound_compositions");
-
-  // --- EPDL97 ---
-  registerGlob(db, join(dataDir, "meta", "epdl97", "photon_xs"), "epdl_photon_xs");
-  registerGlob(db, join(dataDir, "meta", "epdl97", "form_factors"), "epdl_form_factors");
-  registerGlob(db, join(dataDir, "meta", "epdl97", "scattering_fn"), "epdl_scattering_fn");
-  registerGlob(db, join(dataDir, "meta", "epdl97", "anomalous"), "epdl_anomalous");
-  registerGlob(db, join(dataDir, "meta", "epdl97", "subshell_pe"), "epdl_subshell_pe");
-
-  // --- EADL ---
+  // EADL aliases: eadl_transitions (v0.11 compat) + fluorescence (radiative subset)
   const eadlDir = join(dataDir, "meta", "eadl");
   if (hasParquetFiles(eadlDir)) {
-    registerGlob(db, eadlDir, "atomic_relaxation");
     db.run("CREATE VIEW eadl_transitions AS SELECT * FROM atomic_relaxation");
     db.run("CREATE VIEW fluorescence AS SELECT * FROM atomic_relaxation WHERE transition_type = 'radiative'");
   }
-
-  // --- EEDL ---
-  registerGlob(db, join(dataDir, "meta", "eedl"), "eedl_electron_xs");
-
-  // --- G4EMLOW photon/electron ---
-  registerParquet(db, join(dataDir, "em", "photon_pair.parquet"), "photon_pair");
-  registerParquet(db, join(dataDir, "em", "photon_rayleigh_cdf.parquet"), "photon_rayleigh_cdf");
-  registerParquet(db, join(dataDir, "em", "xray_form_factor.parquet"), "xray_form_factor");
-  registerParquet(db, join(dataDir, "em", "photon_compton.parquet"), "photon_compton");
-  registerParquet(db, join(dataDir, "em", "compton_scattering_function.parquet"), "compton_scattering_function");
-  registerParquet(db, join(dataDir, "em", "compton_doppler_profiles.parquet"), "compton_doppler_profiles");
-  registerParquet(db, join(dataDir, "em", "photon_pe.parquet"), "photon_pe");
-  registerParquet(db, join(dataDir, "em", "photon_pe_high_z_params.parquet"), "photon_pe_high_z_params");
-  registerParquet(db, join(dataDir, "em", "photon_pe_angular.parquet"), "photon_pe_angular");
-  registerParquet(db, join(dataDir, "em", "photon_pe_total.parquet"), "photon_pe_total");
-  registerParquet(db, join(dataDir, "em", "electron_brem.parquet"), "electron_brem");
-  registerParquet(db, join(dataDir, "em", "electron_brem_sb_dcs.parquet"), "electron_brem_sb_dcs");
 }
 
 export function getDb(): duckdb.Database {

@@ -468,5 +468,261 @@
         "note": "SCALED differential cross section per Berger & Seltzer (1985): dcs = (dσ/dκ) × β² / Z², where κ = E_γ / T_electron and β is the electron velocity. The Z² is factored out so values are O(1-10) across all Z. To recover the raw dσ/dκ multiply by Z²/β². Companion to electron_brem (integrated σ). Cite Seltzer & Berger, Nucl. Instrum. Meth. B12 (1985) 95."
       }
     }
+  },
+  "views": {
+    "abundances": {
+      "path": "meta/abundances.parquet",
+      "type": "file"
+    },
+    "astar_compounds": {
+      "path": "stopping/compounds/ASTAR_compounds.parquet",
+      "type": "file"
+    },
+    "atomic_relaxation": {
+      "path": "meta/eadl",
+      "type": "glob",
+      "optional": true
+    },
+    "beta_spectra": {
+      "path": "meta/ensdf/beta_spectra",
+      "type": "glob"
+    },
+    "capture_gammas": {
+      "path": "meta/capture_gammas.parquet",
+      "type": "file"
+    },
+    "capture_gammas_summary": {
+      "path": "meta/capture_gammas_summary.parquet",
+      "type": "file"
+    },
+    "catima_stopping": {
+      "path": "stopping/catima/catima.parquet",
+      "type": "file"
+    },
+    "coincidences": {
+      "path": "meta/ensdf/coincidences",
+      "type": "glob"
+    },
+    "compound_compositions": {
+      "path": "meta/compound_compositions.parquet",
+      "type": "file"
+    },
+    "compton_doppler_profiles": {
+      "path": "em/compton_doppler_profiles.parquet",
+      "type": "file"
+    },
+    "compton_scattering_function": {
+      "path": "em/compton_scattering_function.parquet",
+      "type": "file"
+    },
+    "decay": {
+      "path": "meta/decay.parquet",
+      "type": "file"
+    },
+    "decay_detailed": {
+      "path": "meta/decay_detailed.parquet",
+      "type": "file"
+    },
+    "density_effect_params": {
+      "path": "stopping/em/density_effect_params.parquet",
+      "type": "file"
+    },
+    "dose_constants": {
+      "path": "meta/dose_constants.parquet",
+      "type": "file"
+    },
+    "eedl_electron_xs": {
+      "path": "meta/eedl",
+      "type": "glob"
+    },
+    "electron_brem": {
+      "path": "em/electron_brem.parquet",
+      "type": "file"
+    },
+    "electron_brem_sb_dcs": {
+      "path": "em/electron_brem_sb_dcs.parquet",
+      "type": "file"
+    },
+    "electron_stopping": {
+      "path": "stopping/em/electron_stopping.parquet",
+      "type": "file"
+    },
+    "elements": {
+      "path": "meta/elements.parquet",
+      "type": "file"
+    },
+    "emissions": {
+      "path": "meta/ensdf/emissions",
+      "type": "glob"
+    },
+    "ensdf_gammas": {
+      "path": "meta/ensdf/gammas",
+      "type": "glob"
+    },
+    "ensdf_levels": {
+      "path": "meta/ensdf/levels",
+      "type": "glob"
+    },
+    "epdl_anomalous": {
+      "path": "meta/epdl97/anomalous",
+      "type": "glob"
+    },
+    "epdl_form_factors": {
+      "path": "meta/epdl97/form_factors",
+      "type": "glob"
+    },
+    "epdl_photon_xs": {
+      "path": "meta/epdl97/photon_xs",
+      "type": "glob"
+    },
+    "epdl_scattering_fn": {
+      "path": "meta/epdl97/scattering_fn",
+      "type": "glob"
+    },
+    "epdl_subshell_pe": {
+      "path": "meta/epdl97/subshell_pe",
+      "type": "glob"
+    },
+    "ground_states": {
+      "path": "meta/ensdf/ground_states.parquet",
+      "type": "file",
+      "note": "Fallback; when nuclides.parquet exists, clients override this with a filtered view"
+    },
+    "icc_factors": {
+      "path": "meta/icc_factors.parquet",
+      "type": "file"
+    },
+    "kerma": {
+      "path": "meta/kerma",
+      "type": "glob"
+    },
+    "level_density_bfm": {
+      "path": "meta/level_density_bfm.parquet",
+      "type": "file"
+    },
+    "level_density_ctm": {
+      "path": "meta/level_density_ctm.parquet",
+      "type": "file"
+    },
+    "level_density_params": {
+      "path": "meta/level_density_params.parquet",
+      "type": "file"
+    },
+    "neutron_total": {
+      "path": "meta/neutron_total",
+      "type": "glob"
+    },
+    "nudex_general_stat": {
+      "path": "meta/nudex_general_stat.parquet",
+      "type": "file"
+    },
+    "nudex_isotopes": {
+      "path": "meta/nudex_isotopes.parquet",
+      "type": "file"
+    },
+    "nudex_level_gammas": {
+      "path": "meta/nudex_level_gammas.parquet",
+      "type": "file"
+    },
+    "nudex_levels": {
+      "path": "meta/nudex_levels.parquet",
+      "type": "file"
+    },
+    "nudex_shellcor": {
+      "path": "meta/nudex_shellcor.parquet",
+      "type": "file"
+    },
+    "nudex_special_inputs": {
+      "path": "meta/nudex_special_inputs.parquet",
+      "type": "file"
+    },
+    "nuclides": {
+      "path": "meta/ensdf/nuclides.parquet",
+      "type": "file"
+    },
+    "photon_compton": {
+      "path": "em/photon_compton.parquet",
+      "type": "file"
+    },
+    "photon_pair": {
+      "path": "em/photon_pair.parquet",
+      "type": "file"
+    },
+    "photon_pe": {
+      "path": "em/photon_pe.parquet",
+      "type": "file"
+    },
+    "photon_pe_angular": {
+      "path": "em/photon_pe_angular.parquet",
+      "type": "file"
+    },
+    "photon_pe_high_z_params": {
+      "path": "em/photon_pe_high_z_params.parquet",
+      "type": "file"
+    },
+    "photon_pe_total": {
+      "path": "em/photon_pe_total.parquet",
+      "type": "file"
+    },
+    "photon_rayleigh_cdf": {
+      "path": "em/photon_rayleigh_cdf.parquet",
+      "type": "file"
+    },
+    "psf_e1": {
+      "path": "meta/psf_e1.parquet",
+      "type": "file"
+    },
+    "psf_gdr_lor": {
+      "path": "meta/psf_gdr_lor.parquet",
+      "type": "file"
+    },
+    "psf_gdr_mlo": {
+      "path": "meta/psf_gdr_mlo.parquet",
+      "type": "file"
+    },
+    "psf_gdr_slo": {
+      "path": "meta/psf_gdr_slo.parquet",
+      "type": "file"
+    },
+    "psf_gdr_theor": {
+      "path": "meta/psf_gdr_theor.parquet",
+      "type": "file"
+    },
+    "psf_photonuclear": {
+      "path": "meta/psf_photonuclear.parquet",
+      "type": "file"
+    },
+    "pstar_compounds": {
+      "path": "stopping/compounds/PSTAR_compounds.parquet",
+      "type": "file"
+    },
+    "radiation": {
+      "path": "meta/ensdf/radiation",
+      "type": "glob"
+    },
+    "spectrum_xs": {
+      "path": "meta/spectrum_xs.parquet",
+      "type": "file"
+    },
+    "stopping": {
+      "path": "stopping",
+      "type": "glob"
+    },
+    "summing_partners": {
+      "path": "meta/ensdf/summing_partners",
+      "type": "glob"
+    },
+    "xcom_compounds": {
+      "path": "meta/xcom_compounds.parquet",
+      "type": "file"
+    },
+    "xcom_elements": {
+      "path": "meta/xcom_elements.parquet",
+      "type": "file"
+    },
+    "xray_form_factor": {
+      "path": "em/xray_form_factor.parquet",
+      "type": "file"
+    }
   }
 }

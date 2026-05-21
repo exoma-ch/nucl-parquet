@@ -49,7 +49,7 @@ import nucl_parquet
 db = nucl_parquet.connect()
 
 # Cross-section query
-db.sql("SELECT * FROM tendl_2024 WHERE target_A=63 AND residual_Z=30")
+db.sql("SELECT * FROM tendl_2023_iso WHERE target_A=63 AND residual_Z=30")
 
 # Compare all libraries
 db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_A=63 AND residual_Z=30")
@@ -142,22 +142,27 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 
 ## Libraries included
 
+<!-- AUTO:libraries -->
 | Library | Projectiles | Source |
 |---------|------------|--------|
-| [TENDL-2024](https://tendl.web.psi.ch/tendl_2024/tendl2024.html) | n, p, d, t, ³He, α | IAEA/PSI |
-| [TENDL-2025](https://tendl.web.psi.ch/) | n, p, d, t, ³He, α | PSI |
+| [BROND-3.1](https://vant.ippe.ru/) | n | IPPE |
+| [CENDL-3.2](http://www.nuclear.csdb.cn/) | n | CIAE |
+| [EAF-2010](https://fispact.ukaea.uk/) | n | CCFE |
 | [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-b8.1/) | n, p, d, t, ³He, α | NNDC/BNL |
+| [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS |
+| [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n | IAEA |
+| [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | ar40, c12, ca40, fe56, he4, ne20, ni58, o16, p, pb208, si28, xe132 |  |
+| [HI-XS Production (Geant4 INCL++/ABLA07)](https://geant4.org/) | c12, o16, ne20, si28, ar40, fe56 |  |
+| [IAEA-Medical](https://www-nds.iaea.org/medical/) | p, d, ³He, α | IAEA |
+| [IAEA-PD-2019](https://www-nds.iaea.org/photonuclear/) | γ | IAEA |
+| [IRDFF-II](https://www-nds.iaea.org/IRDFF/) | n | IAEA |
 | [JEFF-4.0](https://www.oecd-nea.org/dbdata/jeff/) | n, p | NEA |
 | [JENDL-5](https://wwwndc.jaea.go.jp/jendl/j5/j5.html) | n, p, d, α | JAEA |
-| [CENDL-3.2](http://www.nuclear.csdb.cn/) | n | CIAE |
-| [BROND-3.1](https://vant.ippe.ru/) | n | IPPE |
-| [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n | IAEA |
-| [EAF-2010](https://fispact.ukaea.uk/) | n | CCFE |
-| [IRDFF-II](https://www-nds.iaea.org/IRDFF/) | n | IAEA |
-| [IAEA-Medical](https://www-nds.iaea.org/medical/) | p, d | IAEA |
-| [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS (experimental) |
-| [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | p, ⁴He, ¹²C, ¹⁶O, ²⁰Ne, ²⁸Si, ⁴⁰Ar, ⁴⁰Ca, ⁵⁶Fe, ⁵⁸Ni, ¹³²Xe, ²⁰⁸Pb | semi-empirical (Tripathi 1997) |
-| HI-XS Production (Geant4 INCL++/ABLA07) | ¹²C, ¹⁶O, ²⁰Ne, ²⁸Si, ⁴⁰Ar, ⁵⁶Fe | Geant4 11.3.2 Monte Carlo |
+| [JENDL-DEU-2020](https://wwwndc.jaea.go.jp/jendl/deu/deu.html) | d | JAEA |
+| [JENDL/AD-2017](https://wwwndc.jaea.go.jp/jendl/jad/jad.html) | n, p | JAEA |
+| [TENDL-2023 + Aug 2024 isomeric correction](https://tendl.web.psi.ch/tendl_2023/tendl2023.html) | p, d, t, ³He, α |  |
+| [TENDL-2025](https://tendl.web.psi.ch/) | n, p, d, t, ³He, α | PSI |
+<!-- /AUTO:libraries -->
 
 ## Parquet schemas
 
@@ -250,7 +255,11 @@ Sourced from the [strata project's HuggingFace dataset](https://huggingface.co/d
 | `decay` / `decay_detailed` | `meta/decay{,_detailed}.parquet` | Decay branches per `(Z, A, state)`. `decay_detailed` adds `parent_ex_kev`, `daughter_ex_kev`, `q_value_kev`, `forbiddenness`, and **per-shell EC fractions** (`KshellEC`/`LshellEC`/`MshellEC`/`NshellEC`) |
 | `radiation` | `meta/ensdf/radiation/{Symbol}.parquet` | Per-element gamma + X-ray + Auger lines, unioned by `rad_type` discriminator |
 | `coincidences` | `meta/ensdf/coincidences/{Symbol}.parquet` | Gamma cascade pairs (~600k pairs, 104 element files) |
+| `summing_partners` | `meta/ensdf/summing_partners/{Symbol}.parquet` | ICC-corrected summing partners for HPGe TCS corrections |
+| `emissions` | `meta/ensdf/emissions/{Symbol}.parquet` | Absolute per-decay emission intensities (NuDat-equivalent, parent-keyed) |
+| `beta_spectra` | `meta/ensdf/beta_spectra/{Symbol}.parquet` | Continuous beta-decay kinetic-energy spectra (dN/dE, 200 bins) |
 | `levels` | `meta/ensdf/levels/{Symbol}.parquet` | Excited-state level schemes |
+| `dose_constants` | `meta/dose_constants.parquet` | Dose rate constants (Sv/h per Bq at 1 m) |
 
 ## Photon-matter interaction (v0.12+, G4EMLOW8.8)
 
@@ -324,6 +333,94 @@ SELECT energy_keV, intensity_pct
  ORDER BY intensity_pct DESC
  LIMIT 10;
 ```
+
+## All registered views
+
+The complete inventory of DuckDB views registered by `nucl_parquet.connect()`. All views are declared in `catalog.json::views` — adding a new data table to the catalog makes it queryable with zero code changes across all clients (Python, TypeScript, Rust).
+
+<!-- AUTO:views -->
+| View | Path | Type |
+|------|------|------|
+| `abundances` | `meta/abundances.parquet` | file |
+| `astar_compounds` | `stopping/compounds/ASTAR_compounds.parquet` | file |
+| `atomic_relaxation` | `meta/eadl/*.parquet` | glob |
+| `beta_spectra` | `meta/ensdf/beta_spectra/*.parquet` | glob |
+| `capture_gammas` | `meta/capture_gammas.parquet` | file |
+| `capture_gammas_summary` | `meta/capture_gammas_summary.parquet` | file |
+| `catima_stopping` | `stopping/catima/catima.parquet` | file |
+| `coincidences` | `meta/ensdf/coincidences/*.parquet` | glob |
+| `compound_compositions` | `meta/compound_compositions.parquet` | file |
+| `compton_doppler_profiles` | `em/compton_doppler_profiles.parquet` | file |
+| `compton_scattering_function` | `em/compton_scattering_function.parquet` | file |
+| `decay` | `meta/decay.parquet` | file |
+| `decay_detailed` | `meta/decay_detailed.parquet` | file |
+| `density_effect_params` | `stopping/em/density_effect_params.parquet` | file |
+| `dose_constants` | `meta/dose_constants.parquet` | file |
+| `eedl_electron_xs` | `meta/eedl/*.parquet` | glob |
+| `electron_brem` | `em/electron_brem.parquet` | file |
+| `electron_brem_sb_dcs` | `em/electron_brem_sb_dcs.parquet` | file |
+| `electron_stopping` | `stopping/em/electron_stopping.parquet` | file |
+| `elements` | `meta/elements.parquet` | file |
+| `emissions` | `meta/ensdf/emissions/*.parquet` | glob |
+| `ensdf_gammas` | `meta/ensdf/gammas/*.parquet` | glob |
+| `ensdf_levels` | `meta/ensdf/levels/*.parquet` | glob |
+| `epdl_anomalous` | `meta/epdl97/anomalous/*.parquet` | glob |
+| `epdl_form_factors` | `meta/epdl97/form_factors/*.parquet` | glob |
+| `epdl_photon_xs` | `meta/epdl97/photon_xs/*.parquet` | glob |
+| `epdl_scattering_fn` | `meta/epdl97/scattering_fn/*.parquet` | glob |
+| `epdl_subshell_pe` | `meta/epdl97/subshell_pe/*.parquet` | glob |
+| `ground_states` | `meta/ensdf/ground_states.parquet` | file |
+| `icc_factors` | `meta/icc_factors.parquet` | file |
+| `kerma` | `meta/kerma/*.parquet` | glob |
+| `level_density_bfm` | `meta/level_density_bfm.parquet` | file |
+| `level_density_ctm` | `meta/level_density_ctm.parquet` | file |
+| `level_density_params` | `meta/level_density_params.parquet` | file |
+| `neutron_total` | `meta/neutron_total/*.parquet` | glob |
+| `nuclides` | `meta/ensdf/nuclides.parquet` | file |
+| `nudex_general_stat` | `meta/nudex_general_stat.parquet` | file |
+| `nudex_isotopes` | `meta/nudex_isotopes.parquet` | file |
+| `nudex_level_gammas` | `meta/nudex_level_gammas.parquet` | file |
+| `nudex_levels` | `meta/nudex_levels.parquet` | file |
+| `nudex_shellcor` | `meta/nudex_shellcor.parquet` | file |
+| `nudex_special_inputs` | `meta/nudex_special_inputs.parquet` | file |
+| `photon_compton` | `em/photon_compton.parquet` | file |
+| `photon_pair` | `em/photon_pair.parquet` | file |
+| `photon_pe` | `em/photon_pe.parquet` | file |
+| `photon_pe_angular` | `em/photon_pe_angular.parquet` | file |
+| `photon_pe_high_z_params` | `em/photon_pe_high_z_params.parquet` | file |
+| `photon_pe_total` | `em/photon_pe_total.parquet` | file |
+| `photon_rayleigh_cdf` | `em/photon_rayleigh_cdf.parquet` | file |
+| `psf_e1` | `meta/psf_e1.parquet` | file |
+| `psf_gdr_lor` | `meta/psf_gdr_lor.parquet` | file |
+| `psf_gdr_mlo` | `meta/psf_gdr_mlo.parquet` | file |
+| `psf_gdr_slo` | `meta/psf_gdr_slo.parquet` | file |
+| `psf_gdr_theor` | `meta/psf_gdr_theor.parquet` | file |
+| `psf_photonuclear` | `meta/psf_photonuclear.parquet` | file |
+| `pstar_compounds` | `stopping/compounds/PSTAR_compounds.parquet` | file |
+| `radiation` | `meta/ensdf/radiation/*.parquet` | glob |
+| `spectrum_xs` | `meta/spectrum_xs.parquet` | file |
+| `stopping` | `stopping/*.parquet` | glob |
+| `summing_partners` | `meta/ensdf/summing_partners/*.parquet` | glob |
+| `xcom_compounds` | `meta/xcom_compounds.parquet` | file |
+| `xcom_elements` | `meta/xcom_elements.parquet` | file |
+| `xray_form_factor` | `em/xray_form_factor.parquet` | file |
+| `xs` | union of all XS libraries | derived |
+| `ground_states` | filtered from `nuclides` | derived |
+| `eadl_transitions` | alias for `atomic_relaxation` | derived |
+| `fluorescence` | filtered from `atomic_relaxation` | derived |
+<!-- /AUTO:views -->
+
+## MCP servers
+
+Three MCP servers expose nucl-parquet data to AI assistants:
+
+| Client | Language | Registration |
+|--------|----------|-------------|
+| `clients/py/nucl-parquet-mcp` | Python (DuckDB) | catalog-driven |
+| `clients/ts/nucl-parquet-mcp` | TypeScript (DuckDB) | catalog-driven |
+| `clients/rs/nucl-parquet-mcp` | Rust (ParquetStore) | catalog-driven |
+
+All three read `catalog.json::views` for view registration and `catalog.json::libraries` for cross-section libraries. The Rust MCP uses the `ParquetStore` from the `nucl-parquet` client crate for zero-dependency Parquet I/O.
 
 ## Development
 
