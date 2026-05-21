@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.4](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.13.3...nucl-parquet-rs-v0.13.4) (2026-05-21)
+
+
+### Features
+
+* **rs-client:** Add from_bytes constructors to all typed DBs ([#221](https://github.com/exoma-ch/nucl-parquet/issues/221)) ([5691319](https://github.com/exoma-ch/nucl-parquet/commit/5691319264ba73f9152243f61bddf43c121635ba))
+
 ## [0.13.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.13.2...nucl-parquet-rs-v0.13.3) (2026-05-21)
 
 
