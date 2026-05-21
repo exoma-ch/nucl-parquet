@@ -49,10 +49,34 @@ impl CrossSectionDb {
         let target_z =
             z_from_path(path).ok_or_else(|| Error::DataDirNotFound(path.to_path_buf()))?;
 
+        let file = fs::File::open(path)?;
+        let reactions = Self::parse(file)?;
+
+        Ok(Self {
+            reactions,
+            target_z,
+        })
+    }
+
+    /// Construct from in-memory Parquet bytes for a known target element.
+    ///
+    /// Unlike [`open`](Self::open), the caller must supply `target_z` since
+    /// there is no file path to derive the element symbol from.
+    pub fn from_bytes(target_z: u32, data: &[u8]) -> crate::Result<Self> {
+        let bytes = bytes::Bytes::from(data.to_vec());
+        let reactions = Self::parse(bytes)?;
+        Ok(Self {
+            reactions,
+            target_z,
+        })
+    }
+
+    fn parse(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<HashMap<(u32, u32, u32, String), XYTable>> {
         let mut reactions: HashMap<(u32, u32, u32, String), XYTable> = HashMap::new();
 
-        let file = fs::File::open(path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
         for batch in reader {
             let batch = batch?;
@@ -97,10 +121,7 @@ impl CrossSectionDb {
             sort_paired_vecs(e_vec, xs_vec);
         }
 
-        Ok(Self {
-            reactions,
-            target_z,
-        })
+        Ok(reactions)
     }
 
     /// Interpolated cross-section [mb] at `energy_mev`.
@@ -364,5 +385,36 @@ mod tests {
     fn entries_nonempty() {
         let db = CrossSectionDb::open(xs_file()).unwrap();
         assert!(db.num_reactions() > 0, "should have at least one reaction");
+    }
+
+    fn data_xs_file() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("data")
+            .join("tendl-2025")
+            .join("xs")
+            .join("p_Cu.parquet")
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn from_bytes_matches_open() {
+        let path = data_xs_file();
+        let db_file = CrossSectionDb::open(&path).unwrap();
+        let data = std::fs::read(&path).unwrap();
+        let db_bytes = CrossSectionDb::from_bytes(db_file.target_z(), &data).unwrap();
+        assert_eq!(db_bytes.target_z(), db_file.target_z());
+        assert_eq!(db_bytes.num_reactions(), db_file.num_reactions());
+        // Spot-check a cross-section value
+        for (ta, rz, ra, _st) in db_file.reaction_keys().take(3) {
+            let val_file = db_file.cross_section(ta, rz, ra, 15.0);
+            let val_bytes = db_bytes.cross_section(ta, rz, ra, 15.0);
+            assert!(
+                (val_file.is_nan() && val_bytes.is_nan()) || (val_file - val_bytes).abs() < 1e-12,
+                "mismatch for ({ta},{rz},{ra}): {val_file} vs {val_bytes}"
+            );
+        }
     }
 }

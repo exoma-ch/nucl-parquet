@@ -66,73 +66,97 @@ impl RelaxationDb {
             }
 
             let file = fs::File::open(&path)?;
-            let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+            if let Some((z, trans_list)) = Self::parse_one(file)? {
+                transitions.insert(z, trans_list);
+            }
+        }
 
-            let mut z_val: Option<u8> = None;
-            let mut trans_list = Vec::new();
+        Ok(Self { transitions })
+    }
 
-            for batch in reader {
-                let batch = batch?;
+    /// Construct from a single element's EADL Parquet bytes.
+    ///
+    /// The element Z is determined from the `Z` column in the data.
+    pub fn from_bytes(data: &[u8]) -> crate::Result<Self> {
+        let bytes = bytes::Bytes::from(data.to_vec());
+        let mut transitions: HashMap<u8, Vec<Transition>> = HashMap::new();
+        if let Some((z, trans_list)) = Self::parse_one(bytes)? {
+            transitions.insert(z, trans_list);
+        }
+        Ok(Self { transitions })
+    }
 
-                let z_col = batch
-                    .column_by_name("Z")
-                    .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-                let vac_col_ref = batch.column_by_name("vacancy_shell");
-                let vac_values = vac_col_ref.and_then(|c| crate::interp::as_string_array(c));
-                let fill_col_ref = batch.column_by_name("filling_shell");
-                let fill_values = fill_col_ref.and_then(|c| crate::interp::as_string_array(c));
-                let type_col_ref = batch.column_by_name("transition_type");
-                let type_values = type_col_ref.and_then(|c| crate::interp::as_string_array(c));
-                let energy_col = batch
-                    .column_by_name("energy_keV")
-                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-                let prob_col = batch
-                    .column_by_name("probability")
-                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-                let edge_col = batch
-                    .column_by_name("edge_keV")
-                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+    /// Parse a single parquet source into (Z, transitions).
+    fn parse_one(
+        reader_source: impl parquet::file::reader::ChunkReader + 'static,
+    ) -> crate::Result<Option<(u8, Vec<Transition>)>> {
+        let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
-                if let (Some(z), Some(vac), Some(fill), Some(tt), Some(e), Some(p), Some(edge)) = (
-                    z_col,
-                    vac_values,
-                    fill_values,
-                    type_values,
-                    energy_col,
-                    prob_col,
-                    edge_col,
-                ) {
-                    for i in 0..batch.num_rows() {
-                        if z_val.is_none() {
-                            z_val = Some(z.value(i) as u8);
-                        }
-                        trans_list.push(Transition {
-                            vacancy_shell: vac[i].unwrap_or("").to_string(),
-                            filling_shell: fill[i].unwrap_or("").to_string(),
-                            transition_type: match tt[i].unwrap_or("") {
-                                "radiative" => TransitionType::Radiative,
-                                _ => TransitionType::Auger,
-                            },
-                            energy_kev: e.value(i),
-                            probability: p.value(i),
-                            edge_kev: edge.value(i),
-                        });
+        let mut z_val: Option<u8> = None;
+        let mut trans_list = Vec::new();
+
+        for batch in reader {
+            let batch = batch?;
+
+            let z_col = batch
+                .column_by_name("Z")
+                .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
+            let vac_col_ref = batch.column_by_name("vacancy_shell");
+            let vac_values = vac_col_ref.and_then(|c| crate::interp::as_string_array(c));
+            let fill_col_ref = batch.column_by_name("filling_shell");
+            let fill_values = fill_col_ref.and_then(|c| crate::interp::as_string_array(c));
+            let type_col_ref = batch.column_by_name("transition_type");
+            let type_values = type_col_ref.and_then(|c| crate::interp::as_string_array(c));
+            let energy_col = batch
+                .column_by_name("energy_keV")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+            let prob_col = batch
+                .column_by_name("probability")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+            let edge_col = batch
+                .column_by_name("edge_keV")
+                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+
+            if let (Some(z), Some(vac), Some(fill), Some(tt), Some(e), Some(p), Some(edge)) = (
+                z_col,
+                vac_values,
+                fill_values,
+                type_values,
+                energy_col,
+                prob_col,
+                edge_col,
+            ) {
+                for i in 0..batch.num_rows() {
+                    if z_val.is_none() {
+                        z_val = Some(z.value(i) as u8);
                     }
+                    trans_list.push(Transition {
+                        vacancy_shell: vac[i].unwrap_or("").to_string(),
+                        filling_shell: fill[i].unwrap_or("").to_string(),
+                        transition_type: match tt[i].unwrap_or("") {
+                            "radiative" => TransitionType::Radiative,
+                            _ => TransitionType::Auger,
+                        },
+                        energy_kev: e.value(i),
+                        probability: p.value(i),
+                        edge_kev: edge.value(i),
+                    });
                 }
             }
+        }
 
-            if let Some(z) = z_val {
+        match z_val {
+            Some(z) => {
                 // Sort by shell, then probability descending
                 trans_list.sort_by(|a, b| {
                     a.vacancy_shell
                         .cmp(&b.vacancy_shell)
                         .then(b.probability.partial_cmp(&a.probability).unwrap())
                 });
-                transitions.insert(z, trans_list);
+                Ok(Some((z, trans_list)))
             }
+            None => Ok(None),
         }
-
-        Ok(Self { transitions })
     }
 
     /// Get all transitions for element Z.
@@ -177,6 +201,51 @@ impl RelaxationDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn data_meta_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("data")
+            .join("meta")
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn from_bytes_matches_open() {
+        let db_file = RelaxationDb::open(data_meta_dir()).unwrap();
+        assert!(db_file.has_element(29));
+        // Read the first valid EADL file and load via from_bytes
+        let eadl_dir = data_meta_dir().join("eadl");
+        let first_file = std::fs::read_dir(&eadl_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| {
+                e.path().extension().and_then(|x| x.to_str()) == Some("parquet")
+                    && !e
+                        .path()
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with("._"))
+            })
+            .expect("at least one EADL file");
+        let data = std::fs::read(first_file.path()).unwrap();
+        let db_bytes = RelaxationDb::from_bytes(&data).unwrap();
+        // Find what Z the bytes DB loaded and verify transitions match the file DB
+        for z in 1..=100u8 {
+            if db_bytes.has_element(z) {
+                let t_file = db_file.transitions(z);
+                let t_bytes = db_bytes.transitions(z);
+                assert_eq!(
+                    t_file.len(),
+                    t_bytes.len(),
+                    "Z={z} transition count mismatch"
+                );
+                break;
+            }
+        }
+    }
 
     #[test]
     #[ignore = "requires nucl-parquet data files"]
