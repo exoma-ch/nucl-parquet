@@ -334,6 +334,49 @@ def test_alpha_in_water_compound_matches_nist(data_dir_path: Path) -> None:
 
 
 @pytest.mark.data
+def test_nist_compound_vs_bragg_proton_water(data_dir_path: Path) -> None:
+    """Route 1 (NIST compound table) vs Route 2 (Bragg additivity) for protons in water.
+
+    The NIST PSTAR compound table uses the measured compound I-value (75 eV),
+    while Bragg-mixed elemental tables use atomic I-values (19.2 eV for H,
+    95.0 eV for O). The two routes should diverge by 5-15% at 1 MeV and
+    converge to <2% above 10 MeV.
+    """
+    db = np_lib.connect(data_dir_path)
+
+    # Route 1: NIST compound table (direct)
+    nist_rows = db.sql(
+        "SELECT energy_MeV, dedx FROM pstar_compounds WHERE compound = 'WATER_LIQUID' ORDER BY energy_MeV"
+    ).fetchall()
+    assert len(nist_rows) > 10, "NIST water compound table should have >10 points"
+
+    # Route 2: Bragg additivity from elemental PSTAR (H=11.19%, O=88.81% by mass)
+
+    # Compare at therapeutic proton energies
+    for energy in [1.0, 5.0, 10.0, 50.0, 100.0, 200.0]:
+        # Bragg route
+        bragg = (
+            float(np_lib.elemental_dedx(db, "p", 1, energy)[0]) * 0.1119
+            + float(np_lib.elemental_dedx(db, "p", 8, energy)[0]) * 0.8881
+        )
+        # NIST compound route (interpolated via DuckDB)
+        nist = db.sql(
+            "SELECT dedx FROM pstar_compounds WHERE compound = 'WATER_LIQUID' ORDER BY ABS(energy_MeV - $e) LIMIT 1",
+            params={"e": energy},
+        ).fetchone()
+        assert nist is not None, f"No NIST data near {energy} MeV"
+        nist_val = float(nist[0])
+
+        divergence = (bragg - nist_val) / nist_val
+        if energy <= 2.0:
+            # Low energy: Bragg overestimates by 5-15%
+            assert divergence > 0.03, f"Bragg should overestimate at {energy} MeV: divergence={divergence:.1%}"
+        else:
+            # High energy: converges to <5%
+            assert abs(divergence) < 0.05, f"Bragg vs NIST at {energy} MeV: divergence={divergence:.1%}, expected <5%"
+
+
+@pytest.mark.data
 @pytest.mark.parametrize(("projectile", "scale_A"), [("d", 2.0), ("t", 3.0)])
 def test_deuteron_triton_velocity_scaling(data_dir_path: Path, projectile: str, scale_A: float) -> None:
     """S(d, Z, 2E) == S(p, Z, E) and S(t, Z, 3E) == S(p, Z, E) at equal velocity.
