@@ -165,6 +165,22 @@ impl StoppingDb {
         self.nist.keys().map(|(s, z)| (s.as_str(), *z))
     }
 
+    /// Raw compound stopping power table for a (source, compound) pair.
+    ///
+    /// Returns `(energy_MeV[], dedx[])` sorted by energy, or `None` if not loaded.
+    /// Use this when you need the full table (e.g. for plotting or custom
+    /// interpolation) rather than a single-point lookup via `compound_dedx()`.
+    #[inline]
+    pub fn compound_table(&self, source: &str, compound: &str) -> Option<&XYTable> {
+        self.compounds
+            .get(&(source.to_string(), compound.to_string()))
+    }
+
+    /// Iterate all loaded compound (source, name) keys.
+    pub fn compound_keys(&self) -> impl Iterator<Item = (&str, &str)> + '_ {
+        self.compounds.keys().map(|(s, c)| (s.as_str(), c.as_str()))
+    }
+
     /// Raw CatIMA stopping power table for a (proj_Z, target_Z) pair.
     ///
     /// Returns `(energy_MeV_u[], dedx[])` sorted by energy, or `None` if not loaded.
