@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.14.2...nucl-parquet-py-v0.14.3) (2026-05-22)
+
+
+### Features
+
+* HTTP-backed lazy per-file fetch ([#223](https://github.com/exoma-ch/nucl-parquet/issues/223)) ([#224](https://github.com/exoma-ch/nucl-parquet/issues/224)) ([f5de182](https://github.com/exoma-ch/nucl-parquet/commit/f5de1825871e4405b682e5224ad5c39feec11e7e))
+
 ## [0.14.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.14.1...nucl-parquet-py-v0.14.2) (2026-05-21)
 
 
