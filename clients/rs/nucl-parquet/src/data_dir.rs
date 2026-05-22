@@ -68,7 +68,9 @@ impl DataDir {
         let cache = Self::cache_dir();
         std::fs::create_dir_all(&cache)?;
 
-        // Fetch catalog.json to discover data version + base_url
+        // Fetch catalog.json from main to discover data_version + base_url.
+        // The catalog's base_url template resolves to a versioned tag, so
+        // actual data files are fetched from the pinned data release, not main.
         let catalog_url = format!(
             "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/catalog.json"
         );
@@ -137,7 +139,10 @@ impl DataDir {
             return Err(Error::Download(format!("HTTP {} for {url}", resp.status())));
         }
         let bytes = resp.bytes().map_err(|e| Error::Download(e.to_string()))?;
-        std::fs::write(dest, &bytes)?;
+        // Atomic write: tmp file + rename to avoid partial files on failure
+        let tmp = dest.with_extension("tmp");
+        std::fs::write(&tmp, &bytes)?;
+        std::fs::rename(&tmp, dest)?;
         Ok(())
     }
 

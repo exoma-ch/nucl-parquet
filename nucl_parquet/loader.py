@@ -266,7 +266,7 @@ def _try_lazy_fetch(path: Path) -> None:
     from .download import fetch_file
 
     # Walk up to find data root (contains catalog.json)
-    for parent in [path.parent, *path.parents]:
+    for parent in path.parents:
         if (parent / "catalog.json").exists():
             rel = path.relative_to(parent).as_posix()
             try:
@@ -284,12 +284,19 @@ def _try_lazy_fetch_glob(directory: Path) -> None:
     path. For now, glob views are skipped in lazy mode — they'll be registered
     once the user fetches the full tarball or specific files are cached.
     """
-    # Glob views require knowing which element files exist. The catalog
-    # doesn't list them individually (they're discovered at build time).
-    # Skip silently — the view won't register, which is acceptable in
-    # lazy mode. Users who need glob views should use download() for
-    # the full tarball.
-    pass
+    import warnings
+
+    # Check if we're actually in lazy mode (marker file exists)
+    for parent in directory.parents:
+        if (parent / ".lazy_base_url").exists():
+            rel = directory.relative_to(parent).as_posix()
+            warnings.warn(
+                f"View '{rel}' is a glob directory and cannot be lazily fetched. "
+                "Run nucl_parquet.download() for the full dataset, or manually "
+                "fetch the needed element files.",
+                stacklevel=4,
+            )
+            return
 
 
 # ---------------------------------------------------------------------------

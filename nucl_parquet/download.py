@@ -236,12 +236,18 @@ def _resolve_base_url(catalog: dict, data_tag: str) -> str:
 
 
 def _fetch_one(url: str, dest: Path) -> None:
-    """Download a single file from *url* into *dest*."""
+    """Download a single file from *url* into *dest* (atomic)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with urlopen(url) as resp:  # noqa: S310
-        with open(dest, "wb") as f:
-            while chunk := resp.read(1 << 20):
-                f.write(chunk)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    try:
+        with urlopen(url) as resp:  # noqa: S310
+            with open(tmp, "wb") as f:
+                while chunk := resp.read(1 << 20):
+                    f.write(chunk)
+        tmp.rename(dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def ensure(
