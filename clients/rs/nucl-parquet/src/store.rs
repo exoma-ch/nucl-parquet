@@ -67,7 +67,17 @@ impl ParquetStore {
         // Slow path: read file, cache, return.
         let path = self.data_dir.join(rel_path);
         if !path.exists() {
-            return Err(Error::DataDirNotFound(path));
+            // Try lazy HTTP fetch if configured
+            #[cfg(feature = "fetch")]
+            {
+                let marker = self.data_dir.join(".lazy_base_url");
+                if marker.exists() {
+                    crate::DataDir::from_root(&self.data_dir).fetch_file(rel_path)?;
+                }
+            }
+            if !path.exists() {
+                return Err(Error::DataDirNotFound(path));
+            }
         }
         let rows = Arc::new(parse_parquet_file(&path)?);
 

@@ -241,7 +241,9 @@ def _register_parquet(
     path: Path,
     view_name: str,
 ) -> None:
-    """Register a single Parquet file as a view if it exists."""
+    """Register a single Parquet file as a view, fetching lazily if needed."""
+    if not path.exists():
+        _try_lazy_fetch(path)
     if path.exists():
         db.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{path}')")
 
@@ -252,9 +254,49 @@ def _register_glob(
     view_name: str,
 ) -> None:
     """Register a directory of per-element Parquet files as a single view."""
+    if not directory.exists():
+        _try_lazy_fetch_glob(directory)
     if directory.exists() and list(directory.glob("*.parquet")):
         glob_path = str(directory / "*.parquet")
         db.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{glob_path}')")
+
+
+def _try_lazy_fetch(path: Path) -> None:
+    """If lazy fetch is configured, download a single missing file."""
+    from .download import fetch_file
+
+    # Walk up to find data root (contains catalog.json)
+    for parent in path.parents:
+        if (parent / "catalog.json").exists():
+            rel = path.relative_to(parent).as_posix()
+            try:
+                fetch_file(parent, rel)
+            except FileNotFoundError:
+                pass  # No lazy base URL — normal tarball mode
+            return
+
+
+def _try_lazy_fetch_glob(directory: Path) -> None:
+    """If lazy fetch is configured, download all parquet files for a glob directory.
+
+    Note: glob views (per-element files) cannot be lazily fetched without a
+    manifest listing individual files. The catalog only declares the directory
+    path. For now, glob views are skipped in lazy mode — they'll be registered
+    once the user fetches the full tarball or specific files are cached.
+    """
+    import warnings
+
+    # Check if we're actually in lazy mode (marker file exists)
+    for parent in directory.parents:
+        if (parent / ".lazy_base_url").exists():
+            rel = directory.relative_to(parent).as_posix()
+            warnings.warn(
+                f"View '{rel}' is a glob directory and cannot be lazily fetched. "
+                "Run nucl_parquet.download() for the full dataset, or manually "
+                "fetch the needed element files.",
+                stacklevel=4,
+            )
+            return
 
 
 # ---------------------------------------------------------------------------
