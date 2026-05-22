@@ -476,6 +476,75 @@ mod tests {
 
     #[test]
     #[ignore = "requires nucl-parquet data files"]
+    fn compound_table_returns_data() {
+        let db = StoppingDb::open(data_dir()).unwrap();
+        let table = db
+            .compound_table("PSTAR_compound", "WATER_LIQUID")
+            .expect("NIST water compound table should be loaded");
+        assert!(table.0.len() > 10, "table should have >10 energy points");
+        assert_eq!(
+            table.0.len(),
+            table.1.len(),
+            "energy and dedx lengths must match"
+        );
+        // Energies should be sorted ascending
+        for w in table.0.windows(2) {
+            assert!(w[0] < w[1], "energies not sorted: {} >= {}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn compound_keys_contains_water() {
+        let db = StoppingDb::open(data_dir()).unwrap();
+        let keys: Vec<_> = db.compound_keys().collect();
+        assert!(
+            keys.iter()
+                .any(|(s, c)| *s == "PSTAR_compound" && *c == "WATER_LIQUID"),
+            "compound_keys() should contain PSTAR_compound/WATER_LIQUID, got {keys:?}"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn compound_table_anchor_water_10mev() {
+        // NIST PSTAR compound water at 10 MeV: ~45.4 MeV cm²/g (ICRU-49).
+        // This value differs from Bragg-mixed H+O because NIST uses the
+        // compound I-value (75 eV for water vs 19.2/95.0 for H/O).
+        let db = StoppingDb::open(data_dir()).unwrap();
+        let val = db.compound_dedx("PSTAR_compound", "WATER_LIQUID", 10.0);
+        assert!(val.is_finite());
+        let rel = (val - 45.4).abs() / 45.4;
+        assert!(
+            rel < 0.02,
+            "NIST water 10 MeV: got {val}, expected ~45.4, rel {rel}"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn nist_vs_bragg_water_divergence() {
+        // Route 1 (NIST compound) should differ from Route 2 (Bragg-mixed
+        // elemental) by several percent at low energy due to compound I-value.
+        // At 1 MeV, Bragg overestimates by ~9% (documented in Python tests).
+        let db = StoppingDb::open(data_dir()).unwrap();
+        let nist = db.compound_dedx("PSTAR_compound", "WATER_LIQUID", 1.0);
+        // Bragg: water = 11.19% H + 88.81% O by mass
+        let s_h = db.dedx("PSTAR", 1, 1.0);
+        let s_o = db.dedx("PSTAR", 8, 1.0);
+        let bragg = 0.1119 * s_h + 0.8881 * s_o;
+        assert!(nist.is_finite() && bragg.is_finite());
+        let divergence = (bragg - nist) / nist;
+        // Bragg should overestimate by 5-15% at 1 MeV
+        assert!(
+            divergence > 0.03 && divergence < 0.20,
+            "Bragg vs NIST divergence at 1 MeV: {:.1}% (expected 5-15%)",
+            divergence * 100.0,
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
     fn legacy_he3star_source_missing() {
         // He3STAR.parquet was deleted in #143 — callers must use catima_dedx
         // with proj_z=2 instead. A `dedx("He3STAR", ...)` lookup returns NaN.
