@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.6](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.13.5...nucl-parquet-rs-v0.13.6) (2026-05-22)
+
+
+### Features
+
+* **rs-client:** Compound_table() + rustls TLS backend ([#226](https://github.com/exoma-ch/nucl-parquet/issues/226), [#227](https://github.com/exoma-ch/nucl-parquet/issues/227)) ([#228](https://github.com/exoma-ch/nucl-parquet/issues/228)) ([0549b8a](https://github.com/exoma-ch/nucl-parquet/commit/0549b8aa744fb4dc870cebb714f42b5bc509c381))
+
 ## [0.13.5](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.13.4...nucl-parquet-rs-v0.13.5) (2026-05-22)
 
 
