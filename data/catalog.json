@@ -3,6 +3,7 @@
   "version": 1,
   "data_version": "2026.5.4",
   "data_sha256": "a4edf294f82c4b540c7fbe443a97e2c793a05bee08c256a89224c261377fbfb3",
+  "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2023-iso": {

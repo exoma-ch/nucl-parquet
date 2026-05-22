@@ -224,3 +224,119 @@ def download(
 
     print(f"Data extracted to {dest}")
     return dest
+
+
+def _resolve_base_url(catalog: dict, data_tag: str) -> str:
+    """Build per-file base URL from catalog template or hardcoded fallback."""
+    template = catalog.get("base_url", "")
+    cal = data_tag.removeprefix("data-")
+    if template and "{version}" in template:
+        return template.replace("{version}", cal)
+    return f"https://raw.githubusercontent.com/{_GITHUB_REPO}/{data_tag}/data"
+
+
+def _fetch_one(url: str, dest: Path) -> None:
+    """Download a single file from *url* into *dest*."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with urlopen(url) as resp:  # noqa: S310
+        with open(dest, "wb") as f:
+            while chunk := resp.read(1 << 20):
+                f.write(chunk)
+
+
+def ensure(
+    dest: Path | str | None = None,
+    data_version: str = "latest",
+    *,
+    lazy: bool = False,
+) -> Path:
+    """Ensure nucl-parquet data is available, downloading if needed.
+
+    With ``lazy=False`` (default), behaves identically to ``download()`` —
+    fetches the full tarball.
+
+    With ``lazy=True``, fetches only ``catalog.json`` up front. Individual
+    Parquet files are downloaded on first access by the loader. This is
+    ideal for consumers that touch <10% of the dataset per session.
+
+    Args:
+        dest: Cache directory. Defaults to ``~/.nucl-parquet/``.
+        data_version: CalVer string or ``"latest"``.
+        lazy: If True, defer per-file downloads until first access.
+
+    Returns:
+        Path to the data directory (may be partially populated in lazy mode).
+    """
+    # Try to find existing data first
+    try:
+        existing = data_dir()
+        if existing.is_dir() and (existing / "catalog.json").exists():
+            return existing
+    except FileNotFoundError:
+        pass
+
+    dest = Path(dest) if dest else Path.home() / ".nucl-parquet"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    if not lazy:
+        return download(dest=dest, data_version=data_version)
+
+    # Lazy mode: fetch only catalog.json, resolve base_url for later per-file fetches.
+    if data_version == "latest":
+        data_tag = _resolve_latest_data_tag()
+    elif _DATA_TAG_RE.match(data_version):
+        data_tag = data_version
+    else:
+        data_tag = f"data-{data_version}"
+
+    # Fetch catalog.json
+    base = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/{data_tag}/data"
+    catalog_url = f"{base}/catalog.json"
+    catalog_dest = dest / "catalog.json"
+
+    if not catalog_dest.exists():
+        print(f"Fetching catalog from {catalog_url} ...")
+        _fetch_one(catalog_url, catalog_dest)
+
+    # Write a marker so fetch_file() knows the base URL for lazy fetches
+    marker = dest / ".lazy_base_url"
+    catalog = json.loads(catalog_dest.read_text())
+    resolved_base = _resolve_base_url(catalog, data_tag)
+    marker.write_text(resolved_base)
+
+    print(f"Lazy mode: catalog cached at {dest}, files fetched on demand from {resolved_base}")
+    return dest
+
+
+def fetch_file(data_root: Path, rel_path: str) -> Path:
+    """Fetch a single data file if not already cached.
+
+    Called by the loader when a view's backing file is missing. Reads the
+    base URL from the ``.lazy_base_url`` marker written by ``ensure(lazy=True)``.
+
+    Args:
+        data_root: The data directory (from ``data_dir()`` or ``ensure()``).
+        rel_path: Relative path within the data dir (e.g. ``meta/abundances.parquet``).
+
+    Returns:
+        Absolute path to the (now-local) file.
+
+    Raises:
+        FileNotFoundError: If no lazy base URL is configured (tarball mode).
+    """
+    dest = data_root / rel_path
+    if dest.exists():
+        return dest
+
+    marker = data_root / ".lazy_base_url"
+    if not marker.exists():
+        raise FileNotFoundError(
+            f"File not found: {dest}. No lazy fetch configured — "
+            "run nucl_parquet.ensure(lazy=True) or nucl_parquet.download()."
+        )
+
+    base_url = marker.read_text().strip()
+    url = f"{base_url}/{rel_path}"
+    print(f"  Fetching {rel_path} ...")
+    _fetch_one(url, dest)
+    return dest

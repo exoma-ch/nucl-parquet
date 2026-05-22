@@ -42,7 +42,7 @@ impl DataDir {
         Err(Error::DataNotFound)
     }
 
-    /// Ensure data is available, downloading from GitHub Releases if needed.
+    /// Ensure data is available, downloading the full tarball if needed.
     ///
     /// Tries [`resolve()`](Self::resolve) first; downloads only when no local
     /// data is found.
@@ -53,6 +53,99 @@ impl DataDir {
         }
         Self::download()?;
         Self::resolve()
+    }
+
+    /// Ensure data is available in lazy mode — fetch only `catalog.json`.
+    ///
+    /// Individual Parquet files are downloaded on first access via
+    /// [`fetch_file()`](Self::fetch_file). This is ideal for consumers that
+    /// need <10% of the full dataset per session.
+    #[cfg(feature = "fetch")]
+    pub fn ensure_lazy() -> Result<Self> {
+        if let Ok(d) = Self::resolve() {
+            return Ok(d);
+        }
+        let cache = Self::cache_dir();
+        std::fs::create_dir_all(&cache)?;
+
+        // Fetch catalog.json to discover data version + base_url
+        let catalog_url = format!(
+            "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/catalog.json"
+        );
+        let catalog_path = cache.join("catalog.json");
+        if !catalog_path.exists() {
+            eprintln!("Fetching catalog from {catalog_url} ...");
+            Self::fetch_url(&catalog_url, &catalog_path)?;
+        }
+
+        // Parse catalog to build versioned base_url
+        let catalog_text =
+            std::fs::read_to_string(&catalog_path).map_err(|e| Error::Download(e.to_string()))?;
+        let catalog: serde_json::Value =
+            serde_json::from_str(&catalog_text).map_err(|e| Error::Download(e.to_string()))?;
+
+        let data_version = catalog["data_version"].as_str().unwrap_or("latest");
+        let base_template = catalog["base_url"].as_str().unwrap_or(
+            "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
+        );
+        let base_url = base_template.replace("{version}", data_version);
+
+        // Write lazy marker for fetch_file()
+        let marker = cache.join(".lazy_base_url");
+        std::fs::write(&marker, &base_url)?;
+
+        // Create meta/ directory so resolve() finds it
+        std::fs::create_dir_all(cache.join("meta"))?;
+
+        eprintln!(
+            "Lazy mode: catalog at {}, files on demand from {base_url}",
+            cache.display()
+        );
+        Ok(Self { root: cache })
+    }
+
+    /// Fetch a single file from the lazy HTTP base if not already cached.
+    ///
+    /// Returns the local path to the file. No-op if the file exists on disk.
+    #[cfg(feature = "fetch")]
+    pub fn fetch_file(&self, rel_path: &str) -> Result<std::path::PathBuf> {
+        let dest = self.root.join(rel_path);
+        if dest.exists() {
+            return Ok(dest);
+        }
+
+        let marker = self.root.join(".lazy_base_url");
+        if !marker.exists() {
+            return Err(Error::DataDirNotFound(dest));
+        }
+
+        let base_url =
+            std::fs::read_to_string(&marker).map_err(|e| Error::Download(e.to_string()))?;
+        let url = format!("{}/{}", base_url.trim(), rel_path);
+        eprintln!("  Fetching {rel_path} ...");
+        Self::fetch_url(&url, &dest)?;
+        Ok(dest)
+    }
+
+    #[cfg(feature = "fetch")]
+    fn fetch_url(url: &str, dest: &Path) -> Result<()> {
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let resp = reqwest::blocking::get(url).map_err(|e| Error::Download(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(Error::Download(format!("HTTP {} for {url}", resp.status())));
+        }
+        let bytes = resp.bytes().map_err(|e| Error::Download(e.to_string()))?;
+        std::fs::write(dest, &bytes)?;
+        Ok(())
+    }
+
+    /// Create a DataDir from an existing root path (no resolution or download).
+    pub fn from_root(root: impl AsRef<Path>) -> Self {
+        Self {
+            root: root.as_ref().to_path_buf(),
+        }
     }
 
     /// Path to the data root directory.
