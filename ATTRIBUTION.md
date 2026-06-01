@@ -6,6 +6,12 @@ per library, the custodian, redistribution terms, and the citation you must give
 The machine-readable source of truth is [`data/licenses.toml`](data/licenses.toml);
 formal notices are in [`NOTICE`](NOTICE).
 
+**nucl-parquet and its downstreams (e.g. HYRR) are non-commercial academic
+projects** of eXoma (ETH Zürich). The IAEA / JAEA / NDS terms below permit reuse
+for research, education, and non-commercial products with acknowledgement, which
+this redistribution falls under. **Commercial** users must obtain their own
+permission from the relevant custodian for the IAEA- and JAEA-sourced libraries.
+
 > Verdicts are from a primary-source audit (2026-06-01); every terms URL was
 > fetched directly. 🟢 clean · 🟡 redistributable with attribution / pending
 > permission · 🔴 not redistributable (removed).
@@ -22,11 +28,11 @@ formal notices are in [`NOTICE`](NOTICE).
 | 🟡 NIST PSTAR/ASTAR/ESTAR | NIST | US PD + worldwide grant; needs notices | Berger et al., SRD 124, DOI 10.18434/T4NC7P; ICRU 37/49 |
 | 🟡 catima output | H. Rosiak / GSI ATIMA | computed data (code is AGPL — not shipped) | Lindhard-Sørensen (1996); Weaver et al. (2002) |
 | 🟡 hi-xs-prod | Geant4 (CERN) | computed data; Geant4 notice required | Agostinelli et al., NIM A 506 (2003) 250 |
-| 🟡 FENDL-3.2 | IAEA-NDS | no open license; commercial gated | NDS 193 (2024) 1 |
+| 🟢 FENDL-3.2 | IAEA-NDS | non-commercial academic reuse granted (acknowledge IAEA) | NDS 193 (2024) 1 |
 | 🟡 IRDFF-II | IAEA-NDS | site copyright | Trkov et al., NDS 163 (2020) 1 |
 | 🟡 IAEA-Medical | IAEA-NDS | site copyright; per-sub-dataset cite | per sub-database paper |
 | 🟡 IAEA-PD-2019 | IAEA-NDS | no repo license | Kawano et al., NDS 163 (2020) 109 |
-| 🟡 JENDL-5 / AD-2017 / DEU-2020 | JAEA | copyright asserted; permission pending | Iwamoto et al., JNST 60 (2023) 1; + per-sublibrary |
+| 🟡 JENDL-5 / AD-2017 / DEU-2020 | JAEA | copyright asserted, no explicit license; non-commercial + community practice | Iwamoto et al., JNST 60 (2023) 1; + per-sublibrary |
 | 🟡 CENDL-3.2 | CIAE/CNDC | no written terms; NRDC open-mirror | Ge et al., EPJ Web Conf. 239 (2020) 09001 |
 | 🟡 ENSDF / AME2020 / IUPAC (meta) | NNDC, AMDC, IUPAC | open evaluated/reference data | ENSDF; Huang et al. (2021); Meija et al. (2016) |
 
@@ -42,7 +48,12 @@ formal notices are in [`NOTICE`](NOTICE).
 4. **Pass attribution flow-down** for CC-BY data (EXFOR/JEFF/BROND) to your own
    downstream users.
 
-## Pending permissions (tracked in #232)
-- **IAEA-NDS** — written clearance for FENDL/IRDFF/Medical/PD-2019 (esp. commercial bundling). Draft: [`docs/legal/permission-request-iaea.md`](docs/legal/permission-request-iaea.md)
-- **JAEA** (`jendl@jaea.go.jp`) — JENDL-5 / AD-2017 / DEU-2020. Draft: [`docs/legal/permission-request-jaea.md`](docs/legal/permission-request-jaea.md)
-- **TENDL** (Koning/Rochman) — courtesy confirmation. Draft: [`docs/legal/permission-request-tendl.md`](docs/legal/permission-request-tendl.md)
+## Permissions — optional for non-commercial use (tracked in #232)
+
+As a non-commercial academic project we rely on the custodians' non-commercial /
+open-distribution grants above; **none of these emails is required to ship.**
+Drafts are kept for the record and for anyone who later needs a commercial grant:
+
+- **IAEA-NDS** — *not needed* for non-commercial reuse (already granted with acknowledgement); send only if a commercial grant for FENDL/IRDFF/Medical/PD-2019 is ever required. Draft: [`docs/legal/permission-request-iaea.md`](docs/legal/permission-request-iaea.md)
+- **JAEA** (`jendl@jaea.go.jp`) — *optional* insurance; JENDL has no explicit license either way, so redistribution rests on universal community practice. Draft: [`docs/legal/permission-request-jaea.md`](docs/legal/permission-request-jaea.md)
+- **TENDL** (Koning/Rochman) — *courtesy* confirmation only. Draft: [`docs/legal/permission-request-tendl.md`](docs/legal/permission-request-tendl.md)

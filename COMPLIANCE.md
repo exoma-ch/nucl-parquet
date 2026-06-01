@@ -3,6 +3,11 @@
 > **Status: DRAFT determinations — pending ETH legal / Technology Transfer sign-off.**
 > Not legal advice. Tracks issues #238 (export control) and #239 (IP / release rights).
 
+**Project status:** nucl-parquet and its downstreams (e.g. HYRR) are
+**non-commercial academic** projects of eXoma (ETH Zürich). This is the basis for
+the data-reuse posture in [`ATTRIBUTION.md`](ATTRIBUTION.md): the custodians'
+non-commercial / open grants cover this redistribution with acknowledgement.
+
 ## 1. Export control / dual-use (#238)
 
 **Determination (to be confirmed by ETH):** redistributing the bundled

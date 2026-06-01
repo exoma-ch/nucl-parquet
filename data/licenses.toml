@@ -23,6 +23,7 @@ schema_version = 1
 maintainer = "eXoma (Exotic Matter Applications), ETH Zürich"
 audited = "2026-06-01"
 note = "MIT applies to code + conversion, NOT to the data. See ATTRIBUTION.md."
+usage = "non-commercial academic (eXoma / ETH Zürich). Custodian non-commercial / open-distribution grants cover this redistribution with acknowledgement; commercial users must obtain their own permission for IAEA- and JAEA-sourced libraries."
 
 # ───────────────────────── Cross-section libraries ─────────────────────────
 
@@ -73,7 +74,7 @@ license = "No explicit license on ENDF-6 source; copyright asserted, citation re
 redistributable = "attribution"
 risk = "amber"
 citation = "O. Iwamoto et al., 'Japanese evaluated nuclear data library version 5: JENDL-5', J. Nucl. Sci. Technol. 60(1) (2023) 1. DOI 10.1080/00223131.2022.2141903."
-notes = "Written redistribution permission requested from jendl@jaea.go.jp (pending). JAEA's processed ACE-J50 derivative is BSD-2."
+notes = "No explicit license either way; non-commercial academic reuse + universal community practice. Optional permission: jendl@jaea.go.jp. JAEA's processed ACE-J50 derivative is BSD-2."
 
 [libraries.jendl-ad-2017]
 name = "JENDL/AD-2017"
@@ -83,7 +84,7 @@ license = "No explicit license; copyright asserted"
 redistributable = "attribution"
 risk = "amber"
 citation = "K. Shibata, N. Iwamoto, S. Kunieda, F. Minato, O. Iwamoto, 'Activation Cross-section File for Decommissioning of LWRs', JAEA-Conf 2016-004, 47."
-notes = "Covered by the JAEA permission request (pending)."
+notes = "Covered by the optional JAEA permission request; non-commercial reuse relies on community practice."
 
 [libraries.jendl-deu-2020]
 name = "JENDL/DEU-2020"
@@ -93,7 +94,7 @@ license = "No explicit license; copyright asserted"
 redistributable = "attribution"
 risk = "amber"
 citation = "S. Nakayama, O. Iwamoto, Y. Watanabe, K. Ogata, 'JENDL/DEU-2020...', J. Nucl. Sci. Technol. 58(7) (2021) 805. DOI 10.1080/00223131.2020.1870010."
-notes = "Covered by the JAEA permission request (pending)."
+notes = "Covered by the optional JAEA permission request; non-commercial reuse relies on community practice."
 
 [libraries.cendl-3_2]
 name = "CENDL-3.2"
@@ -119,11 +120,11 @@ notes = "Russian-origin published scientific data: covered by the public-domain 
 name = "FENDL-3.2"
 custodian = "IAEA Nuclear Data Section"
 terms_url = "https://www-nds.iaea.org/fendl/"
-license = "No open license; TERMS_OF_USE routes to IAEA website terms (commercial use gated)"
-redistributable = "conditional"
-risk = "amber"
+license = "IAEA website terms grant non-commercial reuse with acknowledgement (commercial use gated); no CC license"
+redistributable = "attribution"
+risk = "green"
 citation = "'FENDL: A library for fusion research and applications', Nuclear Data Sheets 193 (2024) 1."
-notes = "Non-commercial attributed academic hosting OK; commercial bundling needs written IAEA-NDS/Publishing clearance (requested, pending)."
+notes = "Non-commercial academic reuse with acknowledgement is granted — this project qualifies. Commercial downstream users must obtain their own IAEA-NDS/Publishing clearance."
 
 [libraries.irdff-2]
 name = "IRDFF-II"
@@ -133,7 +134,7 @@ license = "IAEA-NDS site copyright (acknowledgment; 'no subsequent fee'); no CC 
 redistributable = "attribution"
 risk = "amber"
 citation = "A. Trkov, P.J. Griffin, S.P. Simakov et al., 'IRDFF-II: A New Neutron Metrology Library', Nuclear Data Sheets 163 (2020) 1."
-notes = "Covered by the IAEA-NDS permission request (pending)."
+notes = "Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use."
 
 [libraries.iaea-medical]
 name = "IAEA-Medical"
@@ -143,7 +144,7 @@ license = "IAEA-NDS site copyright; per-sub-dataset citation; multi-institute co
 redistributable = "attribution"
 risk = "amber"
 citation = "Cite the specific sub-database evaluation paper(s) listed on each medical sub-page, plus acknowledge IAEA-NDS."
-notes = "Covered by the IAEA-NDS permission request (pending). Resolve citation per sub-dataset."
+notes = "Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use. Resolve citation per sub-dataset."
 
 [libraries.iaea-pd-2019]
 name = "IAEA-PD-2019 (Photonuclear)"
@@ -153,7 +154,7 @@ license = "No license (GitHub data repo is NO-LICENSE); IAEA-NDS site copyright"
 redistributable = "attribution"
 risk = "amber"
 citation = "T. Kawano, Y.S. Cho, P. Dimitriou et al., Nuclear Data Sheets 163 (2020) 109."
-notes = "Covered by the IAEA-NDS permission request (pending)."
+notes = "Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use."
 
 [libraries.exfor]
 name = "EXFOR (experimental reaction data)"
