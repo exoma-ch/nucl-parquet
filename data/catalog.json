@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.5.4",
-  "data_sha256": "a4edf294f82c4b540c7fbe443a97e2c793a05bee08c256a89224c261377fbfb3",
+  "data_version": "2026.6.0",
+  "data_sha256": "3738607a04a4faf742a2ae7634798412d3b692b54a008ead76ac32d6b3bd8748",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -112,17 +112,6 @@
       "data_type": "cross_sections",
       "version": "3.2",
       "path": "fendl-3.2/xs/"
-    },
-    "eaf-2010": {
-      "name": "EAF-2010",
-      "description": "European Activation File (CCFE)",
-      "source_url": "https://fispact.ukaea.uk/",
-      "projectiles": [
-        "n"
-      ],
-      "data_type": "cross_sections",
-      "version": "2010",
-      "path": "eaf-2010/xs/"
     },
     "irdff-2": {
       "name": "IRDFF-II",

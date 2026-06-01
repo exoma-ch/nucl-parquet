@@ -4,7 +4,7 @@ Fetches ENDF-6 format files from the IAEA NDS mirror, parses cross-sections
 using the `endf` package, and converts to nucl-parquet Parquet format.
 
 Supports all major evaluated libraries: ENDF/B-VIII.1, JEFF-4.0, JENDL-5,
-TENDL-2025, CENDL-3.2, BROND-3.1, FENDL-3.2, EAF-2010.
+TENDL-2025, CENDL-3.2, BROND-3.1, FENDL-3.2.
 
 Usage:
     # Fetch a single library (neutron sub-library):
@@ -116,14 +116,6 @@ LIBRARIES: dict[str, LibraryDef] = {
         iaea_path="FENDL-3.2c",
         description="Fusion Evaluated Nuclear Data Library (IAEA)",
         source_url="https://www-nds.iaea.org/fendl/",
-        sublibraries={"n": "n"},
-    ),
-    "eaf-2010": LibraryDef(
-        key="eaf-2010",
-        name="EAF-2010",
-        iaea_path="EAF-2010",
-        description="European Activation File (CCFE)",
-        source_url="https://fispact.ukaea.uk/",
         sublibraries={"n": "n"},
     ),
     "irdff-2": LibraryDef(
