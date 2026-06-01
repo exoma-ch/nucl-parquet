@@ -1,0 +1,75 @@
+nucl-parquet
+Copyright (c) 2024-2026 eXoma (Exotic Matter Applications), ETH Zürich
+
+This product's CODE and the ENDF-6 -> Parquet conversion are licensed under the
+MIT License (see LICENSE). The MIT License does NOT apply to the bundled
+evaluated nuclear data, which is third-party material redistributed under the
+terms of its respective custodians. Per-library provenance, licenses, and
+required citations are recorded in data/licenses.toml and ATTRIBUTION.md.
+
+The nuclear data has been reformatted (ENDF-6 -> Apache Parquet) by eXoma; this
+is a format conversion only. Required third-party notices follow.
+
+================================================================================
+NIST — PSTAR / ASTAR / ESTAR stopping-power data (Standard Reference Database 124)
+================================================================================
+Data reformatted from the free NIST Physical Reference Data (physics.nist.gov)
+by eXoma; the original values were produced by NIST. NIST does not endorse
+nucl-parquet or any downstream product. NIST disclaimer:
+
+  "The National Institute of Standards and Technology (NIST) uses its best
+   efforts to deliver a high quality copy of the Database and to verify that the
+   data contained therein have been selected on the basis of sound scientific
+   judgement. However, NIST makes no warranties to that effect, and NIST shall
+   not be liable for any damage that may result from errors or omissions in the
+   Database."
+
+================================================================================
+ENDF/B-VIII.1 — NNDC / Brookhaven National Laboratory / CSEWG (US DOE)
+================================================================================
+Prepared as an account of work sponsored by an agency of the United States
+Government. Neither the United States Government nor any agency thereof, nor any
+of their employees, makes any warranty, express or implied, or assumes any legal
+liability or responsibility for the accuracy, completeness, or usefulness of any
+information disclosed.
+
+================================================================================
+Geant4 — used to compute the HI-XS production cross-sections (hi-xs-prod)
+================================================================================
+This product includes software developed by Members of the Geant4 Collaboration
+(http://cern.ch/geant4). The Geant4 name is not used to endorse or promote
+nucl-parquet. Only computed output (data) is redistributed; no Geant4 source is
+included.
+
+================================================================================
+catima — used to compute heavy-ion stopping power (catima_*.parquet)
+================================================================================
+Stopping-power values were computed with catima (H. Rosiak), based on ATIMA
+(GSI). Only the computed Parquet output is redistributed; catima's source/binary
+(AGPL-3.0) is NOT included in this distribution.
+
+================================================================================
+CC-BY-4.0 data — EXFOR, JEFF, BROND
+================================================================================
+EXFOR (c) NRDC / IAEA-NDS, JEFF (c) OECD/NEA, and BROND (c) IPPE are licensed
+under Creative Commons Attribution 4.0 International
+(https://creativecommons.org/licenses/by/4.0/). Modified: reformatted from
+ENDF-6 to Apache Parquet by eXoma.
+
+================================================================================
+IAEA-NDS data — FENDL, IRDFF-II, IAEA-Medical, IAEA-PD-2019
+================================================================================
+Reproduced with acknowledgement to the IAEA Nuclear Data Section as the source.
+Distributed "as is"; the IAEA does not guarantee the accuracy of the data or
+their suitability for particular purposes. Commercial reuse of FENDL may require
+IAEA Publishing/NDS permission.
+
+================================================================================
+JAEA data — JENDL-5, JENDL/AD-2017, JENDL/DEU-2020
+================================================================================
+Copyright (c) Japan Atomic Energy Agency, Nuclear Data Center. Redistributed
+with attribution; written redistribution permission has been requested.
+
+For full per-library terms and required citations, see data/licenses.toml and
+ATTRIBUTION.md. This data carries inherent evaluation uncertainties — see
+DISCLAIMER.

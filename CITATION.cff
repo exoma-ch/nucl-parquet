@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use nucl-parquet, please cite it as below, and cite the underlying nuclear data libraries you use (see ATTRIBUTION.md)."
+title: "nucl-parquet: Evaluated nuclear data as Parquet"
+abstract: >-
+  Cross-sections, stopping powers, decay data, and isotopic abundances from major
+  evaluated nuclear data libraries, reformatted from ENDF-6 to Apache Parquet and
+  queryable with DuckDB, Polars, Pandas, or any Arrow-compatible tool.
+type: software
+authors:
+  - name: "eXoma (Exotic Matter Applications), ETH Zürich"
+    # TODO: add individual authors (name + ORCID) before minting the DOI.
+repository-code: "https://github.com/exoma-ch/nucl-parquet"
+license: MIT
+keywords:
+  - nuclear data
+  - cross sections
+  - ENDF
+  - parquet
+  - radionuclide production
+# TODO: add `doi:` once a Zenodo release DOI is minted (issue #237).
