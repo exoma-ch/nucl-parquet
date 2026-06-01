@@ -113,17 +113,6 @@
       "version": "3.2",
       "path": "fendl-3.2/xs/"
     },
-    "eaf-2010": {
-      "name": "EAF-2010",
-      "description": "European Activation File (CCFE)",
-      "source_url": "https://fispact.ukaea.uk/",
-      "projectiles": [
-        "n"
-      ],
-      "data_type": "cross_sections",
-      "version": "2010",
-      "path": "eaf-2010/xs/"
-    },
     "irdff-2": {
       "name": "IRDFF-II",
       "description": "International Reactor Dosimetry and Fusion File (IAEA)",

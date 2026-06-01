@@ -147,7 +147,6 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 |---------|------------|--------|
 | [BROND-3.1](https://vant.ippe.ru/) | n | IPPE |
 | [CENDL-3.2](http://www.nuclear.csdb.cn/) | n | CIAE |
-| [EAF-2010](https://fispact.ukaea.uk/) | n | CCFE |
 | [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-b8.1/) | n, p, d, t, ³He, α | NNDC/BNL |
 | [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS |
 | [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n | IAEA |
