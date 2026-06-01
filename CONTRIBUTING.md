@@ -1,5 +1,15 @@
 # Contributing
 
+## Contribution license (inbound = outbound)
+
+By submitting a contribution you certify that you wrote it (or have the right to
+submit it) and you agree it is licensed under the project's terms — **MIT** for
+code and the ENDF-6→Parquet conversion. Do not contribute third-party nuclear
+data without recording its provenance and terms in [`data/licenses.toml`](data/licenses.toml)
+and [`ATTRIBUTION.md`](ATTRIBUTION.md) (see also [`NOTICE`](NOTICE)). We follow the
+[Developer Certificate of Origin](https://developercertificate.org/); sign off
+your commits with `git commit -s`.
+
 ## Pre-commit hooks
 
 This repo uses [prek](https://github.com/j178/prek) (a Rust-native `pre-commit` reimplementation) for local lint/format/clippy gates. CI enforces the same checks via `prek run --all-files`.

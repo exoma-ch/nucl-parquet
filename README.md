@@ -434,6 +434,11 @@ uv run pytest tests/test_loader.py -v
 uv run pytest tests/ -v
 ```
 
-## License
+## License & data attribution
 
-MIT
+**Code & conversion:** MIT (see [`LICENSE`](LICENSE)).
+
+**Bundled nuclear data:** third-party — MIT does **not** apply to it. Each library
+keeps its own terms and required citation; see [`ATTRIBUTION.md`](ATTRIBUTION.md)
+(machine-readable in [`data/licenses.toml`](data/licenses.toml)) and the
+[`NOTICE`](NOTICE). The data is provided as-is — see [`DISCLAIMER.md`](DISCLAIMER.md).
