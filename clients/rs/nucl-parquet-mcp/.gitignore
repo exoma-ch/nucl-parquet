@@ -1,1 +1,9 @@
 target/
+
+# nucl-parquet-mcp path-depends on the sibling nucl-parquet crate, so a committed
+# lockfile pins the library version and goes stale on every nucl-parquet release —
+# the pre-commit clippy hook then relocks it and blocks the release PR (it blocked
+# #244 until a manual relock). cargo regenerates it at build/publish, and the
+# publish job uses plain `cargo publish` (no --locked), so nothing depends on it
+# being committed.
+Cargo.lock
