@@ -39,16 +39,21 @@ use crate::interp::{log_log_interp, sort_paired_vecs, XYTable};
 /// Thread-safe: `Send + Sync`. Share via `Arc<StoppingDb>`.
 #[derive(Clone)]
 pub struct StoppingDb {
-    /// (source, target_Z) -> (energy_MeV sorted, dedx sorted)
+    /// (NIST source, target_Z) -> (energy_MeV sorted, dedx sorted).
+    /// NIST sources only (PSTAR/ASTAR/ESTAR/dSTAR/tSTAR); catima `source`s are
+    /// served from `catima` below to avoid a second in-memory copy (#252).
     nist: HashMap<(String, u32), XYTable>,
     /// (source, compound_name) -> (energy_MeV sorted, dedx sorted)
     compounds: HashMap<(String, String), XYTable>,
-    /// (proj_Z, proj_A, target_Z) -> (energy_MeV_u sorted, dedx sorted)
+    /// (proj_Z, proj_A, target_Z) -> (energy_MeV [total] sorted, dedx sorted).
     ///
-    /// Keyed per-isotope: CatIMA stopping is reduced-mass dependent, so isotopes
-    /// of the same Z differ (up to ~15% below ~0.01 MeV/u where nuclear stopping
-    /// dominates). Collapsing them onto (proj_Z, target_Z) interleaves their
-    /// energy axes and corrupts the interpolation — see #246.
+    /// The single in-memory copy of the federated catima shards' dedx, keyed by
+    /// integer triple so [`catima_dedx`] — called in the Monte-Carlo inner loop —
+    /// is an allocation-free lookup. The `source`-keyed paths ([`dedx`]/
+    /// [`nist_table`]) redirect `catima_<Sym><A>` strings here (off the hot path).
+    /// Energy is *total* MeV; per-isotope keying matters because catima stopping
+    /// is reduced-mass dependent (isotopes of the same Z differ up to ~15% below
+    /// ~0.01 MeV/u) — see #246.
     catima: HashMap<(u32, u32, u32), XYTable>,
     /// (proj_Z, proj_A, target_Z) -> Bohr straggling dΩ²/d(ρx) [MeV² cm²/g] (constant per pair)
     catima_strag: HashMap<(u32, u32, u32), f64>,
@@ -61,8 +66,10 @@ unsafe impl Sync for StoppingDb {}
 impl StoppingDb {
     /// Load stopping power data from the nucl-parquet `stopping/` directory.
     ///
-    /// Reads all `*.parquet` files at the top level (PSTAR, ASTAR, ESTAR,
-    /// dSTAR, tSTAR, catima_*) plus the full master at `catima/catima.parquet`.
+    /// Reads all `*.parquet` files at the top level: the NIST sources (PSTAR,
+    /// ASTAR, ESTAR, dSTAR, tSTAR) into the `nist` map, and the federated
+    /// per-isotope catima shards (`catima_<Sym><A>.parquet`) into the integer-keyed
+    /// `catima` map (a single copy, served to the `source`-keyed paths by name).
     pub fn open(data_dir: impl AsRef<Path>) -> crate::Result<Self> {
         let dir = data_dir.as_ref();
 
@@ -115,10 +122,30 @@ impl StoppingDb {
     /// NIST ³He table exists.
     #[inline]
     pub fn dedx(&self, source: &str, target_z: u32, energy_mev: f64) -> f64 {
-        match self.nist.get(&(source.to_string(), target_z)) {
-            Some((e, s)) => log_log_interp(e, s, energy_mev),
-            None => f64::NAN,
+        // NIST sources (and a single catima shard loaded via `from_bytes`, e.g.
+        // a browser build) live in `nist`. A catima source loaded via `open`
+        // lives in the integer-keyed `catima` map (single copy, total-MeV axis);
+        // fall through to it on a miss.
+        if let Some((e, s)) = self.nist.get(&(source.to_string(), target_z)) {
+            return log_log_interp(e, s, energy_mev);
         }
+        if let Some((proj_z, proj_a)) = Self::parse_catima_source(source) {
+            if let Some((e, s)) = self.catima.get(&(proj_z, proj_a, target_z)) {
+                return log_log_interp(e, s, energy_mev);
+            }
+        }
+        f64::NAN
+    }
+
+    /// Parse a federated catima source string `catima_<Sym><A>` into
+    /// `(proj_Z, proj_A)`. Returns `None` for any non-catima source.
+    fn parse_catima_source(source: &str) -> Option<(u32, u32)> {
+        let rest = source.strip_prefix("catima_")?;
+        let split = rest.find(|c: char| c.is_ascii_digit())?;
+        let (sym, a_str) = rest.split_at(split);
+        let proj_a: u32 = a_str.parse().ok()?;
+        let proj_z = (1u32..=118).find(|&z| crate::z_to_symbol(z) == Some(sym))?;
+        Some((proj_z, proj_a))
     }
 
     /// Mass stopping power [MeV cm²/g] for a NIST compound material.
@@ -144,11 +171,16 @@ impl StoppingDb {
     /// (up to ~15% below ~0.01 MeV/u). `energy_mev_u` is the projectile kinetic
     /// energy per nucleon.
     ///
+    /// Allocation-free integer-keyed lookup — safe to call in a Monte-Carlo
+    /// inner loop. The stored table uses a total-MeV axis; querying at
+    /// `energy_mev_u × proj_A` is exactly equivalent to a MeV/u table because
+    /// log-log interpolation is invariant under a constant energy rescale.
+    ///
     /// Returns `f64::NAN` if the (proj_Z, proj_A, target_Z) triple is not loaded.
     #[inline]
     pub fn catima_dedx(&self, proj_z: u32, proj_a: u32, target_z: u32, energy_mev_u: f64) -> f64 {
         match self.catima.get(&(proj_z, proj_a, target_z)) {
-            Some((e, s)) => log_log_interp(e, s, energy_mev_u),
+            Some((e, s)) => log_log_interp(e, s, energy_mev_u * proj_a as f64),
             None => f64::NAN,
         }
     }
@@ -165,12 +197,18 @@ impl StoppingDb {
             .unwrap_or(f64::NAN)
     }
 
-    /// Raw NIST stopping power table for a (source, target_Z) pair.
+    /// Raw stopping power table for a (source, target_Z) pair, energy in total
+    /// MeV. Accepts the NIST sources and the federated catima sources
+    /// (`catima_<Sym><A>`, served from the `catima` map — see #252).
     ///
     /// Returns `(energy_MeV[], dedx[])` sorted by energy, or `None` if not loaded.
     #[inline]
     pub fn nist_table(&self, source: &str, target_z: u32) -> Option<&XYTable> {
-        self.nist.get(&(source.to_string(), target_z))
+        if let Some(t) = self.nist.get(&(source.to_string(), target_z)) {
+            return Some(t);
+        }
+        let (proj_z, proj_a) = Self::parse_catima_source(source)?;
+        self.catima.get(&(proj_z, proj_a, target_z))
     }
 
     /// Iterate all loaded NIST (source, target_Z) keys.
@@ -196,7 +234,9 @@ impl StoppingDb {
 
     /// Raw CatIMA stopping power table for a (proj_Z, proj_A, target_Z) triple.
     ///
-    /// Returns `(energy_MeV_u[], dedx[])` sorted by energy, or `None` if not loaded.
+    /// Returns `(energy_MeV[], dedx[])` sorted by energy, or `None` if not loaded.
+    /// The energy axis is *total* kinetic energy [MeV]; per-nucleon energy is
+    /// `energy_MeV / proj_A`. (Same table as `nist_table("catima_<Sym><A>", …)`.)
     #[inline]
     pub fn catima_table(&self, proj_z: u32, proj_a: u32, target_z: u32) -> Option<&XYTable> {
         self.catima.get(&(proj_z, proj_a, target_z))
@@ -219,6 +259,15 @@ impl StoppingDb {
                 continue;
             }
             if path.extension().and_then(|e| e.to_str()) != Some("parquet") {
+                continue;
+            }
+            // catima shards are loaded into the integer-keyed `catima` map
+            // (single copy), not here — see load_catima / #252.
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("catima_"))
+            {
                 continue;
             }
 
@@ -323,57 +372,78 @@ impl StoppingDb {
         Ok(map)
     }
 
-    #[allow(clippy::type_complexity)] // two parallel maps keyed by (Z, A, Z); splitting into a struct adds noise.
+    /// Build the catima dedx + straggling maps from the federated per-isotope
+    /// shards (`stopping/catima_<Sym><A>.parquet`).
+    ///
+    /// dedx is keyed by `(proj_Z, proj_A, target_Z)` with the *total*-MeV energy
+    /// axis (the `energy_MeV` column) — a single in-memory copy serving both the
+    /// allocation-free [`catima_dedx`] and the `source`-keyed redirects. The
+    /// straggling is one energy-independent constant per triple.
+    #[allow(clippy::type_complexity)] // two parallel maps keyed by (Z, A, Z); a struct adds noise.
     fn load_catima(
         dir: &Path,
     ) -> crate::Result<(
         HashMap<(u32, u32, u32), XYTable>,
         HashMap<(u32, u32, u32), f64>,
     )> {
-        let catima_path = dir.join("catima").join("catima.parquet");
         let mut map: HashMap<(u32, u32, u32), XYTable> = HashMap::new();
         let mut strag_map: HashMap<(u32, u32, u32), f64> = HashMap::new();
 
-        if !catima_path.exists() {
+        if !dir.exists() {
             return Ok((map, strag_map));
         }
 
-        let file = fs::File::open(&catima_path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
+        let mut paths: Vec<std::path::PathBuf> = fs::read_dir(dir)?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.extension().and_then(|x| x.to_str()) == Some("parquet")
+                    && p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with("catima_"))
+            })
+            .collect();
+        paths.sort();
 
-        for batch in reader {
-            let batch = batch?;
+        for path in paths {
+            let file = fs::File::open(&path)?;
+            let reader = ParquetRecordBatchReaderBuilder::try_new(file)?.build()?;
 
-            let pz_col = batch
-                .column_by_name("proj_Z")
-                .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let pa_col = batch
-                .column_by_name("proj_A")
-                .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let tz_col = batch
-                .column_by_name("target_Z")
-                .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
-            let e_col = batch
-                .column_by_name("energy_MeV_u")
-                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-            let s_col = batch
-                .column_by_name("dedx")
-                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
-            let strag_col = batch
-                .column_by_name("straggling")
-                .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+            for batch in reader {
+                let batch = batch?;
 
-            if let (Some(pz), Some(pa), Some(tz), Some(e), Some(s)) =
-                (pz_col, pa_col, tz_col, e_col, s_col)
-            {
-                #[allow(clippy::needless_range_loop)]
-                for i in 0..batch.num_rows() {
-                    let key = (pz.value(i) as u32, pa.value(i) as u32, tz.value(i) as u32);
-                    let entry = map.entry(key).or_default();
-                    entry.0.push(e.value(i));
-                    entry.1.push(s.value(i));
-                    if let Some(strag) = strag_col {
-                        strag_map.entry(key).or_insert(strag.value(i));
+                let pz_col = batch
+                    .column_by_name("proj_Z")
+                    .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
+                let pa_col = batch
+                    .column_by_name("proj_A")
+                    .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
+                let tz_col = batch
+                    .column_by_name("target_Z")
+                    .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
+                // total kinetic energy axis (MeV) — shared by catima_dedx and the
+                // NIST-style source redirects.
+                let e_col = batch
+                    .column_by_name("energy_MeV")
+                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+                let s_col = batch
+                    .column_by_name("dedx")
+                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+                let strag_col = batch
+                    .column_by_name("straggling")
+                    .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
+
+                if let (Some(pz), Some(pa), Some(tz), Some(e), Some(s)) =
+                    (pz_col, pa_col, tz_col, e_col, s_col)
+                {
+                    #[allow(clippy::needless_range_loop)]
+                    for i in 0..batch.num_rows() {
+                        let key = (pz.value(i) as u32, pa.value(i) as u32, tz.value(i) as u32);
+                        let entry = map.entry(key).or_default();
+                        entry.0.push(e.value(i));
+                        entry.1.push(s.value(i));
+                        if let Some(strag) = strag_col {
+                            strag_map.entry(key).or_insert(strag.value(i));
+                        }
                     }
                 }
             }
@@ -429,6 +499,40 @@ mod tests {
             rel > 0.05,
             "He3 vs He4 in Fe at 0.001 MeV/u should differ >5%, got {rel} (he3={he3}, he4={he4})"
         );
+
+        // Redirect equivalence: the source-keyed path (hyrr's nist_table/dedx,
+        // total-MeV) must agree with the integer-keyed catima_dedx (MeV/u).
+        let via_source = db.dedx("catima_He4", 26, 4.0 * 0.001); // total MeV = MeV/u × A
+        assert!(
+            (via_source - he4).abs() / he4 < 1e-12,
+            "{via_source} vs {he4}"
+        );
+        assert!(
+            db.nist_table("catima_He4", 26).is_some(),
+            "nist_table catima_He4"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires nucl-parquet data files"]
+    fn catima_shard_from_bytes_serves_source_path() {
+        // hyrr's browser build loads a single shard via `from_bytes` and reads
+        // it as a NIST-style source — that path must work even though catima is
+        // normally served from the integer-keyed map (#252 regression guard).
+        let bytes = std::fs::read(data_dir().join("catima_He4.parquet")).unwrap();
+        let db = StoppingDb::from_bytes(&bytes).unwrap();
+        let t = db.nist_table("catima_He4", 26);
+        assert!(
+            t.is_some(),
+            "from_bytes shard must serve nist_table(\"catima_He4\")"
+        );
+        let s = db.dedx("catima_He4", 26, 8.0);
+        assert!(s.is_finite() && s > 0.0, "dedx via from_bytes shard: {s}");
+
+        // Same value as the full open() path for the same isotope/target/energy.
+        let full = StoppingDb::open(data_dir()).unwrap();
+        let s_full = full.dedx("catima_He4", 26, 8.0);
+        assert!((s - s_full).abs() / s_full < 1e-12, "{s} vs {s_full}");
     }
 
     #[test]

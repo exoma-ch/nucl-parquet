@@ -368,12 +368,14 @@ def test_nist_compound_vs_bragg_proton_water(data_dir_path: Path) -> None:
         nist_val = float(nist[0])
 
         divergence = (bragg - nist_val) / nist_val
-        if energy <= 2.0:
-            # Low energy: Bragg overestimates by 5-15%
-            assert divergence > 0.03, f"Bragg should overestimate at {energy} MeV: divergence={divergence:.1%}"
-        else:
-            # High energy: converges to <5%
-            assert abs(divergence) < 0.05, f"Bragg vs NIST at {energy} MeV: divergence={divergence:.1%}, expected <5%"
+        # Bragg additivity overestimates vs the NIST compound mean-excitation
+        # energy by a few percent across the therapeutic range — largest at low
+        # energy (~2.7% at 1 MeV) and shrinking with energy. Mirror of the rs
+        # `nist_vs_bragg_water_divergence` guard corrected in #247 (the old
+        # "5–15% at 1 MeV" claim was wrong; the gap is genuinely ~2.7% there).
+        assert 0.0 < divergence < 0.05, (
+            f"Bragg vs NIST at {energy} MeV: divergence={divergence:.1%}, expected 0–5% overestimate"
+        )
 
 
 @pytest.mark.data

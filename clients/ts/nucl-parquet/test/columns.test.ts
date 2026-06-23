@@ -58,10 +58,15 @@ describe("xsColumns", () => {
 });
 
 describe("catimaColumns", () => {
-  it("surfaces proj_A so isotopes are distinguishable (#248)", async () => {
-    const buf = await readFile(join(DATA_DIR, "stopping/catima/catima.parquet"));
+  async function readShard(stem: string) {
+    // catima is federated into per-isotope shards (#252): one beam isotope each.
+    const buf = await readFile(join(DATA_DIR, `stopping/${stem}.parquet`));
     const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-    const cols = await catimaColumns(ab);
+    return catimaColumns(ab);
+  }
+
+  it("surfaces proj_A on a federated shard (#248)", async () => {
+    const cols = await readShard("catima_He4");
 
     expect(cols.projZ).toBeInstanceOf(Int32Array);
     expect(cols.projA).toBeInstanceOf(Int32Array);
@@ -79,12 +84,18 @@ describe("catimaColumns", () => {
     expect(cols.dedx.length).toBe(n);
     expect(cols.straggling.length).toBe(n);
 
-    // Multiple isotopes of He (Z=2) — both A=3 and A=4 must be present, else a
-    // (projZ, targetZ) lookup would silently merge them (the #246/#248 bug).
-    const heMassNumbers = new Set<number>();
-    for (let i = 0; i < n; i++) {
-      if (cols.projZ[i] === 2) heMassNumbers.add(cols.projA[i]);
-    }
-    expect(Array.from(heMassNumbers)).toEqual(expect.arrayContaining([3, 4]));
+    // One isotope per shard: He-4 only.
+    expect(new Set(cols.projZ)).toEqual(new Set([2]));
+    expect(new Set(cols.projA)).toEqual(new Set([4]));
+  });
+
+  it("keeps same-Z isotopes in distinct shards (#246/#252)", async () => {
+    // He-3 and He-4 ship as separate files, so a (projZ, targetZ) lookup can
+    // never silently merge them — federation makes the #246 bug structurally
+    // impossible.
+    const he3 = await readShard("catima_He3");
+    const he4 = await readShard("catima_He4");
+    expect(new Set(he3.projA)).toEqual(new Set([3]));
+    expect(new Set(he4.projA)).toEqual(new Set([4]));
   });
 });

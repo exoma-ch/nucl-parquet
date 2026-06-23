@@ -250,10 +250,25 @@ def _register_parquet(
 
 def _register_glob(
     db: duckdb.DuckDBPyConnection,
-    directory: Path,
+    path: Path,
     view_name: str,
 ) -> None:
-    """Register a directory of per-element Parquet files as a single view."""
+    """Register multiple Parquet files as a single view.
+
+    Accepts either a directory (globs ``*.parquet`` inside it) or a file-glob
+    pattern such as ``stopping/catima_*.parquet`` (used by the federated catima
+    shards, which live alongside the NIST source files rather than in their own
+    directory).
+    """
+    if "*" in path.name:  # file-glob pattern
+        matches = list(path.parent.glob(path.name))
+        if not matches:
+            _try_lazy_fetch_glob(path.parent)
+            matches = list(path.parent.glob(path.name))
+        if matches:
+            db.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{path}')")
+        return
+    directory = path
     if not directory.exists():
         _try_lazy_fetch_glob(directory)
     if directory.exists() and list(directory.glob("*.parquet")):
