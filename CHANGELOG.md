@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.15.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.14.3...nucl-parquet-py-v0.15.0) (2026-06-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rs-client:** catima isotope resolution + repair stale Rust tests ([#247](https://github.com/exoma-ch/nucl-parquet/issues/247))
+
+### Bug Fixes
+
+* **rs-client:** Catima isotope resolution + repair stale Rust tests ([#247](https://github.com/exoma-ch/nucl-parquet/issues/247)) ([97be5aa](https://github.com/exoma-ch/nucl-parquet/commit/97be5aa2eed5c84c0809b26e234e87e55eb36d2f))
+
+
+### Documentation
+
+* **legal:** Data attribution, NOTICE, license manifest, CITATION, compliance ([#243](https://github.com/exoma-ch/nucl-parquet/issues/243)) ([8b0d362](https://github.com/exoma-ch/nucl-parquet/commit/8b0d3624678ffbe8a6e6b9a6438f3cea8ac6e3fc))
+* **legal:** Reflect non-commercial academic posture ([#245](https://github.com/exoma-ch/nucl-parquet/issues/245)) ([12ab30d](https://github.com/exoma-ch/nucl-parquet/commit/12ab30db9025ba58769b51e2efb8974502b9bd1c))
+
 ## [0.14.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.14.2...nucl-parquet-py-v0.14.3) (2026-05-22)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.14.2...nucl-parquet-ts-v0.14.3) (2026-06-23)
+
+
+### Bug Fixes
+
+* **ts-client:** Surface proj_A in catimaColumns (isotope resolution) ([#249](https://github.com/exoma-ch/nucl-parquet/issues/249)) ([91264be](https://github.com/exoma-ch/nucl-parquet/commit/91264be525e59883dc137bd09ac912ae68073073))
+
 ## [0.14.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.14.1...nucl-parquet-ts-v0.14.2) (2026-05-21)
 
 
