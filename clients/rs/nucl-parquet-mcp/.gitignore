@@ -1,1 +1,7 @@
 target/
+
+# Path-depends on the sibling nucl-parquet crate, so a committed lockfile goes
+# stale on every nucl-parquet release and trips the pre-commit clippy hook,
+# blocking release PRs. cargo regenerates it at build/publish; the publish job
+# uses plain `cargo publish` (no --locked).
+Cargo.lock
