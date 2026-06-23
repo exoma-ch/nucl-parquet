@@ -34,6 +34,13 @@ export interface StoppingColumns {
 /** Column-oriented catima stopping data (energy in MeV/u). */
 export interface CatimaColumns {
   projZ: Int32Array;
+  /**
+   * Projectile mass number. CatIMA stopping is reduced-mass dependent, so
+   * isotopes of the same Z differ (up to ~15% below ~0.01 MeV/u). Lookups must
+   * key on (projZ, projA, targetZ) — keying on (projZ, targetZ) alone merges
+   * isotopes onto one energy axis (see #248).
+   */
+  projA: Int32Array;
   targetZ: Int32Array;
   energyMeVu: Float64Array;
   dedx: Float64Array;
@@ -125,12 +132,13 @@ export async function stoppingColumns(buffer: ArrayBuffer): Promise<StoppingColu
 
 /**
  * Extract catima stopping columns from a `catima.parquet` ArrayBuffer.
- * Schema: proj_Z i32, target_Z i32, energy_MeV_u f64, dedx f64, straggling f64
+ * Schema: proj_Z i32, proj_A i32, target_Z i32, energy_MeV_u f64, dedx f64, straggling f64
  */
 export async function catimaColumns(buffer: ArrayBuffer): Promise<CatimaColumns> {
   const cols = await extractColumns(buffer);
   return {
     projZ: getI32(cols, "proj_Z"),
+    projA: getI32(cols, "proj_A"),
     targetZ: getI32(cols, "target_Z"),
     energyMeVu: getF64(cols, "energy_MeV_u"),
     dedx: getF64(cols, "dedx"),
