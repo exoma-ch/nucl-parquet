@@ -34,3 +34,10 @@ docs/theranostics/*
 !docs/adr/
 !docs/adr/*.md
 !docs/g4-xray-auger-design.md
+
+# nucl-parquet-mcp is a binary that path-depends on the sibling nucl-parquet
+# crate. Committing its lockfile means every nucl-parquet version bump leaves
+# this lock stale until cargo relocks it, which trips the pre-commit clippy
+# hook and blocks release PRs (release-please cannot cross-update a sibling
+# crate lock outside a workspace). cargo regenerates it at build/publish.
+clients/rs/nucl-parquet-mcp/Cargo.lock
