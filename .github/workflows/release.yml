@@ -95,11 +95,14 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      # OIDC trusted publishing (no NPM_TOKEN). Requires npm >= 11.5.1; node 22
+      # ships npm 10.x, so upgrade first. The package must have a trusted
+      # publisher configured on npmjs.com pointing at this repo + workflow +
+      # `npm` environment. Provenance is emitted automatically.
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   npm-mcp:
     name: Publish @nucl-parquet/mcp to npm
@@ -118,11 +121,14 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      # OIDC trusted publishing (no NPM_TOKEN). Requires npm >= 11.5.1; node 22
+      # ships npm 10.x, so upgrade first. The package must have a trusted
+      # publisher configured on npmjs.com pointing at this repo + workflow +
+      # `npm` environment. Provenance is emitted automatically.
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # Go does not need a publish job: release-please tags `clients/go/nucl-parquet/v*`
   # directly, which is the form the Go module proxy resolves. The tag's
