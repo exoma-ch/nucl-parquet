@@ -27,8 +27,10 @@ Projectile inventory (≈391 isotopes):
 Targets are restricted to Z=1..92 where pycatima's get_material() returns
 a valid molar mass; transuranic projectiles still hit Z≤92 targets fine.
 
-Output: stopping/catima/catima.parquet
-        (schema: proj_Z, proj_A, target_Z, energy_MeV_u, dedx, straggling)
+Output: stopping/catima_<Sym><A>.parquet — one federated shard per projectile
+        isotope (e.g. catima_C12.parquet), build-generated (not hand-committed).
+        Schema: source, proj_Z, proj_A, target_Z, energy_MeV_u, energy_MeV, dedx,
+        straggling. Replaces the former single 92×92 monolith (#252).
 
 Usage:
     uv run python -m nucl_parquet.build_heavy_ions
@@ -115,13 +117,83 @@ def _resolve_projectile_isotopes(data_dir: Path) -> list[tuple[int, int]]:
     return sorted(p for p in rows if 1 <= p[0] <= 99)
 
 
+# Element symbols Z=1..99 — projectiles range up to Es (Z=99, the heaviest
+# isotope with T½ > 1 yr). build_hi_xs.Z_TO_SYMBOL stops at 92, so define the
+# full range here.
+_ELEMENT_SYMBOLS: list[str] = [
+    "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+    "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
+]  # fmt: skip
+_Z_TO_SYMBOL: dict[int, str] = {i + 1: s for i, s in enumerate(_ELEMENT_SYMBOLS)}
+
+
+def shard_name(proj_Z: int, proj_A: int) -> str:
+    """Federated shard filename stem for a projectile isotope, e.g. ``catima_C12``.
+
+    Used as both the file stem (``<stem>.parquet``) and the ``source`` column
+    value, so the shard is reachable via ``StoppingDb::nist_table(source, …)``.
+    """
+    return f"catima_{_Z_TO_SYMBOL[proj_Z]}{proj_A}"
+
+
+def write_isotope_shard(
+    stopping_dir: Path,
+    proj_Z: int,
+    proj_A: int,
+    target_z: list[int],
+    energy_MeV_u: list[float],
+    dedx: list[float],
+    straggling: list[float],
+) -> Path:
+    """Write one federated per-isotope catima shard and return its path.
+
+    Schema: ``source, proj_Z, proj_A, target_Z, energy_MeV_u, energy_MeV, dedx,
+    straggling``. Both energy columns are stored — ``energy_MeV_u`` (catima's
+    native MeV/u axis, used by the loaders' isotope-keyed path) and
+    ``energy_MeV`` (total kinetic energy = MeV/u × A, used when the shard is read
+    as a NIST-style source) — so every consumer reads its native unit with no
+    conversion. They are perfectly correlated, so zstd stores the pair cheaply.
+    """
+    import polars as pl
+
+    source = shard_name(proj_Z, proj_A)
+    n = len(target_z)
+    df = pl.DataFrame(
+        {
+            "source": pl.Series([source] * n),
+            "proj_Z": pl.Series([proj_Z] * n, dtype=pl.Int32),
+            "proj_A": pl.Series([proj_A] * n, dtype=pl.Int32),
+            "target_Z": pl.Series(target_z, dtype=pl.Int32),
+            "energy_MeV_u": pl.Series(energy_MeV_u, dtype=pl.Float64),
+            "energy_MeV": pl.Series([e * proj_A for e in energy_MeV_u], dtype=pl.Float64),
+            "dedx": pl.Series(dedx, dtype=pl.Float64),
+            "straggling": pl.Series(straggling, dtype=pl.Float64),
+        }
+    ).sort("target_Z", "energy_MeV_u")
+    out_path = stopping_dir / f"{source}.parquet"
+    df.write_parquet(out_path, compression="zstd")
+    return out_path
+
+
 def build(data_dir: Path | None = None) -> None:
-    """Generate catima stopping tables for the enumerated isotope set."""
+    """Generate federated per-isotope catima stopping shards.
+
+    Writes one ``stopping/catima_<Sym><A>.parquet`` per projectile isotope (build
+    output, not hand-committed). Replaces the former single 92×92 monolith — see
+    #252; the shards are the only catima representation now.
+    """
     if data_dir is None:
         data_dir = _resolve_data_dir()
     data_dir = Path(data_dir)
 
-    import polars as pl
     import pycatima as catima
 
     isotopes = _resolve_projectile_isotopes(data_dir)
@@ -129,8 +201,8 @@ def build(data_dir: Path | None = None) -> None:
     n_energy = len(_ENERGIES_MEV_U)
     total = len(isotopes) * n_target * n_energy
     print(
-        f"Building catima tables: {len(isotopes)} isotopes × {n_target} targets "
-        f"× {n_energy} energies = {total:,} rows\n"
+        f"Building catima shards: {len(isotopes)} isotopes × {n_target} targets "
+        f"× {n_energy} energies = {total:,} rows ({len(isotopes)} files)\n"
     )
 
     # Verify every Z=1..92 has at least one isotope (sanity check).
@@ -139,55 +211,37 @@ def build(data_dir: Path | None = None) -> None:
     if missing_z:
         raise RuntimeError(f"No isotope for Z in {missing_z}")
 
-    out_path = data_dir / "stopping" / "catima" / "catima.parquet"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    all_proj_z: list[int] = []
-    all_proj_a: list[int] = []
-    all_target_z: list[int] = []
-    all_energies: list[float] = []
-    all_dedxs: list[float] = []
-    all_strag: list[float] = []
+    stopping_dir = data_dir / "stopping"
+    stopping_dir.mkdir(parents=True, exist_ok=True)
 
     # Pre-compute target atomic weights from pycatima for Bohr straggling.
-    target_A: dict[int, float] = {}
-    for z in range(1, 93):
-        target_A[z] = catima.get_material(z).molar_mass()
+    target_A: dict[int, float] = {z: catima.get_material(z).molar_mass() for z in range(1, 93)}
 
     last_z = None
     for proj_Z, proj_A in isotopes:
         proj = catima.Projectile(proj_A, proj_Z)
+        target_z: list[int] = []
+        energies: list[float] = []
+        dedxs: list[float] = []
+        strag: list[float] = []
         for target_Z in range(1, 93):
             mat = catima.get_material(target_Z)
             # Bohr straggling: dΩ²/d(ρx) = const × Z_p² × Z_t / A_t
-            strag = _BOHR_CONST * proj_Z**2 * target_Z / target_A[target_Z]
+            s = _BOHR_CONST * proj_Z**2 * target_Z / target_A[target_Z]
             for e in _ENERGIES_MEV_U:
                 proj.T(float(e))
-                all_proj_z.append(proj_Z)
-                all_proj_a.append(proj_A)
-                all_target_z.append(target_Z)
-                all_energies.append(float(e))
-                all_dedxs.append(catima.dedx(proj, mat))
-                all_strag.append(strag)
+                target_z.append(target_Z)
+                energies.append(float(e))
+                dedxs.append(catima.dedx(proj, mat))
+                strag.append(s)
+        write_isotope_shard(stopping_dir, proj_Z, proj_A, target_z, energies, dedxs, strag)
         if proj_Z != last_z:
             print(f"  Z={proj_Z:2d}: A={proj_A} done", flush=True)
             last_z = proj_Z
         else:
             print(f"          A={proj_A} done", flush=True)
 
-    df = pl.DataFrame(
-        {
-            "proj_Z": pl.Series(all_proj_z, dtype=pl.Int32),
-            "proj_A": pl.Series(all_proj_a, dtype=pl.Int32),
-            "target_Z": pl.Series(all_target_z, dtype=pl.Int32),
-            "energy_MeV_u": pl.Series(all_energies, dtype=pl.Float64),
-            "dedx": pl.Series(all_dedxs, dtype=pl.Float64),
-            "straggling": pl.Series(all_strag, dtype=pl.Float64),
-        }
-    ).sort("proj_Z", "proj_A", "target_Z", "energy_MeV_u")
-
-    df.write_parquet(out_path, compression="zstd")
-    print(f"\nWrote {len(df):,} rows to {out_path}")
+    print(f"\nWrote {len(isotopes)} catima shards to {stopping_dir}")
 
 
 if __name__ == "__main__":

@@ -40,12 +40,14 @@ def test_meta_files_exist(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_stopping_exists(data_dir_path: Path) -> None:
-    """Per-source NIST tables + catima master must be present."""
+    """Per-source NIST tables + federated catima shards must be present."""
     stopping = data_dir_path / "stopping"
     assert (stopping / "PSTAR.parquet").exists()
     assert (stopping / "ASTAR.parquet").exists()
     assert (stopping / "ESTAR.parquet").exists()
-    assert (stopping / "catima" / "catima.parquet").exists()
+    # catima is federated into per-isotope shards (#252) — expect a full set.
+    shards = list(stopping.glob("catima_*.parquet"))
+    assert len(shards) >= 287, f"expected the full federated catima inventory, found {len(shards)} shards"
 
 
 @pytest.mark.data
@@ -81,9 +83,11 @@ def test_stopping_no_broken_legacy_files(data_dir_path: Path) -> None:
     """Regression guard: He3STAR.parquet and the unprovenanced stopping.parquet
     aggregate must stay deleted (both produced wrong α / ³He values; see #137).
 
-    The top-level stopping/catima.parquet must also stay deleted (it was a
-    byte-identical duplicate of stopping/catima/catima.parquet with a different
-    schema that broke the `_register_glob` view).
+    The catima monolith (stopping/catima/catima.parquet) and the top-level
+    stopping/catima.parquet must also stay deleted — catima is now federated into
+    per-isotope shards (stopping/catima_<Sym><A>.parquet), the single source of
+    truth (#252); a re-introduced monolith would silently duplicate them and
+    re-open the drift that caused #246.
     """
     stopping = data_dir_path / "stopping"
     assert not (stopping / "He3STAR.parquet").exists(), (
@@ -93,7 +97,10 @@ def test_stopping_no_broken_legacy_files(data_dir_path: Path) -> None:
         "stopping.parquet was an unprovenanced aggregate; use per-source files"
     )
     assert not (stopping / "catima.parquet").exists(), (
-        "stopping/catima.parquet duplicated stopping/catima/catima.parquet and broke the glob view (different schema)"
+        "stopping/catima.parquet was a bad-schema duplicate; catima is federated (#252)"
+    )
+    assert not (stopping / "catima" / "catima.parquet").exists(), (
+        "the catima monolith was removed for federated per-isotope shards (#252)"
     )
 
 

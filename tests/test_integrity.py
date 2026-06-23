@@ -141,10 +141,10 @@ def test_no_talys_sentinels(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_catima_straggling(data_dir_path: Path) -> None:
-    """catima.parquet should have a positive straggling column."""
+    """Federated catima shards should have a positive straggling column."""
     import polars as pl
 
-    df = pl.read_parquet(data_dir_path / "stopping" / "catima" / "catima.parquet")
+    df = pl.read_parquet(str(data_dir_path / "stopping" / "catima_*.parquet"))
     assert "straggling" in df.columns, "straggling column missing"
     # C-12 in Cu: straggling should be positive
     row = df.filter((pl.col("proj_Z") == 6) & (pl.col("target_Z") == 29)).head(1)

@@ -232,7 +232,7 @@ fn tool_definitions() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "source": { "type": "string", "description": "PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, or catima" },
+                        "source": { "type": "string", "description": "PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, or a federated catima isotope (catima_<Sym><A>, e.g. catima_C12, catima_U238)" },
                         "target_z": { "type": "integer", "description": "Target atomic number" }
                     },
                     "required": ["source", "target_z"]
@@ -476,22 +476,30 @@ fn handle_tool_call(
                 .get("target_z")
                 .and_then(|v| v.as_i64())
                 .ok_or("missing 'target_z'")?;
-            let rel_path = match source {
-                "PSTAR" => "stopping/PSTAR.parquet",
-                "ASTAR" => "stopping/ASTAR.parquet",
-                "ESTAR" => "stopping/ESTAR.parquet",
-                "dSTAR" => "stopping/dSTAR.parquet",
-                "tSTAR" => "stopping/tSTAR.parquet",
-                "catima" => "stopping/catima/catima.parquet",
+            // catima is federated per beam isotope: source `catima_<Sym><A>`
+            // (e.g. catima_C12) maps to stopping/catima_<Sym><A>.parquet. The
+            // alphanumeric guard prevents path traversal from the user-supplied
+            // source string.
+            let is_catima_shard = source.strip_prefix("catima_").is_some_and(|rest| {
+                !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric())
+            });
+            let rel_path: String = match source {
+                "PSTAR" => "stopping/PSTAR.parquet".to_string(),
+                "ASTAR" => "stopping/ASTAR.parquet".to_string(),
+                "ESTAR" => "stopping/ESTAR.parquet".to_string(),
+                "dSTAR" => "stopping/dSTAR.parquet".to_string(),
+                "tSTAR" => "stopping/tSTAR.parquet".to_string(),
+                _ if is_catima_shard => format!("stopping/{source}.parquet"),
                 other => {
                     return Err(format!(
-                        "Unknown source {other:?}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima"
+                        "Unknown source {other:?}; valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, \
+                         or a federated catima isotope e.g. catima_C12, catima_U238"
                     ))
                 }
             };
             let rows = store
                 .load_filtered(
-                    rel_path,
+                    &rel_path,
                     &[Filter::Eq("target_Z".into(), serde_json::json!(target_z))],
                 )
                 .map_err(|e| format!("{e}"))?;

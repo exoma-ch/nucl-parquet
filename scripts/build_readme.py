@@ -88,8 +88,10 @@ def build_views_table(catalog: dict) -> str:
     for name, vdef in sorted(views.items()):
         path = vdef["path"]
         vtype = vdef.get("type", "file")
-        # Show glob views with wildcard for clarity
-        if vtype == "glob":
+        # Show glob views with wildcard for clarity. A directory glob gets a
+        # trailing `/*.parquet`; a path that already contains a wildcard (a
+        # file-glob pattern, e.g. stopping/catima_*.parquet) is shown as-is.
+        if vtype == "glob" and "*" not in path:
             path = f"`{path}/*.parquet`"
         else:
             path = f"`{path}`"

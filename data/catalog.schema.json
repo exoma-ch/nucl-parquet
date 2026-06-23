@@ -64,7 +64,6 @@
           "properties": {
             "path": { "type": "string" },
             "layout": { "type": "string" },
-            "catima_full_matrix": { "type": "string" },
             "sources": { "type": "array", "items": { "type": "string" } },
             "sources_note": { "type": "string" },
             "catima": { "type": "object" }

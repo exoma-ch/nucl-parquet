@@ -28,7 +28,7 @@ def test_catima_schema_has_proj_a(data_dir_path: Path) -> None:
     """catima_stopping must expose a proj_A:int32 column."""
     import polars as pl
 
-    df = pl.read_parquet(data_dir_path / "stopping" / "catima" / "catima.parquet")
+    df = pl.read_parquet(str(data_dir_path / "stopping" / "catima_*.parquet"))
     assert "proj_A" in df.columns
     assert df["proj_A"].dtype == pl.Int32
 
@@ -38,7 +38,7 @@ def test_catima_covers_every_z(data_dir_path: Path) -> None:
     """Every Z in 1..92 must have at least one tabulated isotope."""
     import polars as pl
 
-    df = pl.read_parquet(data_dir_path / "stopping" / "catima" / "catima.parquet")
+    df = pl.read_parquet(str(data_dir_path / "stopping" / "catima_*.parquet"))
     z_present = set(df["proj_Z"].unique().to_list())
     missing = sorted(set(range(1, 93)) - z_present)
     assert not missing, f"Z values without any tabulated isotope: {missing}"
@@ -49,7 +49,7 @@ def test_catima_includes_beam_allowlist(data_dir_path: Path) -> None:
     """The build's beam/medical allowlist must appear in the on-disk table."""
     import polars as pl
 
-    df = pl.read_parquet(data_dir_path / "stopping" / "catima" / "catima.parquet")
+    df = pl.read_parquet(str(data_dir_path / "stopping" / "catima_*.parquet"))
     pairs = set((int(z), int(a)) for z, a in zip(df["proj_Z"].to_list(), df["proj_A"].to_list()))
     must_have = [
         (1, 3),  # T
@@ -62,6 +62,45 @@ def test_catima_includes_beam_allowlist(data_dir_path: Path) -> None:
     ]
     missing = [p for p in must_have if p not in pairs]
     assert not missing, f"Allowlist isotopes missing from table: {missing}"
+
+
+@pytest.mark.data
+def test_catima_federation_shape(data_dir_path: Path) -> None:
+    """Federation guard (#252): each catima shard is one self-consistent isotope.
+
+    Catches data-side drift — the class of bug behind #246 — at the source: a
+    shard whose `source`/filename, `proj_A`, target coverage, or the
+    energy_MeV ↔ energy_MeV_u × proj_A relation disagree would fail here.
+    """
+    import polars as pl
+
+    stopping = data_dir_path / "stopping"
+    shards = sorted(stopping.glob("catima_*.parquet"))
+    assert len(shards) >= 287, f"expected the full federated inventory, found {len(shards)}"
+
+    expected_cols = {
+        "source",
+        "proj_Z",
+        "proj_A",
+        "target_Z",
+        "energy_MeV_u",
+        "energy_MeV",
+        "dedx",
+        "straggling",
+    }
+    for path in shards:
+        df = pl.read_parquet(path)
+        assert set(df.columns) == expected_cols, f"{path.name}: schema {set(df.columns)}"
+        # exactly one isotope per shard, and the source/filename agree with it
+        assert df["proj_Z"].n_unique() == 1 and df["proj_A"].n_unique() == 1, f"{path.name}: not one isotope"
+        assert df["source"].n_unique() == 1, f"{path.name}: multiple sources"
+        assert df["source"][0] == path.stem, f"{path.name}: source {df['source'][0]} != stem"
+        # all 92 targets present
+        assert df["target_Z"].n_unique() == 92, f"{path.name}: {df['target_Z'].n_unique()} targets"
+        # the two energy columns are exactly consistent (total = per-nucleon × A)
+        proj_a = int(df["proj_A"][0])
+        max_dev = (df["energy_MeV"] - df["energy_MeV_u"] * proj_a).abs().max()
+        assert max_dev == 0.0, f"{path.name}: energy_MeV != energy_MeV_u × {proj_a} (dev {max_dev})"
 
 
 @pytest.mark.data

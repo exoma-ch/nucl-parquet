@@ -171,13 +171,15 @@ def gen_catima_stopping(db) -> object:
     rows: list[dict[str, Any]] = []
     for proj_z, proj_a in triples:
         for tz in targets:
+            # Read the federated per-isotope shards via the catima_stopping view
+            # (post-#252; the single monolith was removed).
             rel = db.execute(
-                "SELECT energy_MeV_u, dedx FROM read_parquet(?) "
+                "SELECT energy_MeV_u, dedx FROM catima_stopping "
                 "WHERE proj_Z=? AND proj_A=? AND target_Z=? ORDER BY energy_MeV_u",
-                [str(REPO_ROOT / "data" / "stopping" / "catima" / "catima.parquet"), proj_z, proj_a, tz],
+                [proj_z, proj_a, tz],
             ).fetchall()
             if not rel:
-                print(f"  skip catima ({proj_z},{proj_a},{tz}) — not in master")
+                print(f"  skip catima ({proj_z},{proj_a},{tz}) — not in inventory")
                 continue
             e = np.array([r[0] for r in rel], dtype=float)
             s = np.array([r[1] for r in rel], dtype=float)
