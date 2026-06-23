@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.13.6...nucl-parquet-rs-v0.14.0) (2026-06-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rs-client:** catima isotope resolution + repair stale Rust tests ([#247](https://github.com/exoma-ch/nucl-parquet/issues/247))
+
+### Bug Fixes
+
+* **rs-client:** Catima isotope resolution + repair stale Rust tests ([#247](https://github.com/exoma-ch/nucl-parquet/issues/247)) ([97be5aa](https://github.com/exoma-ch/nucl-parquet/commit/97be5aa2eed5c84c0809b26e234e87e55eb36d2f))
+
 ## [0.13.6](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.13.5...nucl-parquet-rs-v0.13.6) (2026-05-22)
 
 
