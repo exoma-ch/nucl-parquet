@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from normalize import normalize_coincidences, normalize_emissions, normalize_gamma_candidates
 
@@ -143,6 +144,58 @@ def gen_ni60_emissions(db) -> object:
     return normalize_emissions(rows)
 
 
+def gen_catima_stopping(db) -> object:
+    """CatIMA per-isotope mass stopping power — guards the Rust `catima_dedx`
+    (proj_Z, proj_A, target_Z) lookup against the isotope-merge regression (#246).
+
+    Reads the catima master directly and log-log-interpolates with the loader's
+    method. Deliberately includes isotope pairs of the same Z (He-3/He-4,
+    C-12/C-13) at low energy, where reduced-mass-dependent nuclear stopping makes
+    them differ by several percent — collapsing them onto (Z, target_Z) corrupts
+    the result.
+    """
+    import numpy as np
+
+    from nucl_parquet.loader import _interp_loglog
+
+    triples = [
+        (2, 3), (2, 4),    # He-3 vs He-4
+        (6, 12), (6, 13),  # C-12 vs C-13
+        (82, 208),         # heavy reference
+    ]
+    targets = [13, 26, 79]
+    energies = [0.001, 0.005, 0.05, 0.5, 5.0, 50.0]  # MeV/u, low→high
+
+    rows: list[dict[str, Any]] = []
+    for proj_z, proj_a in triples:
+        for tz in targets:
+            rel = db.execute(
+                "SELECT energy_MeV_u, dedx FROM read_parquet(?) "
+                "WHERE proj_Z=? AND proj_A=? AND target_Z=? ORDER BY energy_MeV_u",
+                [str(REPO_ROOT / "data" / "stopping" / "catima" / "catima.parquet"), proj_z, proj_a, tz],
+            ).fetchall()
+            if not rel:
+                print(f"  skip catima ({proj_z},{proj_a},{tz}) — not in master")
+                continue
+            e = np.array([r[0] for r in rel], dtype=float)
+            s = np.array([r[1] for r in rel], dtype=float)
+            log_e, log_s = np.log(e), np.log(s)
+            for eu in energies:
+                if eu < e[0] or eu > e[-1]:
+                    continue  # avoid edge-clamp ambiguity; interior points only
+                dedx = float(_interp_loglog(log_e, log_s, np.array([eu]))[0])
+                rows.append(
+                    {
+                        "proj_Z": proj_z,
+                        "proj_A": proj_a,
+                        "target_Z": tz,
+                        "energy_MeV_u": eu,
+                        "dedx": round(dedx, 6),
+                    }
+                )
+    return rows
+
+
 def main() -> int:
     db = nucl_parquet.connect()
     _write("co60_beta_gamma", gen_co60_beta_gamma(db))
@@ -151,6 +204,7 @@ def main() -> int:
     _write("sr90_y90_negative", gen_sr90_y90_negative(db))
     _write("identify_gamma_1173keV", gen_identify_gamma_1173(db))
     _write("ni60_emissions", gen_ni60_emissions(db))
+    _write("catima_stopping", gen_catima_stopping(db))
     return 0
 
 

@@ -335,16 +335,6 @@ static SYMBOL_TO_Z: &[(&str, u32)] = &[
 mod tests {
     use super::*;
 
-    fn xs_file() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("..")
-            .join("tendl-2025")
-            .join("xs")
-            .join("p_Cu.parquet")
-    }
-
     #[test]
     fn symbol_to_z_cu() {
         assert_eq!(
@@ -365,7 +355,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn open_and_query_cu() {
-        let db = CrossSectionDb::open(xs_file()).unwrap();
+        let db = CrossSectionDb::open(data_xs_file()).unwrap();
         assert_eq!(db.target_z(), 29);
         assert!(db.num_reactions() > 0);
     }
@@ -373,7 +363,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cross_section_finite() {
-        let db = CrossSectionDb::open(xs_file()).unwrap();
+        let db = CrossSectionDb::open(data_xs_file()).unwrap();
         // Cu-63(p,n)Zn-63 is a common reaction
         let xs = db.cross_section(63, 30, 63, 15.0);
         // Either we get a finite positive value or NAN (reaction may be named differently)
@@ -383,7 +373,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn entries_nonempty() {
-        let db = CrossSectionDb::open(xs_file()).unwrap();
+        let db = CrossSectionDb::open(data_xs_file()).unwrap();
         assert!(db.num_reactions() > 0, "should have at least one reaction");
     }
 

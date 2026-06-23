@@ -1,0 +1,632 @@
+[
+  {
+    "dedx": 146.833455,
+    "energy_MeV_u": 0.001,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 353.702413,
+    "energy_MeV_u": 0.005,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 1120.315326,
+    "energy_MeV_u": 0.05,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 986.237325,
+    "energy_MeV_u": 0.5,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 229.301828,
+    "energy_MeV_u": 5.0,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 38.209838,
+    "energy_MeV_u": 50.0,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 76.630418,
+    "energy_MeV_u": 0.001,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 190.886402,
+    "energy_MeV_u": 0.005,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 672.278253,
+    "energy_MeV_u": 0.05,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 758.488393,
+    "energy_MeV_u": 0.5,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 187.809344,
+    "energy_MeV_u": 5.0,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 33.677091,
+    "energy_MeV_u": 50.0,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 23.258054,
+    "energy_MeV_u": 0.001,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 66.053643,
+    "energy_MeV_u": 0.005,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 222.634824,
+    "energy_MeV_u": 0.05,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 338.843879,
+    "energy_MeV_u": 0.5,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 112.266842,
+    "energy_MeV_u": 5.0,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 23.284028,
+    "energy_MeV_u": 50.0,
+    "proj_A": 3,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 157.281107,
+    "energy_MeV_u": 0.001,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 357.001236,
+    "energy_MeV_u": 0.005,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 1120.686309,
+    "energy_MeV_u": 0.05,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 986.274402,
+    "energy_MeV_u": 0.5,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 229.305536,
+    "energy_MeV_u": 5.0,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 38.210207,
+    "energy_MeV_u": 50.0,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 13
+  },
+  {
+    "dedx": 83.488771,
+    "energy_MeV_u": 0.001,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 193.721294,
+    "energy_MeV_u": 0.005,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 672.601869,
+    "energy_MeV_u": 0.05,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 758.52518,
+    "energy_MeV_u": 0.5,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 187.813022,
+    "energy_MeV_u": 5.0,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 33.677458,
+    "energy_MeV_u": 50.0,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 26
+  },
+  {
+    "dedx": 25.173433,
+    "energy_MeV_u": 0.001,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 67.387746,
+    "energy_MeV_u": 0.005,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 222.898876,
+    "energy_MeV_u": 0.05,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 338.872377,
+    "energy_MeV_u": 0.5,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 112.269691,
+    "energy_MeV_u": 5.0,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 23.284312,
+    "energy_MeV_u": 50.0,
+    "proj_A": 4,
+    "proj_Z": 2,
+    "target_Z": 79
+  },
+  {
+    "dedx": 864.703059,
+    "energy_MeV_u": 0.001,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 1213.997074,
+    "energy_MeV_u": 0.005,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 3283.688098,
+    "energy_MeV_u": 0.05,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 4842.919199,
+    "energy_MeV_u": 0.5,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 1960.598004,
+    "energy_MeV_u": 5.0,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 344.358933,
+    "energy_MeV_u": 50.0,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 469.834135,
+    "energy_MeV_u": 0.001,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 675.518283,
+    "energy_MeV_u": 0.005,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 1976.069883,
+    "energy_MeV_u": 0.05,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 3725.898192,
+    "energy_MeV_u": 0.5,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 1605.704049,
+    "energy_MeV_u": 5.0,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 303.863098,
+    "energy_MeV_u": 50.0,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 129.771717,
+    "energy_MeV_u": 0.001,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 223.320969,
+    "energy_MeV_u": 0.005,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 661.379069,
+    "energy_MeV_u": 0.05,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 1674.74499,
+    "energy_MeV_u": 0.5,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 959.62547,
+    "energy_MeV_u": 5.0,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 210.872429,
+    "energy_MeV_u": 50.0,
+    "proj_A": 12,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 883.169269,
+    "energy_MeV_u": 0.001,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 1220.19301,
+    "energy_MeV_u": 0.005,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 3284.404963,
+    "energy_MeV_u": 0.05,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 4842.990837,
+    "energy_MeV_u": 0.5,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 1960.605167,
+    "energy_MeV_u": 5.0,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 344.35964,
+    "energy_MeV_u": 50.0,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 13
+  },
+  {
+    "dedx": 484.192248,
+    "energy_MeV_u": 0.001,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 681.591865,
+    "energy_MeV_u": 0.005,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 1976.587613,
+    "energy_MeV_u": 0.05,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 3725.978161,
+    "energy_MeV_u": 0.5,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 1605.712045,
+    "energy_MeV_u": 5.0,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 303.863889,
+    "energy_MeV_u": 50.0,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 26
+  },
+  {
+    "dedx": 134.608695,
+    "energy_MeV_u": 0.001,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 226.619912,
+    "energy_MeV_u": 0.005,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 662.015849,
+    "energy_MeV_u": 0.05,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 1674.813284,
+    "energy_MeV_u": 0.5,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 959.6323,
+    "energy_MeV_u": 5.0,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 210.873104,
+    "energy_MeV_u": 50.0,
+    "proj_A": 13,
+    "proj_Z": 6,
+    "target_Z": 79
+  },
+  {
+    "dedx": 15516.520393,
+    "energy_MeV_u": 0.001,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 13
+  },
+  {
+    "dedx": 17944.609996,
+    "energy_MeV_u": 0.005,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 13
+  },
+  {
+    "dedx": 21510.261272,
+    "energy_MeV_u": 0.05,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 13
+  },
+  {
+    "dedx": 55428.019761,
+    "energy_MeV_u": 0.5,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 13
+  },
+  {
+    "dedx": 94009.477007,
+    "energy_MeV_u": 5.0,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 13
+  },
+  {
+    "dedx": 44657.768123,
+    "energy_MeV_u": 50.0,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 13
+  },
+  {
+    "dedx": 12160.081274,
+    "energy_MeV_u": 0.001,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 26
+  },
+  {
+    "dedx": 14339.700974,
+    "energy_MeV_u": 0.005,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 26
+  },
+  {
+    "dedx": 16602.043114,
+    "energy_MeV_u": 0.05,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 26
+  },
+  {
+    "dedx": 42719.638736,
+    "energy_MeV_u": 0.5,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 26
+  },
+  {
+    "dedx": 76971.035662,
+    "energy_MeV_u": 5.0,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 26
+  },
+  {
+    "dedx": 39680.612969,
+    "energy_MeV_u": 50.0,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 26
+  },
+  {
+    "dedx": 5456.579831,
+    "energy_MeV_u": 0.001,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 79
+  },
+  {
+    "dedx": 6694.565964,
+    "energy_MeV_u": 0.005,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 79
+  },
+  {
+    "dedx": 6728.045564,
+    "energy_MeV_u": 0.05,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 79
+  },
+  {
+    "dedx": 18975.795261,
+    "energy_MeV_u": 0.5,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 79
+  },
+  {
+    "dedx": 45943.639388,
+    "energy_MeV_u": 5.0,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 79
+  },
+  {
+    "dedx": 28312.667595,
+    "energy_MeV_u": 50.0,
+    "proj_A": 208,
+    "proj_Z": 82,
+    "target_Z": 79
+  }
+]

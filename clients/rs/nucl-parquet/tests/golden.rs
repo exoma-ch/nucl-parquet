@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use nucl_parquet::{
     CoincidenceFilter, CoincidencesDb, Emission, EmissionEntry, GammaCandidate, RadiationDb,
+    StoppingDb,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -397,4 +398,42 @@ fn golden_identify_gamma_1173() {
         golden_arr,
         "identify_gamma(1173.2) goldens diverged"
     );
+}
+
+/// CatIMA per-isotope stopping-power parity (#246).
+///
+/// Asserts `StoppingDb::catima_dedx(proj_z, proj_a, target_z, …)` reproduces the
+/// Python loader's log-log-interpolated catima value for each fixture row. The
+/// fixture deliberately includes same-Z isotope pairs (He-3/He-4, C-12/C-13) at
+/// low energy — the case the old `(proj_Z, target_Z)`-keyed lookup corrupted by
+/// merging isotopes onto one energy axis.
+#[test]
+#[ignore = "requires nucl-parquet data files and committed golden fixtures"]
+fn golden_catima_stopping() {
+    let db = StoppingDb::open(data_dir().join("stopping")).unwrap();
+    let golden = load_fixture("catima_stopping");
+    let rows = golden.as_array().expect("catima fixture is an array");
+    assert!(!rows.is_empty(), "catima fixture is empty");
+
+    for row in rows {
+        let pz = row["proj_Z"].as_u64().unwrap() as u32;
+        let pa = row["proj_A"].as_u64().unwrap() as u32;
+        let tz = row["target_Z"].as_u64().unwrap() as u32;
+        let eu = row["energy_MeV_u"].as_f64().unwrap();
+        let expected = row["dedx"].as_f64().unwrap();
+
+        let got = db.catima_dedx(pz, pa, tz, eu);
+        assert!(
+            got.is_finite(),
+            "catima_dedx({pz},{pa},{tz},{eu}) = {got} (expected ~{expected})"
+        );
+        // Compare at the fixture's 6-decimal precision (the harness convention);
+        // the underlying agreement is ~1e-15 relative. The isotope-merge bug this
+        // guards (#246) produces percent-level errors, so it can't slip past.
+        assert!(
+            (round6(got) - expected).abs() < 1e-9,
+            "catima parity drift at (Z={pz}, A={pa}, target={tz}, {eu} MeV/u): \
+             Rust {got}, Python {expected}"
+        );
+    }
 }

@@ -9,9 +9,13 @@
 //!   (E_p = E / A) before lookup (dSTAR/tSTAR pre-built).
 //! - α → NIST ASTAR via [`dedx`] (ICRU-49 reference; reproducible via
 //!   `nucl_parquet.build_stopping`).
-//! - ³He → [`catima_dedx`] with `proj_z = 2` (no NIST ³He table exists).
+//! - ³He → [`catima_dedx`] with `proj_z = 2, proj_a = 3` (no NIST ³He table exists).
 //! - e → NIST ESTAR via [`dedx`].
-//! - heavy ions → [`catima_dedx`] (catima's full 92×92 master).
+//! - heavy ions → [`catima_dedx`] (catima's full per-isotope master).
+//!
+//! CatIMA lookups are keyed per-isotope `(proj_Z, proj_A, target_Z)`: stopping
+//! is reduced-mass dependent, so isotopes of the same Z must not be collapsed
+//! together (see #246).
 //!
 //! The previously-shipped He3STAR.parquet and the broken ASTAR.parquet
 //! (Z²-scaled from PSTAR at the wrong energy axis) were removed in #143.
@@ -39,10 +43,15 @@ pub struct StoppingDb {
     nist: HashMap<(String, u32), XYTable>,
     /// (source, compound_name) -> (energy_MeV sorted, dedx sorted)
     compounds: HashMap<(String, String), XYTable>,
-    /// (proj_Z, target_Z) -> (energy_MeV_u sorted, dedx sorted)
-    catima: HashMap<(u32, u32), XYTable>,
-    /// (proj_Z, target_Z) -> Bohr straggling dΩ²/d(ρx) [MeV² cm²/g] (constant per pair)
-    catima_strag: HashMap<(u32, u32), f64>,
+    /// (proj_Z, proj_A, target_Z) -> (energy_MeV_u sorted, dedx sorted)
+    ///
+    /// Keyed per-isotope: CatIMA stopping is reduced-mass dependent, so isotopes
+    /// of the same Z differ (up to ~15% below ~0.01 MeV/u where nuclear stopping
+    /// dominates). Collapsing them onto (proj_Z, target_Z) interleaves their
+    /// energy axes and corrupts the interpolation — see #246.
+    catima: HashMap<(u32, u32, u32), XYTable>,
+    /// (proj_Z, proj_A, target_Z) -> Bohr straggling dΩ²/d(ρx) [MeV² cm²/g] (constant per pair)
+    catima_strag: HashMap<(u32, u32, u32), f64>,
 }
 
 // Safety: all data is immutable after construction.
@@ -128,13 +137,17 @@ impl StoppingDb {
         }
     }
 
-    /// CatIMA mass stopping power [MeV cm²/g].
+    /// CatIMA mass stopping power [MeV cm²/g] for a specific projectile isotope.
     ///
-    /// `energy_mev_u` is the projectile kinetic energy per nucleon.
-    /// Returns `f64::NAN` if the (proj_Z, target_Z) pair is not loaded.
+    /// `proj_a` is the projectile mass number: CatIMA tables are tabulated
+    /// per-isotope and differ between isotopes of the same Z at low energy
+    /// (up to ~15% below ~0.01 MeV/u). `energy_mev_u` is the projectile kinetic
+    /// energy per nucleon.
+    ///
+    /// Returns `f64::NAN` if the (proj_Z, proj_A, target_Z) triple is not loaded.
     #[inline]
-    pub fn catima_dedx(&self, proj_z: u32, target_z: u32, energy_mev_u: f64) -> f64 {
-        match self.catima.get(&(proj_z, target_z)) {
+    pub fn catima_dedx(&self, proj_z: u32, proj_a: u32, target_z: u32, energy_mev_u: f64) -> f64 {
+        match self.catima.get(&(proj_z, proj_a, target_z)) {
             Some((e, s)) => log_log_interp(e, s, energy_mev_u),
             None => f64::NAN,
         }
@@ -143,11 +156,11 @@ impl StoppingDb {
     /// Bohr energy straggling variance dΩ²/d(ρx) [MeV² cm²/g].
     ///
     /// Energy-independent (high-energy Bohr limit).
-    /// Returns `f64::NAN` if the (proj_Z, target_Z) pair is not loaded.
+    /// Returns `f64::NAN` if the (proj_Z, proj_A, target_Z) triple is not loaded.
     #[inline]
-    pub fn catima_straggling(&self, proj_z: u32, target_z: u32) -> f64 {
+    pub fn catima_straggling(&self, proj_z: u32, proj_a: u32, target_z: u32) -> f64 {
         self.catima_strag
-            .get(&(proj_z, target_z))
+            .get(&(proj_z, proj_a, target_z))
             .copied()
             .unwrap_or(f64::NAN)
     }
@@ -181,12 +194,17 @@ impl StoppingDb {
         self.compounds.keys().map(|(s, c)| (s.as_str(), c.as_str()))
     }
 
-    /// Raw CatIMA stopping power table for a (proj_Z, target_Z) pair.
+    /// Raw CatIMA stopping power table for a (proj_Z, proj_A, target_Z) triple.
     ///
     /// Returns `(energy_MeV_u[], dedx[])` sorted by energy, or `None` if not loaded.
     #[inline]
-    pub fn catima_table(&self, proj_z: u32, target_z: u32) -> Option<&XYTable> {
-        self.catima.get(&(proj_z, target_z))
+    pub fn catima_table(&self, proj_z: u32, proj_a: u32, target_z: u32) -> Option<&XYTable> {
+        self.catima.get(&(proj_z, proj_a, target_z))
+    }
+
+    /// Iterate all loaded CatIMA (proj_Z, proj_A, target_Z) keys.
+    pub fn catima_keys(&self) -> impl Iterator<Item = (u32, u32, u32)> + '_ {
+        self.catima.keys().copied()
     }
 
     // --- Internal loaders ---
@@ -305,13 +323,13 @@ impl StoppingDb {
         Ok(map)
     }
 
-    #[allow(clippy::type_complexity)] // two parallel maps keyed by (Z, A); splitting into a struct adds noise.
+    #[allow(clippy::type_complexity)] // two parallel maps keyed by (Z, A, Z); splitting into a struct adds noise.
     fn load_catima(
         dir: &Path,
-    ) -> crate::Result<(HashMap<(u32, u32), XYTable>, HashMap<(u32, u32), f64>)> {
+    ) -> crate::Result<(HashMap<(u32, u32, u32), XYTable>, HashMap<(u32, u32, u32), f64>)> {
         let catima_path = dir.join("catima").join("catima.parquet");
-        let mut map: HashMap<(u32, u32), XYTable> = HashMap::new();
-        let mut strag_map: HashMap<(u32, u32), f64> = HashMap::new();
+        let mut map: HashMap<(u32, u32, u32), XYTable> = HashMap::new();
+        let mut strag_map: HashMap<(u32, u32, u32), f64> = HashMap::new();
 
         if !catima_path.exists() {
             return Ok((map, strag_map));
@@ -326,6 +344,9 @@ impl StoppingDb {
             let pz_col = batch
                 .column_by_name("proj_Z")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
+            let pa_col = batch
+                .column_by_name("proj_A")
+                .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
             let tz_col = batch
                 .column_by_name("target_Z")
                 .and_then(|c| c.as_any().downcast_ref::<Int32Array>());
@@ -339,10 +360,12 @@ impl StoppingDb {
                 .column_by_name("straggling")
                 .and_then(|c| c.as_any().downcast_ref::<Float64Array>());
 
-            if let (Some(pz), Some(tz), Some(e), Some(s)) = (pz_col, tz_col, e_col, s_col) {
+            if let (Some(pz), Some(pa), Some(tz), Some(e), Some(s)) =
+                (pz_col, pa_col, tz_col, e_col, s_col)
+            {
                 #[allow(clippy::needless_range_loop)]
                 for i in 0..batch.num_rows() {
-                    let key = (pz.value(i) as u32, tz.value(i) as u32);
+                    let key = (pz.value(i) as u32, pa.value(i) as u32, tz.value(i) as u32);
                     let entry = map.entry(key).or_default();
                     entry.0.push(e.value(i));
                     entry.1.push(s.value(i));
@@ -389,9 +412,20 @@ mod tests {
     #[ignore = "requires nucl-parquet data files"]
     fn catima_open_succeeds() {
         let db = StoppingDb::open(data_dir()).unwrap();
-        // Proton (Z=1) in Cu (Z=29) at 100 MeV/u
-        let s = db.catima_dedx(1, 29, 100.0);
+        // Proton (Z=1, A=1) in Cu (Z=29) at 100 MeV/u
+        let s = db.catima_dedx(1, 1, 29, 100.0);
         assert!(s.is_finite() && s > 0.0, "CatIMA p in Cu 100 MeV/u: {s}");
+
+        // Isotope resolution: He-3 and He-4 in Fe must differ at low energy
+        // (reduced-mass-dependent nuclear stopping) — the #246 regression guard.
+        let he3 = db.catima_dedx(2, 3, 26, 0.001);
+        let he4 = db.catima_dedx(2, 4, 26, 0.001);
+        assert!(he3.is_finite() && he4.is_finite(), "He3 {he3}, He4 {he4}");
+        let rel = (he3 - he4).abs() / he4.max(he3);
+        assert!(
+            rel > 0.05,
+            "He3 vs He4 in Fe at 0.001 MeV/u should differ >5%, got {rel} (he3={he3}, he4={he4})"
+        );
     }
 
     #[test]
@@ -524,22 +558,47 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn nist_vs_bragg_water_divergence() {
-        // Route 1 (NIST compound) should differ from Route 2 (Bragg-mixed
-        // elemental) by several percent at low energy due to compound I-value.
-        // At 1 MeV, Bragg overestimates by ~9% (documented in Python tests).
+        // NIST tabulated compound water (route 1) uses the measured compound
+        // mean-excitation energy (I ≈ 75 eV); Bragg additivity over elemental
+        // H + O (route 2) implicitly mixes the elemental I-values (H 19.2, O
+        // 95 eV). Bragg therefore *overestimates* stopping, and the gap grows
+        // toward low energy where the Bethe ln(2mₑc²β²/I) term dominates.
+        //
+        // Ground-truthed against the data (Python reference): ~18% at 0.1 MeV,
+        // ~8% at 0.3 MeV, ~2.7% at 1 MeV, falling below 1.5% past 10 MeV.
         let db = StoppingDb::open(data_dir()).unwrap();
-        let nist = db.compound_dedx("PSTAR_compound", "WATER_LIQUID", 1.0);
-        // Bragg: water = 11.19% H + 88.81% O by mass
-        let s_h = db.dedx("PSTAR", 1, 1.0);
-        let s_o = db.dedx("PSTAR", 8, 1.0);
-        let bragg = 0.1119 * s_h + 0.8881 * s_o;
-        assert!(nist.is_finite() && bragg.is_finite());
-        let divergence = (bragg - nist) / nist;
-        // Bragg should overestimate by 5-15% at 1 MeV
+
+        // Bragg: water = 11.19% H + 88.81% O by mass.
+        let divergence = |e: f64| {
+            let nist = db.compound_dedx("PSTAR_compound", "WATER_LIQUID", e);
+            let bragg = 0.1119 * db.dedx("PSTAR", 1, e) + 0.8881 * db.dedx("PSTAR", 8, e);
+            assert!(nist.is_finite() && bragg.is_finite(), "non-finite at {e} MeV");
+            (bragg - nist) / nist
+        };
+
+        let d_low = divergence(0.1);
+        let d_mid = divergence(1.0);
+        let d_high = divergence(10.0);
+
+        // Bragg overestimates at every energy, substantially so at low energy.
         assert!(
-            divergence > 0.03 && divergence < 0.20,
-            "Bragg vs NIST divergence at 1 MeV: {:.1}% (expected 5-15%)",
-            divergence * 100.0,
+            d_low > 0.10,
+            "Bragg vs NIST at 0.1 MeV: {:.1}% (expected >10%)",
+            d_low * 100.0
+        );
+        assert!(
+            (0.01..0.05).contains(&d_mid),
+            "Bragg vs NIST at 1 MeV: {:.1}% (expected ~2.7%)",
+            d_mid * 100.0
+        );
+        // Monotone decrease in the I-value correction with energy.
+        assert!(
+            d_low > d_mid && d_mid > d_high && d_high > 0.0,
+            "divergence should shrink monotonically with energy: \
+             0.1 MeV {:.1}%, 1 MeV {:.1}%, 10 MeV {:.1}%",
+            d_low * 100.0,
+            d_mid * 100.0,
+            d_high * 100.0,
         );
     }
 

@@ -250,7 +250,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn load_and_query_cu() {
-        let db = RelaxationDb::open("../../meta").unwrap();
+        let db = RelaxationDb::open(data_meta_dir()).unwrap();
         assert!(db.has_element(29));
 
         let k_trans = db.shell_transitions(29, "K");

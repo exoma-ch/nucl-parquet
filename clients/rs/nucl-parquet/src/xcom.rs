@@ -244,25 +244,17 @@ impl XcomDb {
 mod tests {
     use super::*;
 
-    fn meta_dir() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("..")
-            .join("meta")
-    }
-
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn open_succeeds() {
-        let db = XcomDb::open(meta_dir()).unwrap();
+        let db = XcomDb::open(data_meta_dir()).unwrap();
         assert!(db.has_element(29)); // Cu
     }
 
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_mu_rho_positive() {
-        let db = XcomDb::open(meta_dir()).unwrap();
+        let db = XcomDb::open(data_meta_dir()).unwrap();
         let mu = db.mu_rho(29, 0.1);
         assert!(mu.is_finite() && mu > 0.0, "Cu mu/rho at 0.1 MeV: {mu}");
     }
@@ -270,7 +262,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_mu_en_rho_positive() {
-        let db = XcomDb::open(meta_dir()).unwrap();
+        let db = XcomDb::open(data_meta_dir()).unwrap();
         let mu = db.mu_en_rho(29, 0.1);
         assert!(mu.is_finite() && mu > 0.0, "Cu mu_en/rho at 0.1 MeV: {mu}");
     }
@@ -278,7 +270,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn water_compound_exists() {
-        let db = XcomDb::open(meta_dir()).unwrap();
+        let db = XcomDb::open(data_meta_dir()).unwrap();
         let names = db.compound_names();
         assert!(
             names.contains(&"water"),
