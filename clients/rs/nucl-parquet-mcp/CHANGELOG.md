@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.13.4...nucl-parquet-mcp-rs-v0.14.0) (2026-06-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **data:** federate catima heavy-ion stopping into per-isotope shards ([#252](https://github.com/exoma-ch/nucl-parquet/issues/252)) (#254)
+
+### Features
+
+* **data:** Federate catima heavy-ion stopping into per-isotope shards ([#252](https://github.com/exoma-ch/nucl-parquet/issues/252)) ([#254](https://github.com/exoma-ch/nucl-parquet/issues/254)) ([e9fb00f](https://github.com/exoma-ch/nucl-parquet/commit/e9fb00f3d55c0ee95e3188b96a2f9037c9e63e14))
+
 ## [0.13.4](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.13.3...nucl-parquet-mcp-rs-v0.13.4) (2026-05-21)
 
 
