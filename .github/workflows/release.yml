@@ -93,12 +93,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      # OIDC trusted publishing (no NPM_TOKEN). Requires npm >= 11.5.1; node 22
-      # ships npm 10.x, so upgrade first. The package must have a trusted
-      # publisher configured on npmjs.com pointing at this repo + workflow +
-      # `npm` environment. Provenance is emitted automatically.
+      # OIDC trusted publishing (no NPM_TOKEN). Node 24 bundles npm 11.x; the
+      # explicit upgrade guards the >= 11.5.1 floor that trusted publishing
+      # needs regardless of the runner's bundled version. The package must have
+      # a trusted publisher configured on npmjs.com pointing at this repo +
+      # workflow + `npm` environment. Provenance is emitted automatically.
       - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
@@ -119,12 +120,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      # OIDC trusted publishing (no NPM_TOKEN). Requires npm >= 11.5.1; node 22
-      # ships npm 10.x, so upgrade first. The package must have a trusted
-      # publisher configured on npmjs.com pointing at this repo + workflow +
-      # `npm` environment. Provenance is emitted automatically.
+      # OIDC trusted publishing (no NPM_TOKEN). Node 24 bundles npm 11.x; the
+      # explicit upgrade guards the >= 11.5.1 floor that trusted publishing
+      # needs regardless of the runner's bundled version. The package must have
+      # a trusted publisher configured on npmjs.com pointing at this repo +
+      # workflow + `npm` environment. Provenance is emitted automatically.
       - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
