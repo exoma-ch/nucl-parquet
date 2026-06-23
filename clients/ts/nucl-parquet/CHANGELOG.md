@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.15.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.14.3...nucl-parquet-ts-v0.15.0) (2026-06-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **data:** federate catima heavy-ion stopping into per-isotope shards ([#252](https://github.com/exoma-ch/nucl-parquet/issues/252)) (#254)
+
+### Features
+
+* **data:** Federate catima heavy-ion stopping into per-isotope shards ([#252](https://github.com/exoma-ch/nucl-parquet/issues/252)) ([#254](https://github.com/exoma-ch/nucl-parquet/issues/254)) ([e9fb00f](https://github.com/exoma-ch/nucl-parquet/commit/e9fb00f3d55c0ee95e3188b96a2f9037c9e63e14))
+* **parity:** Cross-language golden-file fixtures — closes [#176](https://github.com/exoma-ch/nucl-parquet/issues/176) ([#191](https://github.com/exoma-ch/nucl-parquet/issues/191)) ([179476d](https://github.com/exoma-ch/nucl-parquet/commit/179476d13d3466fd1e513563a95304a6b303a86a))
+* **rs-client:** CoincidencesDb + RadiationDb with lazy loading — Sub-A of [#173](https://github.com/exoma-ch/nucl-parquet/issues/173), refs [#175](https://github.com/exoma-ch/nucl-parquet/issues/175) ([#180](https://github.com/exoma-ch/nucl-parquet/issues/180)) ([a76d52f](https://github.com/exoma-ch/nucl-parquet/commit/a76d52f1a2ca4033db478a845f6c68e369985603))
+
+
+### Bug Fixes
+
+* **ts-client:** Surface proj_A in catimaColumns (isotope resolution) ([#249](https://github.com/exoma-ch/nucl-parquet/issues/249)) ([91264be](https://github.com/exoma-ch/nucl-parquet/commit/91264be525e59883dc137bd09ac912ae68073073))
+
 ## [0.14.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.14.2...nucl-parquet-ts-v0.14.3) (2026-06-23)
 
 
