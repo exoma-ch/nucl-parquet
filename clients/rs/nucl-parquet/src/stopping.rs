@@ -326,7 +326,10 @@ impl StoppingDb {
     #[allow(clippy::type_complexity)] // two parallel maps keyed by (Z, A, Z); splitting into a struct adds noise.
     fn load_catima(
         dir: &Path,
-    ) -> crate::Result<(HashMap<(u32, u32, u32), XYTable>, HashMap<(u32, u32, u32), f64>)> {
+    ) -> crate::Result<(
+        HashMap<(u32, u32, u32), XYTable>,
+        HashMap<(u32, u32, u32), f64>,
+    )> {
         let catima_path = dir.join("catima").join("catima.parquet");
         let mut map: HashMap<(u32, u32, u32), XYTable> = HashMap::new();
         let mut strag_map: HashMap<(u32, u32, u32), f64> = HashMap::new();
@@ -572,7 +575,10 @@ mod tests {
         let divergence = |e: f64| {
             let nist = db.compound_dedx("PSTAR_compound", "WATER_LIQUID", e);
             let bragg = 0.1119 * db.dedx("PSTAR", 1, e) + 0.8881 * db.dedx("PSTAR", 8, e);
-            assert!(nist.is_finite() && bragg.is_finite(), "non-finite at {e} MeV");
+            assert!(
+                nist.is_finite() && bragg.is_finite(),
+                "non-finite at {e} MeV"
+            );
             (bragg - nist) / nist
         };
 

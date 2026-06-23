@@ -159,9 +159,11 @@ def gen_catima_stopping(db) -> object:
     from nucl_parquet.loader import _interp_loglog
 
     triples = [
-        (2, 3), (2, 4),    # He-3 vs He-4
-        (6, 12), (6, 13),  # C-12 vs C-13
-        (82, 208),         # heavy reference
+        (2, 3),
+        (2, 4),  # He-3 vs He-4
+        (6, 12),
+        (6, 13),  # C-12 vs C-13
+        (82, 208),  # heavy reference
     ]
     targets = [13, 26, 79]
     energies = [0.001, 0.005, 0.05, 0.5, 5.0, 50.0]  # MeV/u, low→high
