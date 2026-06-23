@@ -199,25 +199,17 @@ impl SubshellPeDb {
 mod tests {
     use super::*;
 
-    fn meta_dir() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("..")
-            .join("meta")
-    }
-
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn open_succeeds() {
-        let db = SubshellPeDb::open(meta_dir()).unwrap();
+        let db = SubshellPeDb::open(data_meta_dir()).unwrap();
         assert!(db.has_element(29)); // Cu
     }
 
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_has_multiple_shells() {
-        let db = SubshellPeDb::open(meta_dir()).unwrap();
+        let db = SubshellPeDb::open(data_meta_dir()).unwrap();
         let n = db.num_shells(29);
         assert!(n > 1, "Cu should have multiple subshells, got {n}");
     }
@@ -225,7 +217,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_xs_positive() {
-        let db = SubshellPeDb::open(meta_dir()).unwrap();
+        let db = SubshellPeDb::open(data_meta_dir()).unwrap();
         // Shell 0 (alphabetically first, e.g. "K") at 0.1 MeV
         let xs = db.cross_section(29, 0, 0.1);
         assert!(xs.is_finite() && xs > 0.0, "Cu shell 0 XS at 0.1 MeV: {xs}");
@@ -234,7 +226,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_binding_energy_positive() {
-        let db = SubshellPeDb::open(meta_dir()).unwrap();
+        let db = SubshellPeDb::open(data_meta_dir()).unwrap();
         let be = db.binding_energy(29, 0);
         assert!(
             be.is_finite() && be > 0.0,

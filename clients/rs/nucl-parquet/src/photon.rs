@@ -462,7 +462,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn load_and_query() {
-        let db = PhotonDb::open("../../meta").unwrap();
+        let db = PhotonDb::open(data_meta_dir()).unwrap();
         assert!(db.num_elements() >= 90);
         assert!(db.has_element(29)); // Cu
 

@@ -227,18 +227,10 @@ fn sum_by_energy(energies: &[f64], values: &[f64]) -> (Vec<f64>, Vec<f64>) {
 mod tests {
     use super::*;
 
-    fn meta_dir() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("..")
-            .join("meta")
-    }
-
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn open_succeeds() {
-        let db = ElectronDb::open(meta_dir()).unwrap();
+        let db = ElectronDb::open(data_meta_dir()).unwrap();
         assert!(db.has_element(29)); // Cu
         assert!(db.num_elements() > 0);
     }
@@ -246,7 +238,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_elastic_xs_positive() {
-        let db = ElectronDb::open(meta_dir()).unwrap();
+        let db = ElectronDb::open(data_meta_dir()).unwrap();
         let xs = db.cross_section(29, 1.0, ElectronProcess::Elastic);
         assert!(xs.is_finite() && xs > 0.0, "Cu elastic XS at 1 MeV: {xs}");
     }
@@ -254,7 +246,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_total_xs_positive() {
-        let db = ElectronDb::open(meta_dir()).unwrap();
+        let db = ElectronDb::open(data_meta_dir()).unwrap();
         let total = db.total_cross_section(29, 1.0);
         assert!(
             total.is_finite() && total > 0.0,
@@ -265,7 +257,7 @@ mod tests {
     #[test]
     #[ignore = "requires nucl-parquet data files"]
     fn cu_bremsstrahlung_positive() {
-        let db = ElectronDb::open(meta_dir()).unwrap();
+        let db = ElectronDb::open(data_meta_dir()).unwrap();
         let xs = db.cross_section(29, 1.0, ElectronProcess::Bremsstrahlung);
         assert!(
             xs.is_finite() && xs > 0.0,
