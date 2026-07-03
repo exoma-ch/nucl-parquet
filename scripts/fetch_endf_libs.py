@@ -465,7 +465,64 @@ def parse_endf_file(
             logger.debug("  Skipping MF=10 MT=%d: %s", mt, e)
             continue
 
+    # Neutron capture (n,γ): the thermal 1/v + resonance region lives in the
+    # MF=2 resonance parameters, not MF=3 (which is ~0 there). Reconstruct it and
+    # splice below the resolved-region top, so thermal/epithermal spectra fold to
+    # non-zero. Unsupported formalisms (LRF=4/7, unresolved) keep the MF=3 data.
+    if projectile == "n":
+        try:
+            rows = _splice_reconstructed_capture(rows, material, target_z, target_a)
+        except Exception as e:  # never let reconstruction break the base fetch
+            logger.warning("  resonance reconstruction skipped (Z=%d A=%d): %s", target_z, target_a, e)
+
     return rows
+
+
+def _splice_reconstructed_capture(rows: list[dict], material, target_z: int, target_a: int) -> list[dict]:
+    """Replace the (near-zero) MF=3 capture background below the resolved-region
+    top with reconstructed pointwise (n,γ) capture. Residual = (Z, A+1)."""
+    import sys as _sys
+    from pathlib import Path as _P
+
+    _sys.path.insert(0, str(_P(__file__).parent))
+    import reconstruct_resonances as _rr
+
+    sec = material.section_data.get((2, 151))
+    if not sec:
+        return rows
+    cap_z, cap_a = target_z, target_a + 1
+    added: list[dict] = []
+    eh_max = 0.0
+    for iso in sec.get("isotopes", []):
+        for rng in iso.get("ranges", []):
+            try:
+                out = _rr.capture_xs_resolved(rng)
+            except Exception:
+                out = None  # one unsupported range must not discard the others
+            if out is None:
+                continue
+            e_mev, xs_mb = out
+            eh_max = max(eh_max, rng["EH"] * 1e-6)
+            for e, x in zip(e_mev, xs_mb):
+                added.append(
+                    {
+                        "target_A": target_a,
+                        "residual_Z": cap_z,
+                        "residual_A": cap_a,
+                        "state": "",
+                        "energy_MeV": float(e),
+                        "xs_mb": float(x),
+                    }
+                )
+    if not added:
+        return rows
+    # Drop the MF=3 capture background below the reconstructed top (E < eh_max).
+    kept = [
+        r
+        for r in rows
+        if not (r["residual_Z"] == cap_z and r["residual_A"] == cap_a and r["state"] == "" and r["energy_MeV"] < eh_max)
+    ]
+    return kept + added
 
 
 # ---------------------------------------------------------------------------
