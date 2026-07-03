@@ -1,3 +1,4 @@
+# ruff: noqa: E741  — `l` is the angular-momentum quantum number (physics convention)
 """Resolved-resonance reconstruction for neutron cross-sections (ADR-0003 thermal).
 
 The raw ENDF MF=3 background is ~0 in the resonance region — the thermal 1/v +
@@ -79,9 +80,7 @@ def reconstruct_breit_wigner(rng: dict, energies_ev: np.ndarray):
         gn = GN[None, :] * P[:, None] / Pr[None, :]
         erp = ER[None, :] + (Sr[None, :] - S[:, None]) / (2 * Pr[None, :]) * GN[None, :]
         gtot = gn + GG[None, :] + GF[None, :]
-        contrib = pref[:, None] * gJ[None, :] * gn * GG[None, :] / (
-            (E[:, None] - erp) ** 2 + (gtot / 2) ** 2
-        )
+        contrib = pref[:, None] * gJ[None, :] * gn * GG[None, :] / ((E[:, None] - erp) ** 2 + (gtot / 2) ** 2)
         cap += contrib.sum(axis=1)
     return np.clip(cap, 0, None)
 
@@ -176,7 +175,16 @@ def capture_xs_resolved(rng: dict):
 
 # Reference thermal (2200 m/s) capture cross-sections [b] for validation.
 SIGMA_TH_REF = {
-    (27, 59): 37.18, (79, 197): 98.65, (25, 55): 13.36, (11, 23): 0.53,
-    (49, 115): 202.0, (13, 27): 0.231, (26, 58): 1.32, (29, 63): 4.5,
-    (47, 109): 91.0, (74, 186): 38.1, (73, 181): 20.5, (79, 197.0): 98.65,
+    (27, 59): 37.18,
+    (79, 197): 98.65,
+    (25, 55): 13.36,
+    (11, 23): 0.53,
+    (49, 115): 202.0,
+    (13, 27): 0.231,
+    (26, 58): 1.32,
+    (29, 63): 4.5,
+    (47, 109): 91.0,
+    (74, 186): 38.1,
+    (73, 181): 20.5,
+    (79, 197.0): 98.65,
 }

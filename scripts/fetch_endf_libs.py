@@ -478,9 +478,7 @@ def parse_endf_file(
     return rows
 
 
-def _splice_reconstructed_capture(
-    rows: list[dict], material, target_z: int, target_a: int
-) -> list[dict]:
+def _splice_reconstructed_capture(rows: list[dict], material, target_z: int, target_a: int) -> list[dict]:
     """Replace the (near-zero) MF=3 capture background below the resolved-region
     top with reconstructed pointwise (n,γ) capture. Residual = (Z, A+1)."""
     import sys as _sys
@@ -506,17 +504,23 @@ def _splice_reconstructed_capture(
             e_mev, xs_mb = out
             eh_max = max(eh_max, rng["EH"] * 1e-6)
             for e, x in zip(e_mev, xs_mb):
-                added.append({
-                    "target_A": target_a, "residual_Z": cap_z, "residual_A": cap_a,
-                    "state": "", "energy_MeV": float(e), "xs_mb": float(x),
-                })
+                added.append(
+                    {
+                        "target_A": target_a,
+                        "residual_Z": cap_z,
+                        "residual_A": cap_a,
+                        "state": "",
+                        "energy_MeV": float(e),
+                        "xs_mb": float(x),
+                    }
+                )
     if not added:
         return rows
     # Drop the MF=3 capture background below the reconstructed top (E < eh_max).
     kept = [
-        r for r in rows
-        if not (r["residual_Z"] == cap_z and r["residual_A"] == cap_a
-                and r["state"] == "" and r["energy_MeV"] < eh_max)
+        r
+        for r in rows
+        if not (r["residual_Z"] == cap_z and r["residual_A"] == cap_a and r["state"] == "" and r["energy_MeV"] < eh_max)
     ]
     return kept + added
 

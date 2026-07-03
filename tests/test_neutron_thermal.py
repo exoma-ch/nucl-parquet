@@ -47,6 +47,5 @@ def test_thermal_capture_matches_literature(elem, z, a, ref, tol):
     assert e.min() < 1e-6, f"{elem}-{a} capture has no thermal data (E_min={e.min():.1e} MeV)"
     sigma_th = float(np.interp(2.53e-8, e, xs))
     assert abs(sigma_th - ref) / ref < tol, (
-        f"{elem}-{a} σ_th={sigma_th:.4g} b vs literature {ref} b "
-        f"(ratio {sigma_th / ref:.2f}, tol {tol})"
+        f"{elem}-{a} σ_th={sigma_th:.4g} b vs literature {ref} b (ratio {sigma_th / ref:.2f}, tol {tol})"
     )
