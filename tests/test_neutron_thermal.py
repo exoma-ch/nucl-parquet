@@ -26,6 +26,11 @@ CASES = [
     ("Ag", 47, 109, 91.0, 0.15),
     ("Sm", 62, 152, 206.0, 0.15),
     ("Gd", 64, 157, 254000.0, 0.20),  # the giant absorber — exercises dynamic range
+    # LRF=7 (R-Matrix Limited) — reconstructed via the multi-channel Reich-Moore path
+    ("Cu", 29, 63, 4.5, 0.12),
+    ("V", 23, 51, 4.9, 0.12),
+    ("W", 74, 186, 38.1, 0.12),
+    ("Fe", 26, 54, 2.25, 0.15),
 ]
 
 
