@@ -27,12 +27,20 @@ import io
 import json
 import logging
 import re
+
+# Importing reconstruct_resonances patches endf.mf2's LRF=7 (RML) parser — must
+# happen before any endf.Material() call in parse_endf_file, so import it here.
+import sys as _sys
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import Path as _P
 
 import polars as pl
 import requests
+
+_sys.path.insert(0, str(_P(__file__).parent))
+import reconstruct_resonances as _rr  # noqa: E402,F401
 
 logging.basicConfig(
     level=logging.INFO,
@@ -485,7 +493,6 @@ def _splice_reconstructed_capture(rows: list[dict], material, target_z: int, tar
     from pathlib import Path as _P
 
     _sys.path.insert(0, str(_P(__file__).parent))
-    import reconstruct_resonances as _rr
 
     sec = material.section_data.get((2, 151))
     if not sec:
