@@ -339,29 +339,37 @@ def mt_to_residual(
 ) -> tuple[int, int] | None:
     """Compute residual (Z, A) from MT number and target+projectile.
 
-    Returns None for reactions that don't produce a single residual (fission, etc).
+    Returns None for reactions that don't produce a single residual (fission, etc)
+    or that don't transmute the nucleus — elastic (MT=2) and inelastic scattering
+    leave the target isotope unchanged (an excited state decays back to it), so
+    they must NOT populate a product channel. Elastic in particular collides with
+    the (n,γ) residual (Z, A+1) and would swamp the real capture with potential
+    scattering (~barns vs ~mb). Metastable products from inelastic are carried by
+    the MF=10 isomeric section instead.
     """
-    # Check explicit MT table first
+    if mt == 2:  # elastic — neutron re-emerges, no isotope produced
+        return None
+
+    emit: tuple[int, int] | None = None
     if mt in MT_TO_EMISSION:
         if mt == 18:  # fission
             return None
-        emit_z, emit_a = MT_TO_EMISSION[mt]
-        res_z = target_z + proj_z - emit_z
-        res_a = target_a + proj_a - emit_a
-        if res_z > 0 and res_a > 0:
-            return (res_z, res_a)
+        emit = MT_TO_EMISSION[mt]
+    else:
+        for (mt_lo, mt_hi), e in LEVEL_RANGES.items():
+            if mt_lo <= mt <= mt_hi:
+                emit = e
+                break
+    if emit is None:
         return None
 
-    # Check level ranges
-    for (mt_lo, mt_hi), (emit_z, emit_a) in LEVEL_RANGES.items():
-        if mt_lo <= mt <= mt_hi:
-            res_z = target_z + proj_z - emit_z
-            res_a = target_a + proj_a - emit_a
-            if res_z > 0 and res_a > 0:
-                return (res_z, res_a)
-            return None
-
-    return None
+    res_z = target_z + proj_z - emit[0]
+    res_a = target_a + proj_a - emit[1]
+    if res_z <= 0 or res_a <= 0:
+        return None
+    if (res_z, res_a) == (target_z, target_a):
+        return None  # inelastic / no transmutation — residual is the (stable) target
+    return (res_z, res_a)
 
 
 # ---------------------------------------------------------------------------
