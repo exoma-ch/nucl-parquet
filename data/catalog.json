@@ -8,7 +8,7 @@
   "libraries": {
     "tendl-2023-iso": {
       "name": "TENDL-2023 + Aug 2024 isomeric correction",
-      "description": "TENDL-2023 neutron sublibrary with August 2024 patch restoring isomeric production in MF-10 (ground/metastable state splitting for ~15k products). No neutron sublibrary. Use alongside tendl-2025 for isomeric ratios not available in the newer release.",
+      "description": "TENDL-2023 charged-particle sublibrary (p/d/t/h/a) with the August 2024 patch restoring isomeric production in MF-10 (ground/metastable state splitting for ~15k products). No neutron sublibrary. Use alongside tendl-2025 for isomeric ratios not available in the newer release.",
       "source_url": "https://tendl.web.psi.ch/tendl_2023/tendl2023.html",
       "projectiles": [
         "p",
