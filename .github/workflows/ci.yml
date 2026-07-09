@@ -6,77 +6,19 @@ on:
   pull_request:
   workflow_call:
 
+# Single nix-driven job. It installs Nix, runs `nix flake check` (fast lint), then
+# the full suite via `nix develop -c ./scripts/ci.sh` — the SAME command developers
+# run locally, so CI and local are byte-for-byte identical (uv/rust/node/go/ruff +
+# native libs all pinned by flake.nix). Replaces the previous 5 hand-maintained jobs.
+#
+# The job name is kept as "prek hooks" because the main-branch ruleset requires that
+# exact status-check context; renaming it would need a coordinated ruleset update.
 jobs:
-  hooks:
+  ci:
     name: prek hooks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            clients/rs/nucl-parquet
-            clients/rs/nucl-parquet-mcp
-      - run: uv tool install prek
-      - run: prek run --all-files --hook-stage pre-commit --show-diff-on-failure
-      - run: prek run --all-files --hook-stage pre-push --show-diff-on-failure
-
-  python:
-    name: Python tests
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --dev
-      - run: uv run pytest tests/test_loader.py -v
-
-  rust:
-    name: Rust tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: clients/rs/nucl-parquet
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: clients/rs/nucl-parquet
-      - run: cargo test
-
-  typescript:
-    name: TypeScript
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: clients/ts/nucl-parquet
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npx vitest run
-
-  go:
-    name: Go module
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: clients/go/nucl-parquet
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-      - run: go vet ./...
-      - run: go test -v ./...
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix flake check --no-update-lock-file
+      - run: nix develop --command ./scripts/ci.sh
