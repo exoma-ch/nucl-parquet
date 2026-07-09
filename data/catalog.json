@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.6.1",
-  "data_sha256": "e72225a9911efeb7585d600e24cd580fcdc0c6c240b46722f223ac4e39956bcf",
+  "data_version": "2026.7.0",
+  "data_sha256": "cad802b1e9fad7159ceaa8d50225e18088c7273c1c238db1d5fe08bb46e260f2",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
