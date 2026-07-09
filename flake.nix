@@ -66,6 +66,10 @@
         # (pytest/cargo/npm/go) needs network to fetch deps, so it runs via the
         # devShell — `nix develop -c ./scripts/ci.sh` — which the CI shim invokes.
         checks.lint = pkgs.runCommand "nucl-parquet-lint" { nativeBuildInputs = [ pkgs.ruff ]; } ''
+          # The source lives in the read-only Nix store, so redirect ruff's cache
+          # (both `check` and `format` write it) to the writable build tmpdir.
+          export HOME="$TMPDIR"
+          export RUFF_CACHE_DIR="$TMPDIR/ruff-cache"
           cd ${lintSrc}
           ruff check nucl_parquet scripts tests
           ruff format --check nucl_parquet scripts tests
