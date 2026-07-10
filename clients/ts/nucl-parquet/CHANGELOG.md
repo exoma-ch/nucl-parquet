@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.16.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.15.0...nucl-parquet-ts-v0.16.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **neutron:** NJOY-processed ENDF/B-VIII.0 as a normal xs library; retire in-repo reconstruction ([#265](https://github.com/exoma-ch/nucl-parquet/issues/265))
+
+### Features
+
+* **neutron:** NJOY-processed ENDF/B-VIII.0 as a normal xs library; retire in-repo reconstruction ([#265](https://github.com/exoma-ch/nucl-parquet/issues/265)) ([75cd4c6](https://github.com/exoma-ch/nucl-parquet/commit/75cd4c62f13476663736e0bcd96e1d3defa3ad3a))
+
 ## [0.15.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.14.3...nucl-parquet-ts-v0.15.0) (2026-06-23)
 
 
