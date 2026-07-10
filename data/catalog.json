@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.6.1",
-  "data_sha256": "e72225a9911efeb7585d600e24cd580fcdc0c6c240b46722f223ac4e39956bcf",
+  "data_version": "2026.7.0",
+  "data_sha256": "d5a90f23c134c363c4eada12cf62174438bebe5bfeafc5d1502f74bf4fb4b19e",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -24,10 +24,9 @@
     },
     "endfb-8.1": {
       "name": "ENDF/B-VIII.1",
-      "description": "US Evaluated Nuclear Data File (NNDC/BNL)",
+      "description": "US Evaluated Nuclear Data File (NNDC/BNL) — charged-particle sublibraries (p/d/t/h/a). Neutron was retired (#263): rather than reconstruct the resonance region ourselves, neutron ships as endfb-8.0 (authoritative NJOY-processed pointwise data). Query neutron via the xs view or the endfb_8_0 library.",
       "source_url": "https://www.nndc.bnl.gov/endf-b8.1/",
       "projectiles": [
-        "n",
         "p",
         "d",
         "t",
@@ -37,6 +36,19 @@
       "data_type": "cross_sections",
       "version": "VIII.1",
       "path": "endfb-8.1/xs/"
+    },
+    "endfb-8.0": {
+      "name": "ENDF/B-VIII.0 neutron (NJOY-processed)",
+      "description": "Authoritative NJOY-processed pointwise neutron cross sections at 294 K, from the OpenMC ENDF/B-VIII.0 HDF5 library (the exact data OpenMC/MCNP/Serpent transport on). Carries the resolved/unresolved resonance regions (Doppler-broadened) and the thermal point — which raw MF=3 omits and which we no longer reconstruct ourselves (#263). Transmutation channels only (capture + threshold reactions; elastic/inelastic/fission excluded). One per-isotope shard (n_<Sym><A>.parquet), thinned to ~1% log-log; query σ(E) with log-log interpolation. Also mirrored per-isotope on Hugging Face (gerchowl/nucl-parquet-data) for lazy browser fetches.",
+      "source_url": "https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC",
+      "projectiles": [
+        "n"
+      ],
+      "data_type": "cross_sections",
+      "version": "VIII.0",
+      "temperature_K": 294,
+      "builder": "scripts/build_neutron_njoy.py",
+      "path": "endfb-8.0/xs/"
     },
     "jeff-4.0": {
       "name": "JEFF-4.0",

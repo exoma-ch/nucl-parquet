@@ -147,7 +147,8 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 |---------|------------|--------|
 | [BROND-3.1](https://vant.ippe.ru/) | n | IPPE |
 | [CENDL-3.2](http://www.nuclear.csdb.cn/) | n | CIAE |
-| [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-b8.1/) | n, p, d, t, ³He, α | NNDC/BNL |
+| [ENDF/B-VIII.0 neutron (NJOY-processed)](https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC) | n |  |
+| [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-b8.1/) | p, d, t, ³He, α |  |
 | [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS |
 | [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n | IAEA |
 | [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | ar40, c12, ca40, fe56, he4, ne20, ni58, o16, p, pb208, si28, xe132 |  |
