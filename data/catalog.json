@@ -1,14 +1,14 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.6.1",
-  "data_sha256": "e72225a9911efeb7585d600e24cd580fcdc0c6c240b46722f223ac4e39956bcf",
+  "data_version": "2026.7.0",
+  "data_sha256": "cad802b1e9fad7159ceaa8d50225e18088c7273c1c238db1d5fe08bb46e260f2",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
     "tendl-2023-iso": {
       "name": "TENDL-2023 + Aug 2024 isomeric correction",
-      "description": "TENDL-2023 neutron sublibrary with August 2024 patch restoring isomeric production in MF-10 (ground/metastable state splitting for ~15k products). No neutron sublibrary. Use alongside tendl-2025 for isomeric ratios not available in the newer release.",
+      "description": "TENDL-2023 charged-particle sublibrary (p/d/t/h/a) with the August 2024 patch restoring isomeric production in MF-10 (ground/metastable state splitting for ~15k products). No neutron sublibrary. Use alongside tendl-2025 for isomeric ratios not available in the newer release.",
       "source_url": "https://tendl.web.psi.ch/tendl_2023/tendl2023.html",
       "projectiles": [
         "p",
