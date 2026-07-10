@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.17.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.16.0...nucl-parquet-py-v0.17.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **neutron:** NJOY-processed ENDF/B-VIII.0 as a normal xs library; retire in-repo reconstruction ([#265](https://github.com/exoma-ch/nucl-parquet/issues/265))
+
+### Features
+
+* **neutron:** LRF=7 (R-Matrix Limited) thermal reconstruction ([#259](https://github.com/exoma-ch/nucl-parquet/issues/259)) ([428568b](https://github.com/exoma-ch/nucl-parquet/commit/428568b6f7767ca72f5fdba0483fbfa7c67ff635))
+* **neutron:** NJOY-processed ENDF/B-VIII.0 as a normal xs library; retire in-repo reconstruction ([#265](https://github.com/exoma-ch/nucl-parquet/issues/265)) ([75cd4c6](https://github.com/exoma-ch/nucl-parquet/commit/75cd4c62f13476663736e0bcd96e1d3defa3ad3a))
+* **neutron:** Reconstruct thermal (n,γ) resonance region for endfb-8.1 ([#257](https://github.com/exoma-ch/nucl-parquet/issues/257)) ([8086bd8](https://github.com/exoma-ch/nucl-parquet/commit/8086bd83a82e1ecf574c0f3e8e5e7c43423da01f))
+
+
+### Bug Fixes
+
+* **neutron:** Exclude elastic from the (n,γ) capture channel ([#260](https://github.com/exoma-ch/nucl-parquet/issues/260)) ([dcd9a55](https://github.com/exoma-ch/nucl-parquet/commit/dcd9a557843cc3cbfb797abafeca3bbf748d153d))
+
 ## [0.16.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.15.0...nucl-parquet-py-v0.16.0) (2026-06-23)
 
 
