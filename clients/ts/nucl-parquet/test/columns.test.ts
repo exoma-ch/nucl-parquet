@@ -36,7 +36,9 @@ describe("stoppingColumns", () => {
 
 describe("xsColumns", () => {
   it("returns typed arrays for a neutron XS file", async () => {
-    const buf = await readFile(join(DATA_DIR, "endfb-8.1/xs/n_Cu.parquet"));
+    // endfb-8.1 neutron was retired for the NJOY-processed endfb-8.0 (#263);
+    // any evaluated library's neutron file carries the same 6-column xs schema.
+    const buf = await readFile(join(DATA_DIR, "jendl-5/xs/n_Cu.parquet"));
     const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     const cols = await xsColumns(ab);
 
