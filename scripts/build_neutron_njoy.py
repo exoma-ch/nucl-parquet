@@ -42,12 +42,14 @@ per-element schema which carries no target-state column.
 
 Output
 ------
-One per-isotope shard: ``data/endfb-8.0/xs/n_<Sym><A>.parquet`` (e.g. ``n_Nd143.parquet``).
-Schema matches the other evaluated xs libraries exactly — ``target_A, residual_Z,
-residual_A, state, energy_MeV, xs_mb`` (no target_Z; target element is implied by
-residual_Z + channel) — so the shards auto-union into the loader's ``xs`` view with
-no client code changes. Bundled in-repo like every other dataset; also mirrored
-per-isotope on Hugging Face (gerchowl/nucl-parquet-data) for lazy browser fetches.
+One per-element file: ``data/endfb-8.0/xs/n_<Sym>.parquet`` (e.g. ``n_Cu.parquet``),
+holding every isotope of that element — identical layout, naming, and 6-column schema
+(``target_A, residual_Z, residual_A, state, energy_MeV, xs_mb``) to the other 15
+evaluated xs libraries. Per-element (not per-isotope) so the file matches the
+``<proj>_<Symbol>`` convention every client uses to derive the target Z (rust/go parse
+it from the filename); this makes it work across py/rs/ts/go with zero client code.
+The per-isotope shards are also mirrored on Hugging Face (gerchowl/nucl-parquet-data)
+for lazy browser fetches.
 
 Usage
 -----
@@ -299,7 +301,11 @@ def extract_nuclide(h5_bytes: bytes, stem: str, z: int, a: int, tol: float) -> l
     return rows
 
 
-def write_shard(out_dir: Path, sym: str, a: int, rows: list[dict]) -> Path:
+def write_element(out_dir: Path, sym: str, rows: list[dict]) -> Path:
+    """Write one per-element file ``n_<Sym>.parquet`` holding every isotope of that
+    element. Per-element (not per-isotope) so the file matches the ``<proj>_<Symbol>``
+    convention all clients use to derive the target Z (rust/go parse it from the
+    filename), identical to the other 15 evaluated xs libraries."""
     import polars as pl
 
     df = pl.DataFrame(
@@ -312,8 +318,8 @@ def write_shard(out_dir: Path, sym: str, a: int, rows: list[dict]) -> Path:
             "energy_MeV": pl.Float64,
             "xs_mb": pl.Float64,
         },
-    ).sort("residual_Z", "residual_A", "energy_MeV")
-    out_path = out_dir / f"n_{sym}{a}.parquet"
+    ).sort("target_A", "residual_Z", "residual_A", "energy_MeV")
+    out_path = out_dir / f"n_{sym}.parquet"
     df.write_parquet(out_path, compression=COMPRESSION)
     return out_path
 
@@ -344,7 +350,7 @@ def fetch_h5(session, stem: str) -> bytes:
     return content
 
 
-def build(out_dir: Path, nuclides: list[str] | None, tol: float, force: bool = False) -> None:
+def build(out_dir: Path, nuclides: list[str] | None, tol: float) -> None:
     import requests
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -358,7 +364,8 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, force: bool = F
         stems = list_nuclides(session)
         logger.info("Found %d nuclide files", len(stems))
 
-    written = skipped = resumed = 0
+    by_element: dict[str, list[dict]] = {}
+    skipped = 0
     for stem in stems:
         parsed = parse_nuclide_stem(stem)
         if parsed is None:
@@ -366,9 +373,6 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, force: bool = F
             skipped += 1
             continue
         z, a, sym = parsed
-        if not force and (out_dir / f"n_{sym}{a}.parquet").exists():  # resume
-            resumed += 1
-            continue
         # Gentle inter-request pacing keeps us under raw.githubusercontent's burst limit.
         time.sleep(0.2)
         try:
@@ -382,19 +386,17 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, force: bool = F
             logger.warning("%s: no transmutation rows", stem)
             skipped += 1
             continue
-        path = write_shard(out_dir, sym, a, rows)
+        by_element.setdefault(sym, []).extend(rows)
+        logger.info("%-8s: %d rows", stem, len(rows))
+
+    written = 0
+    for sym, rows in sorted(by_element.items()):
+        path = write_element(out_dir, sym, rows)
         written += 1
-        logger.info(
-            "%-8s -> %s (%d rows, %.0f KB)",
-            stem,
-            path.name,
-            len(rows),
-            path.stat().st_size / 1024,
-        )
+        logger.info("-> %s (%d rows, %.0f KB)", path.name, len(rows), path.stat().st_size / 1024)
     logger.info(
-        "Done: %d shards written, %d resumed (already present), %d skipped, out=%s",
+        "Done: %d per-element files written, %d nuclides skipped, out=%s",
         written,
-        resumed,
         skipped,
         out_dir,
     )
@@ -415,12 +417,11 @@ def main() -> None:
         help="Comma-separated stems to build (e.g. Nd143,In115). Omit for the full inventory.",
     )
     ap.add_argument("--tol", type=float, default=0.01, help="Log-log thinning tolerance (default 1%%)")
-    ap.add_argument("--force", action="store_true", help="Rebuild shards even if already present (default: resume)")
     args = ap.parse_args()
 
     _ensure_native_libs()
     nuclides = [s.strip() for s in args.nuclides.split(",")] if args.nuclides else None
-    build(args.out, nuclides, args.tol, force=args.force)
+    build(args.out, nuclides, args.tol)
 
 
 if __name__ == "__main__":
