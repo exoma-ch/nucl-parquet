@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.7.1",
-  "data_sha256": "199d7d150216878edc6c48918959ab2c5467824b6aeb9389adebef511cd8a76a",
+  "data_version": "2026.7.2",
+  "data_sha256": "d317a2db67d7a0996e082adf34afe15666e57daa7feb95e0f72f44346f931e0a",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -39,7 +39,7 @@
     },
     "endfb-8.0": {
       "name": "ENDF/B-VIII.0 neutron (NJOY-processed)",
-      "description": "Authoritative NJOY-processed pointwise neutron cross sections at 294 K, from the OpenMC ENDF/B-VIII.0 HDF5 library (the exact data OpenMC/MCNP/Serpent transport on). Carries the resolved/unresolved resonance regions (Doppler-broadened) and the thermal point — which raw MF=3 omits and which we no longer reconstruct ourselves (#263). Transmutation channels only (capture + threshold reactions; elastic/inelastic/fission excluded). Per-element files (n_<Sym>.parquet, all isotopes of the element) with the same 6-column schema as every other xs library, so it works across py/rs/ts/go with no client code. Thinned to ~1% log-log; query σ(E) with log-log interpolation. The per-isotope shards are also mirrored on Hugging Face (gerchowl/nucl-parquet-data) for lazy browser fetches.",
+      "description": "Authoritative NJOY-processed pointwise neutron cross sections at 294 K, from the OpenMC ENDF/B-VIII.0 HDF5 library (the exact data OpenMC/MCNP/Serpent transport on). Carries the resolved/unresolved resonance regions (Doppler-broadened) and the thermal point — which raw MF=3 omits and which we no longer reconstruct ourselves (#263). Transmutation channels only (capture + threshold reactions; elastic/inelastic/fission excluded). Per-element files (n_<Sym>.parquet, all isotopes of the element) with the same 6-column schema as every other xs library, so it works across py/rs/ts/go with no client code. Thinned to ~1% under BOTH lin-lin and log-log, so σ(E) is accurate whether you interpolate linearly (the np.interp default) or log-log (ENDF INT=5) — including the sparse 1/v thermal region (#271). The per-isotope shards are also mirrored on Hugging Face (gerchowl/nucl-parquet-data) for lazy browser fetches.",
       "source_url": "https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC",
       "projectiles": [
         "n"

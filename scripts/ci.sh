@@ -48,7 +48,13 @@ endgroup
 # ---------------------------------------------------------------------------
 group "python tests"
 uv sync --dev
-uv run pytest tests/test_loader.py -v
+# test_loader: loader/auto-wiring. test_data_release: gates data_version + data_sha256
+# against the on-disk parquets (the "PR that changes data IS the data-release PR"
+# guard) — must run in CI so a data re-release can't ship an inconsistent hash.
+# `-m "not data and not network"` also runs the pure builder/thinning unit tests
+# while skipping the ones that need the full data tree or network.
+uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
+  -m "not data and not network" -v
 ok "python tests passed"
 endgroup
 

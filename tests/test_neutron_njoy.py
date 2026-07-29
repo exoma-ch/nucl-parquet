@@ -30,24 +30,40 @@ def _builder():
 # ---------------------------------------------------------------------------
 
 
-def test_thin_loglog_respects_tolerance():
+def test_thin_pointwise_respects_tolerance_both_laws():
+    """The thinned grid must reconstruct within tol under BOTH lin-lin and log-log."""
     m = _builder()
     e = np.geomspace(1e-5, 2e7, 4000)
     xs = 100.0 / np.sqrt(e)
     for c, amp in ((10.0, 400.0), (1e3, 250.0)):
         xs = xs + amp * np.exp(-((np.log(e) - np.log(c)) ** 2) / 0.02)
-    te, ts = m.thin_loglog(e, xs, tol=0.01)
+    te, ts = m.thin_pointwise(e, xs, tol=0.01)
     assert 2 < len(te) < len(e)
-    approx = np.exp(np.interp(np.log(e), np.log(te), np.log(ts)))
-    assert (np.abs(approx - xs) / xs).max() <= 0.0101
+    approx_log = np.exp(np.interp(np.log(e), np.log(te), np.log(ts)))
+    approx_lin = np.interp(e, te, ts)
+    assert (np.abs(approx_log - xs) / xs).max() <= 0.0101
+    assert (np.abs(approx_lin - xs) / xs).max() <= 0.0101
 
 
-def test_thin_loglog_preserves_resonance_peak():
+def test_thin_pointwise_preserves_1_over_v_for_linear_readers():
+    """A pure 1/v curve is a log-log straight line; a log-log-only thin would drop
+    every interior point and wreck linear interpolation (the #271 footgun). The
+    dual-metric thin must keep enough points for lin-lin to stay within tol."""
+    m = _builder()
+    e = np.geomspace(1e-5, 1.0, 2000)  # eV: thermal 1/v region
+    xs = 1000.0 / np.sqrt(e)
+    te, ts = m.thin_pointwise(e, xs, tol=0.01)
+    assert len(te) > 20, f"1/v thermal region collapsed to {len(te)} points"
+    approx_lin = np.interp(e, te, ts)
+    assert (np.abs(approx_lin - xs) / xs).max() <= 0.0101
+
+
+def test_thin_pointwise_preserves_resonance_peak():
     m = _builder()
     e = np.geomspace(1.0, 100.0, 501)
     xs = np.ones_like(e)
     xs[250] = 1000.0
-    te, ts = m.thin_loglog(e, xs, tol=0.01)
+    te, ts = m.thin_pointwise(e, xs, tol=0.01)
     assert e[250] in te
 
 
@@ -115,6 +131,79 @@ def test_capture_thermal_values(target_a, res_z, res_a, lo, hi, lit):
     n, sth = _thermal(db, target_a, res_z, res_a)
     assert n > 100, f"expected a dense resonance grid, got {n} points"
     assert lo < sth < hi, f"σ_th={sth:.3f} b outside [{lo}, {hi}] (lit ~{lit})"
+
+
+@pytest.mark.data
+@pytest.mark.parametrize(
+    "target_a,res_z,res_a",
+    [
+        (59, 27, 60),  # Co-59(n,γ) — canonical 1/v thermal, the #271 evidence
+        (63, 29, 64),  # Cu-63(n,γ)
+        (56, 26, 57),  # Fe-56(n,γ)
+    ],
+)
+def test_thermal_linear_interp_matches_loglog(target_a, res_z, res_a):
+    """Regression guard for #271: a *linear* reader of the shipped thermal grid
+    must agree with log-log to a few %. A log-log-only thin left the 1/v thermal
+    region so sparse that np.interp read ~36× high; the dual-metric thin fixes it."""
+    import nucl_parquet
+
+    db = nucl_parquet.connect()
+    d = db.sql(
+        "SELECT energy_MeV, xs_mb FROM xs "
+        f"WHERE library='endfb-8.0' AND target_A={target_a} AND residual_Z={res_z} AND residual_A={res_a} "
+        "ORDER BY energy_MeV"
+    ).fetchnumpy()
+    e, s = d["energy_MeV"], d["xs_mb"] / 1000.0
+    e_th = 2.53e-8  # 0.0253 eV, Maxwellian peak — squarely in the old bare gap
+    lin = float(np.interp(e_th, e, s))
+    log = float(np.exp(np.interp(np.log(e_th), np.log(e), np.log(s))))
+    assert abs(lin / log - 1.0) < 0.03, (
+        f"lin={lin:.3f} vs loglog={log:.3f} b — thermal grid too sparse for linear readers"
+    )
+
+
+@pytest.mark.data
+def test_no_duplicate_energy_points_per_channel():
+    """Within one element file, every (target_A, residual) channel must be a single-
+    valued curve. Discrete-level partials sharing a residual (e.g. MT800/MT801 →
+    Li-7) must be *summed*, not concatenated — concatenation left duplicate
+    energies no reader can interpolate (B-10(n,α) read ~12000 b instead of 3844 b).
+
+    Grouping includes the source file: the shared 6-col schema drops target_Z, so
+    isobars in different element files (Ar-40 vs Ca-40) legitimately share
+    (target_A, residual_Z, residual_A) in the unified view — that is not a dup."""
+    import duckdb
+
+    xs_dir = ROOT / "data" / "endfb-8.0" / "xs"
+    if not xs_dir.exists():
+        pytest.skip("endfb-8.0 data not present")
+    con = duckdb.connect()
+    dups = con.execute(
+        "SELECT COUNT(*) FROM ("
+        "  SELECT filename, target_A, residual_Z, residual_A, energy_MeV, COUNT(*) c "
+        "  FROM read_parquet(?, filename=true) "
+        "  GROUP BY 1,2,3,4,5 HAVING COUNT(*) > 1)",
+        [str(xs_dir / "n_*.parquet")],
+    ).fetchone()[0]
+    assert dups == 0, f"{dups} duplicate-energy points within a channel — partials concatenated instead of summed"
+
+
+@pytest.mark.data
+@pytest.mark.parametrize(
+    "sym,target_a,res_z,res_a,lo,hi,lit",
+    [
+        ("B", 10, 3, 7, 3700.0, 4000.0, 3840.0),  # B-10(n,α)→Li-7, MT800+MT801 summed
+        ("Li", 6, 2, 4, 900.0, 980.0, 940.0),  # Li-6(n,t)→He-4
+    ],
+)
+def test_charged_particle_out_thermal_summed(sym, target_a, res_z, res_a, lo, hi, lit):
+    """(n,α)/(n,t) residual production sums its level partials to the right thermal σ."""
+    import nucl_parquet
+
+    db = nucl_parquet.connect()
+    n, sth = _thermal(db, target_a, res_z, res_a)
+    assert lo < sth < hi, f"{sym}-{target_a} σ_th={sth:.1f} b outside [{lo}, {hi}] (lit ~{lit})"
 
 
 @pytest.mark.data
