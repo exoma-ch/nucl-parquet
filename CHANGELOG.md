@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.17.1...nucl-parquet-py-v0.17.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **neutron:** Lin-lin-correct thermal grid + sum residual partials ([#271](https://github.com/exoma-ch/nucl-parquet/issues/271)) ([#272](https://github.com/exoma-ch/nucl-parquet/issues/272)) ([f4b241d](https://github.com/exoma-ch/nucl-parquet/commit/f4b241d4af7bc2c084845e570da0b7fb7758f507))
+
 ## [0.17.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.17.0...nucl-parquet-py-v0.17.1) (2026-07-14)
 
 
