@@ -10,8 +10,8 @@ Usage:
     # Cross-section query:
     db.sql("SELECT * FROM tendl_2023_iso WHERE target_A=63 AND residual_Z=30")
 
-    # Compare all libraries:
-    db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_A=63 AND residual_Z=30")
+    # Compare all libraries (filter target_Z to disambiguate isobaric targets):
+    db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_Z=29 AND target_A=63 AND residual_Z=30")
 
     # Decay radiation:
     db.sql("SELECT * FROM radiation WHERE Z=27 AND A=60 AND rad_type='gamma'")
@@ -178,6 +178,15 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- Cross-section libraries ---
     lib_views: list[str] = []
 
+    # Element symbol → Z map as a temp table, so the cross-section views can expose
+    # a first-class `target_Z` derived from each file's element symbol. The shared
+    # 6-col xs schema has no target_Z (target is implied by the <proj>_<Symbol>
+    # filename), so without this the unified `xs` view silently interleaves isobaric
+    # targets that reach the same *absolute* residual via different reactions —
+    # e.g. Nd/Pm/Sm-145 all → Nd-143 at 14–20 MeV. target_Z makes them separable. (#273)
+    db.execute("CREATE TEMP TABLE _element_z(symbol_lc VARCHAR, z INTEGER)")
+    db.executemany("INSERT INTO _element_z VALUES (?, ?)", list(_SYMBOL_TO_Z.items()))
+
     for lib_key, lib_info in catalog.get("libraries", {}).items():
         # Some catalog entries (e.g. strata-data-nuclear) are build-time
         # provenance records, not queryable cross-section directories — they
@@ -194,13 +203,23 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         glob_path = str(lib_dir / "*.parquet")
 
         data_type = lib_info.get("data_type", "cross_sections")
-        db.execute(f"""
-            CREATE VIEW {view_name} AS
-            SELECT *, '{lib_key}' AS library
-            FROM read_parquet('{glob_path}', filename=true)
-        """)
         if data_type == "cross_sections":
+            # Expose target_Z, derived from the <proj>_<Symbol>.parquet filename, so
+            # isobaric targets are separable in the unified `xs` view (#273).
+            db.execute(f"""
+                CREATE VIEW {view_name} AS
+                SELECT r.*, '{lib_key}' AS library, e.z AS target_Z
+                FROM read_parquet('{glob_path}', filename=true) r
+                LEFT JOIN _element_z e
+                  ON e.symbol_lc = lower(regexp_extract(r.filename, '_([A-Za-z]+)[.]parquet$', 1))
+            """)
             lib_views.append(view_name)
+        else:
+            db.execute(f"""
+                CREATE VIEW {view_name} AS
+                SELECT *, '{lib_key}' AS library
+                FROM read_parquet('{glob_path}', filename=true)
+            """)
 
     # Unified xs view: UNION ALL of all evaluated libraries
     if lib_views:
