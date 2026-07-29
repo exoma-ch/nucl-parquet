@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.17.0...nucl-parquet-py-v0.17.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **neutron:** Store endfb-8.0 per-element so rust/go clients can read it ([#268](https://github.com/exoma-ch/nucl-parquet/issues/268)) ([afa8afa](https://github.com/exoma-ch/nucl-parquet/commit/afa8afaf0435e7e222e3a6e4b7e7934c7e715415))
+
 ## [0.17.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.16.0...nucl-parquet-py-v0.17.0) (2026-07-10)
 
 
