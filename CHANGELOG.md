@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.17.2...nucl-parquet-py-v0.17.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* **loader:** Expose target_Z in unified xs view to separate isobars ([#273](https://github.com/exoma-ch/nucl-parquet/issues/273)) ([#277](https://github.com/exoma-ch/nucl-parquet/issues/277)) ([0b18bfe](https://github.com/exoma-ch/nucl-parquet/commit/0b18bfeea0df99b9ba7b1ec216fb5fc9ab2c8c3d))
+
 ## [0.17.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.17.1...nucl-parquet-py-v0.17.2) (2026-07-29)
 
 
