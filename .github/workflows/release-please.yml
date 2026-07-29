@@ -18,12 +18,18 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # Mint a short-lived installation token from the "nucl-parquet-release-bot"
+      # GitHub App (app_id in RP_APP_ID, PEM in RP_APP_PRIVATE_KEY). An App token
+      # (unlike GITHUB_TOKEN) makes the tag push trigger release.yml, and (unlike
+      # a PAT) never expires — the App is the durable credential. Replaces the
+      # expired RELEASE_PLEASE_TOKEN PAT (#274).
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.RP_APP_ID }}
+          private-key: ${{ secrets.RP_APP_PRIVATE_KEY }}
       - uses: googleapis/release-please-action@v4
         with:
-          # PAT (or GitHub App token) is required so the tag push triggers
-          # release.yml. GITHUB_TOKEN-pushed tags are silently ignored by
-          # workflow triggers (GitHub security feature) — see #35 / #57 for
-          # the history. Falls back to GITHUB_TOKEN if the secret is unset.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
