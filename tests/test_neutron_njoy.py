@@ -207,6 +207,40 @@ def test_charged_particle_out_thermal_summed(sym, target_a, res_z, res_a, lo, hi
 
 
 @pytest.mark.data
+def test_xs_view_target_Z_disambiguates_isobars():
+    """The unified `xs` view must carry a `target_Z` (derived from the element file)
+    so isobaric targets reaching the same absolute residual via different reactions
+    are separable — without it the target_Z-less view interleaves them (#273)."""
+    import nucl_parquet
+
+    db = nucl_parquet.connect()
+    # Nd-145, Pm-145, Sm-145 all reach Nd-143 (residual_Z=60) at 14–20 MeV via
+    # different multi-particle channels — they collide on (target_A, residual).
+    zs = [
+        r[0]
+        for r in db.sql(
+            "SELECT DISTINCT target_Z FROM xs "
+            "WHERE library='endfb-8.0' AND target_A=145 AND residual_Z=60 AND residual_A=143 "
+            "ORDER BY target_Z"
+        ).fetchall()
+    ]
+    assert zs == [60, 61, 62], f"expected Nd/Pm/Sm target_Z, got {zs}"
+    # With target_Z pinned the channel is single-valued again (no interleaving).
+    dup = db.sql(
+        "SELECT COUNT(*) FROM ("
+        "  SELECT energy_MeV, COUNT(*) c FROM xs "
+        "  WHERE library='endfb-8.0' AND target_Z=60 AND target_A=145 AND residual_Z=60 AND residual_A=143 "
+        "  GROUP BY energy_MeV HAVING COUNT(*) > 1)"
+    ).fetchone()[0]
+    assert dup == 0, f"{dup} interleaved points even with target_Z pinned"
+    # target_Z is correct for a plain (n,γ) channel too (Co-59 → Z=27).
+    co = db.sql(
+        "SELECT DISTINCT target_Z FROM xs WHERE library='endfb-8.0' AND target_A=59 AND residual_Z=27 AND residual_A=60"
+    ).fetchall()
+    assert [r[0] for r in co] == [27]
+
+
+@pytest.mark.data
 def test_resonance_region_present():
     """The processed data must reach thermal (raw MF=3 started ~0.2 MeV)."""
     import nucl_parquet
