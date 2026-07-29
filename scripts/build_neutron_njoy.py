@@ -203,24 +203,35 @@ def parse_nuclide_stem(stem: str) -> tuple[int, int, str] | None:
     return z, a, sym
 
 
-def thin_loglog(energy, xs, tol: float = 0.01):
-    """Thin a pointwise σ(E) curve, keeping ≤ ``tol`` relative log-log error.
+def thin_pointwise(energy, xs, tol: float = 0.01):
+    """Thin a pointwise σ(E) curve, keeping ≤ ``tol`` relative error under *both*
+    lin-lin and log-log interpolation.
 
-    Top-down Ramer–Douglas–Peucker in log-log space: for each segment, find the
-    interior point with the largest relative error between the *actual* σ and the
-    log-log interpolation across the segment endpoints; if it exceeds ``tol``,
-    keep that point and recurse on the two halves. Guarantees every dropped point
-    is reproduced to within ``tol`` while keeping resonance peaks (they are the
-    max-error points, so they survive). Vectorized per segment → O(n log n)
-    typical, unlike a greedy anchor rescan. Requires ``xs > 0`` (caller filters).
+    Top-down Ramer–Douglas–Peucker: for each segment, score every interior point
+    by the *larger* of its two reconstruction errors — linear-in-(E, σ) and
+    log-log — and split at the worst point if it exceeds ``tol``. Recursing until
+    both errors are within ``tol`` everywhere means the shipped grid reproduces
+    the curve to within ``tol`` no matter which interpolation law the consumer
+    picks: the natural ``np.interp`` linear default *and* ENDF INT=5 log-log both
+    land within tolerance.
+
+    Guarding lin-lin (not just log-log, as an earlier version did) is what keeps
+    the sparse 1/v thermal region correct for linear consumers: a pure-log-log
+    thin drops every interior thermal point (1/v is a straight log-log line), so a
+    linear reader over-predicts the flux-averaged thermal σ by ~36× (see #271).
+    A lin-lin-accurate 1/v grid needs ~9 points/decade, which this restores.
+    Resonance peaks survive either way (they are the max-error points). Vectorized
+    per segment → O(n log n) typical. Requires ``xs > 0`` (caller filters).
     """
     import numpy as np
 
     n = len(energy)
     if n <= 2:
         return energy, xs
-    le = np.log(energy)
-    ls = np.log(xs)
+    e = np.asarray(energy, dtype=float)
+    s = np.asarray(xs, dtype=float)
+    le = np.log(e)
+    ls = np.log(s)
     keep = np.zeros(n, dtype=bool)
     keep[0] = keep[-1] = True
     stack = [(0, n - 1)]
@@ -232,9 +243,15 @@ def thin_loglog(energy, xs, tol: float = 0.01):
             keep[lo + 1 : hi] = True
             continue
         j = np.arange(lo + 1, hi)
-        t = (le[j] - le[lo]) / (le[hi] - le[lo])
-        interp_ls = ls[lo] + t * (ls[hi] - ls[lo])
-        rel = np.abs(np.expm1(interp_ls - ls[j]))  # |σ_interp/σ - 1|
+        # log-log reconstruction error at each interior point
+        t_log = (le[j] - le[lo]) / (le[hi] - le[lo])
+        interp_ls = ls[lo] + t_log * (ls[hi] - ls[lo])
+        rel_log = np.abs(np.expm1(interp_ls - ls[j]))  # |σ_loglog/σ - 1|
+        # lin-lin reconstruction error (linear in E, linear in σ)
+        t_lin = (e[j] - e[lo]) / (e[hi] - e[lo])
+        interp_s = s[lo] + t_lin * (s[hi] - s[lo])
+        rel_lin = np.abs(interp_s / s[j] - 1.0)  # |σ_linlin/σ - 1|
+        rel = np.maximum(rel_log, rel_lin)
         k = int(np.argmax(rel))
         if rel[k] > tol:
             split = lo + 1 + k
@@ -242,11 +259,23 @@ def thin_loglog(energy, xs, tol: float = 0.01):
             stack.append((lo, split))
             stack.append((split, hi))
     idx = np.where(keep)[0]
-    return energy[idx], xs[idx]
+    return e[idx], s[idx]
 
 
 def extract_nuclide(h5_bytes: bytes, stem: str, z: int, a: int, tol: float) -> list[dict]:
-    """Extract 294 K transmutation channels from one nuclide HDF5, thinned."""
+    """Extract 294 K transmutation channels from one nuclide HDF5, thinned.
+
+    A residual nuclide is produced by *every* channel that leaves it behind, and
+    several MTs can share one residual: the discrete-level partials of a reaction
+    (e.g. MT800 (n,α₀) and MT801 (n,α₁) both leave Li-7), and different reactions
+    that reach the same nucleus (e.g. (n,np)/MT28 and (n,d)/MT104 both leave
+    Z-1,A-1). We keep the *non-redundant* (fundamental) channels — skipping the
+    redundant summary MTs that would double-count — and **sum** every fundamental
+    contribution to a given residual on the shared union energy grid before
+    thinning. Summing (not concatenating) is essential: appending the partials
+    produced interleaved duplicate-energy points that no interpolation can read
+    (e.g. B-10(n,α) read ~12000 b / ~240 b at thermal vs the true 3844 b).
+    """
     import h5py
     import numpy as np
 
@@ -259,11 +288,14 @@ def extract_nuclide(h5_bytes: bytes, stem: str, z: int, a: int, tol: float) -> l
             logger.warning("%s: no %s energy grid", stem, TEMPERATURE)
             return rows
         egrid = nuc["energy"][TEMPERATURE][()]  # eV
+        # Accumulate every fundamental channel's σ(E) onto the full union grid,
+        # summed per residual nuclide.
+        by_residual: dict[tuple[int, int], np.ndarray] = {}
         for key, rx in nuc["reactions"].items():
             mt = int(rx.attrs.get("mt", key.split("_")[1]))
             if mt in _SKIP_MT or mt == 4 or mt in _INELASTIC_RANGE:
                 continue
-            if int(rx.attrs.get("redundant", 0)) != 0:
+            if int(rx.attrs.get("redundant", 0)) != 0:  # summary MT — its partials carry the data
                 continue
             residual = mt_to_residual(mt, z, a, 0, 1)
             if residual is None:
@@ -274,15 +306,20 @@ def extract_nuclide(h5_bytes: bytes, stem: str, z: int, a: int, tol: float) -> l
             if TEMPERATURE not in rx:
                 continue
             xsd = rx[TEMPERATURE]["xs"]
-            xs_b = xsd[()]
+            xs_b = np.asarray(xsd[()], dtype=float)
+            xs_b[~np.isfinite(xs_b) | (xs_b >= 1e30) | (xs_b < 0)] = 0.0  # drop sentinels
             thr = int(xsd.attrs.get("threshold_idx", 0))
-            e_ev = egrid[thr : thr + len(xs_b)]
-            # Drop non-positive / sentinel points before thinning.
-            good = (xs_b > 0) & (xs_b < 1e30) & np.isfinite(xs_b)
+            acc = by_residual.get((res_z, res_a))
+            if acc is None:
+                acc = np.zeros(len(egrid))
+                by_residual[(res_z, res_a)] = acc
+            acc[thr : thr + len(xs_b)] += xs_b
+        for (res_z, res_a), total in sorted(by_residual.items()):
+            good = total > 0  # keep the reaction's support (contiguous above threshold)
             if good.sum() < 2:
                 continue
-            e_ev, xs_b = e_ev[good], xs_b[good]
-            e_ev, xs_b = thin_loglog(e_ev, xs_b, tol)
+            e_ev, xs_b = egrid[good], total[good]
+            e_ev, xs_b = thin_pointwise(e_ev, xs_b, tol)
             for ee, ss in zip(e_ev, xs_b):
                 rows.append(
                     {
@@ -342,15 +379,27 @@ def _get_with_retry(session, url: str, timeout: int, max_retries: int = 6) -> by
     return resp.content
 
 
-def fetch_h5(session, stem: str) -> bytes:
-    """Fetch one nuclide HDF5, transparently following Git-LFS to the media endpoint."""
+def fetch_h5(session, stem: str, cache_dir: Path | None = None) -> bytes:
+    """Fetch one nuclide HDF5, transparently following Git-LFS to the media endpoint.
+
+    With ``cache_dir`` the raw bytes are cached on disk, so a re-thin/rebuild reuses
+    the ~1 GB of upstream HDF5 instead of re-hammering raw.githubusercontent (which
+    throttles bursts with 429). The cache key is the nuclide stem — VIII.0 is a
+    frozen release, so cached bytes never go stale."""
+    if cache_dir is not None:
+        cached = cache_dir / f"{stem}.h5"
+        if cached.exists() and cached.stat().st_size > 0:
+            return cached.read_bytes()
     content = _get_with_retry(session, f"{VIII0_RAW}/{stem}.h5", timeout=180)
     if content[: len(_LFS_POINTER)] == _LFS_POINTER:  # LFS pointer -> real content
         content = _get_with_retry(session, f"{VIII0_MEDIA}/{stem}.h5", timeout=600)
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / f"{stem}.h5").write_bytes(content)
     return content
 
 
-def build(out_dir: Path, nuclides: list[str] | None, tol: float) -> None:
+def build(out_dir: Path, nuclides: list[str] | None, tol: float, cache_dir: Path | None = None) -> None:
     import requests
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -373,10 +422,13 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float) -> None:
             skipped += 1
             continue
         z, a, sym = parsed
-        # Gentle inter-request pacing keeps us under raw.githubusercontent's burst limit.
-        time.sleep(0.2)
+        cache_hit = cache_dir is not None and (cache_dir / f"{stem}.h5").exists()
+        # Gentle inter-request pacing keeps us under raw.githubusercontent's burst limit
+        # (skip it on cache hits — no network round-trip).
+        if not cache_hit:
+            time.sleep(0.2)
         try:
-            content = fetch_h5(session, stem)
+            content = fetch_h5(session, stem, cache_dir)
             rows = extract_nuclide(content, stem, z, a, tol)
         except Exception as e:  # noqa: BLE001
             logger.error("%s: %s", stem, e)
@@ -416,12 +468,18 @@ def main() -> None:
         default=None,
         help="Comma-separated stems to build (e.g. Nd143,In115). Omit for the full inventory.",
     )
-    ap.add_argument("--tol", type=float, default=0.01, help="Log-log thinning tolerance (default 1%%)")
+    ap.add_argument("--tol", type=float, default=0.01, help="Thinning tolerance, lin-lin & log-log (default 1%%)")
+    ap.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help="Cache raw HDF5 here to avoid re-fetching on a re-thin/rebuild (VIII.0 is frozen).",
+    )
     args = ap.parse_args()
 
     _ensure_native_libs()
     nuclides = [s.strip() for s in args.nuclides.split(",")] if args.nuclides else None
-    build(args.out, nuclides, args.tol)
+    build(args.out, nuclides, args.tol, args.cache_dir)
 
 
 if __name__ == "__main__":
