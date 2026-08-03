@@ -389,6 +389,112 @@ mod tests {
         assert!(db.num_reactions() > 0, "should have at least one reaction");
     }
 
+    /// Build a canonical-shape xs table in memory, so the null-residual path is
+    /// covered without needing the data tree.
+    ///
+    /// `rows` is `(target_A, residual_Z, residual_A, energy_MeV, xs_mb)` with
+    /// `None` residuals meaning "this channel names no product".
+    fn synthetic_xs(rows: &[(Option<i32>, Option<i32>, Option<i32>, f64, f64)]) -> Vec<u8> {
+        use arrow::array::{Float64Array, Int32Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use parquet::arrow::ArrowWriter;
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("target_A", DataType::Int32, true),
+            Field::new("residual_Z", DataType::Int32, true),
+            Field::new("residual_A", DataType::Int32, true),
+            Field::new("state", DataType::Utf8, true),
+            Field::new("energy_MeV", DataType::Float64, false),
+            Field::new("xs_mb", DataType::Float64, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int32Array::from(
+                    rows.iter().map(|r| r.0).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int32Array::from(
+                    rows.iter().map(|r| r.1).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int32Array::from(
+                    rows.iter().map(|r| r.2).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(vec![""; rows.len()])),
+                Arc::new(Float64Array::from(
+                    rows.iter().map(|r| r.3).collect::<Vec<_>>(),
+                )),
+                Arc::new(Float64Array::from(
+                    rows.iter().map(|r| r.4).collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .unwrap();
+
+        let mut buf: Vec<u8> = Vec::new();
+        let mut w = ArrowWriter::try_new(&mut buf, schema, None).unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+        buf
+    }
+
+    #[test]
+    fn null_residuals_are_skipped_not_keyed_as_zero() {
+        // Two transport-channel rows (null residual) and one real (n,g) channel.
+        // Arrow's `value()` on a null returns the raw buffer slot — 0 — so an
+        // unguarded read collapses every channel row onto the (0, 0) key and
+        // interleaves unrelated curves under it.
+        let bytes = synthetic_xs(&[
+            (Some(63), None, None, 1.0, 500.0),
+            (Some(63), None, None, 2.0, 400.0),
+            (Some(63), Some(30), Some(64), 1.0, 100.0),
+        ]);
+        let db = CrossSectionDb::from_bytes(29, &bytes).unwrap();
+
+        assert_eq!(
+            db.num_reactions(),
+            1,
+            "only the row naming a product is keyed"
+        );
+        assert!(
+            db.cross_section(63, 0, 0, 1.0).is_nan(),
+            "a null residual must not become the (0, 0) key"
+        );
+        assert_eq!(db.cross_section(63, 30, 64, 1.0), 100.0);
+    }
+
+    #[test]
+    fn null_target_a_is_skipped() {
+        // target_A = 0 is the ENDF natural-element convention, so a null read as
+        // 0 would silently masquerade as a natural-abundance row.
+        //
+        // The two rows carry *different* residuals on purpose: what a null slot
+        // decodes to is arbitrary (parquet leaves whatever the encoding happens
+        // to put there, often a neighbouring value), so asserting on the key the
+        // null row would produce is unreliable. Counting keys is not.
+        let bytes = synthetic_xs(&[
+            (None, Some(30), Some(64), 1.0, 100.0),
+            (Some(63), Some(31), Some(65), 1.0, 200.0),
+        ]);
+        let db = CrossSectionDb::from_bytes(29, &bytes).unwrap();
+        assert_eq!(
+            db.num_reactions(),
+            1,
+            "the row with a null target_A must not be keyed at all"
+        );
+        assert_eq!(db.cross_section(63, 31, 65, 1.0), 200.0);
+    }
+
+    #[test]
+    fn all_null_residuals_yields_an_empty_db_not_an_error() {
+        // A pure transport-channel file (every row is (n,tot)/(n,el)/(n,f)) is
+        // valid input to a residual-indexed table — it just has no reactions.
+        let bytes = synthetic_xs(&[(Some(238), None, None, 1.0, 500.0)]);
+        let db = CrossSectionDb::from_bytes(92, &bytes).unwrap();
+        assert_eq!(db.num_reactions(), 0);
+    }
+
     fn data_xs_file() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
