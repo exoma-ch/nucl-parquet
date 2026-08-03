@@ -120,6 +120,119 @@ def mini_data(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture()
+def canonical_data(tmp_path: Path) -> Path:
+    """A library in canonical form: two projectiles, two elements, one file each.
+
+    Deliberately mirrors the real layout, where a library is many
+    `<projectile>_<Element>.parquet` files that the `xs` view globs together.
+    """
+    import json
+
+    (tmp_path / "catalog.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "libraries": {
+                    "lib-a": {
+                        "name": "A",
+                        "projectiles": ["n", "p"],
+                        "data_type": "cross_sections",
+                        "path": "lib-a/xs/",
+                    }
+                },
+                "views": {},
+            }
+        )
+    )
+    xs_dir = tmp_path / "lib-a" / "xs"
+    xs_dir.mkdir(parents=True)
+
+    schema = {
+        "library": pl.Utf8,
+        "kind": pl.Utf8,
+        "projectile": pl.Utf8,
+        "proj_Z": pl.Int32,
+        "proj_A": pl.Int32,
+        "target_Z": pl.Int32,
+        "target_A": pl.Int32,
+        "MT": pl.Int32,
+        "residual_Z": pl.Int32,
+        "residual_A": pl.Int32,
+        "energy_MeV": pl.Float64,
+        "xs_mb": pl.Float64,
+    }
+    # Same target_A (56) on two different elements, and the same nuclide hit by
+    # two different beams — the two ways rows get conflated when identity is
+    # taken from the file path instead of the row.
+    rows = [
+        ("n", 0, 1, 26, 56, 100.0),
+        ("p", 1, 1, 26, 56, 200.0),
+        ("n", 0, 1, 25, 56, 300.0),  # isobar: same A, different Z
+    ]
+    for proj, pz, pa, tz, ta, xs in rows:
+        sym = {26: "Fe", 25: "Mn"}[tz]
+        df = pl.DataFrame(
+            {
+                "library": ["lib-a"],
+                "kind": ["production"],
+                "projectile": [proj],
+                "proj_Z": [pz],
+                "proj_A": [pa],
+                "target_Z": [tz],
+                "target_A": [ta],
+                "MT": [None],
+                "residual_Z": [27],
+                "residual_A": [56],
+                "energy_MeV": [10.0],
+                "xs_mb": [xs],
+            },
+            schema=schema,
+        )
+        path = xs_dir / f"{proj}_{sym}.parquet"
+        if path.exists():
+            df = pl.concat([pl.read_parquet(path), df])
+        df.write_parquet(path)
+    return tmp_path
+
+
+def test_xs_view_does_not_merge_projectiles(canonical_data: Path) -> None:
+    """Filtering the unified view by target must not pull in other beams.
+
+    `projectile` lived only in the filename, so `WHERE target_Z=26 AND target_A=56`
+    returned the neutron *and* proton rows as one result set, with nothing in the
+    payload to tell them apart. Principle 5: rows are self-describing.
+    """
+    db = connect(canonical_data)
+    got = db.sql("SELECT projectile, xs_mb FROM xs WHERE target_Z=26 AND target_A=56 ORDER BY projectile").fetchall()
+    assert got == [("n", 100.0), ("p", 200.0)]
+    only_n = db.sql("SELECT xs_mb FROM xs WHERE target_Z=26 AND target_A=56 AND projectile='n'").fetchall()
+    assert only_n == [(100.0)] or only_n == [(100.0,)]
+
+
+def test_xs_view_separates_isobars(canonical_data: Path) -> None:
+    """target_A alone does not identify a target — Fe-56 and Mn-56 share it (#273)."""
+    db = connect(canonical_data)
+    got = db.sql("SELECT target_Z, xs_mb FROM xs WHERE target_A=56 AND projectile='n' ORDER BY target_Z").fetchall()
+    assert got == [(25, 300.0), (26, 100.0)]
+
+
+def test_xs_view_unions_files_with_differing_column_order(canonical_data: Path) -> None:
+    """A library is globbed from many files; positional union silently misaligns.
+
+    The view must read by name, so a file written with a different column order
+    still lands in the right columns rather than shifting energy into xs.
+    """
+    xs_dir = canonical_data / "lib-a" / "xs"
+    df = pl.read_parquet(xs_dir / "n_Fe.parquet")
+    reordered = df.select(sorted(df.columns))  # alphabetical, not schema order
+    reordered.with_columns(pl.lit(92).cast(pl.Int32).alias("target_Z")).write_parquet(xs_dir / "n_U.parquet")
+
+    db = connect(canonical_data)
+    row = db.sql("SELECT projectile, target_A, energy_MeV, xs_mb FROM xs WHERE target_Z=92").fetchone()
+    assert row == ("n", 56, 10.0, 100.0)
+
+
 def test_connect_creates_views(mini_data: Path) -> None:
     db = connect(mini_data)
     views = {

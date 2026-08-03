@@ -143,9 +143,14 @@ MT_BY_PROCESS = {
     "3N+F": 21,
 }
 
-# Channels that name no residual nuclide — they belong in the transport-channel
-# product (see scripts/build_channels.py), not in residual-production tables.
-TRANSPORT_MT = {1, 2, 3, 4, 18, 102}
+# Fission MTs. Fission splits the nucleus into two fragments, so it has no single
+# residual: a nuclide named after (N,F) is a fission *product yield*, not the
+# residual of the channel. ENDF keeps yields in MF=8/MT=454 rather than MF=3/MT=18
+# for exactly this reason. Tagging them MT=18 makes the obvious consumer query
+# (`WHERE MT = 18`) silently sum sigma_f with a dozen fragment curves — and since
+# the fragments peak around 100 mb where sigma_f is thousands of barns, the
+# contamination is invisible in magnitude while being wrong in every row it adds.
+FISSION_MT = {18, 19, 20, 21, 38}
 
 # X4 numbers may use ENDF-style implicit exponents: "1.23+5" == 1.23e5.
 _IMPLICIT_EXP = re.compile(r"^([+-]?[\d.]+)([+-]\d+)$")
@@ -603,6 +608,12 @@ def _emit_rows(
         #                  the (proj,X) case, MT=5 "anything", and it is what the
         #                  evaluated xs libraries carry.
         is_channel = mt is not None and mt != MT_BY_PROCESS["X"]
+        if is_channel and mt in FISSION_MT and row_rz is not None:
+            # A named fission fragment: a yield, not the fission channel. It is a
+            # cross section for *producing* that nuclide, so it is a production
+            # row and carries no MT. See FISSION_MT.
+            is_channel = False
+            stats["fission_product_as_production"] += 1
         if not is_channel and row_rz is None:
             # Neither an MT nor a residual: the row identifies no reaction at all.
             stats["no_reaction_identity"] += 1

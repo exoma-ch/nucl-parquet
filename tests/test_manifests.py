@@ -31,6 +31,27 @@ def _dirs():
     return library_dirs(DATA_DIR)
 
 
+def test_manifest_paths_are_unique_per_library() -> None:
+    """Two libraries must never resolve to the same manifest.json.
+
+    The first builder walked up from the parquet directory unconditionally, so
+    `exfor/` and `exfor-channels/` both landed on `data/manifest.json`, then both
+    `endfb-8.0/xs/` and `endfb-8.0/channels/` both landed on
+    `data/endfb-8.0/manifest.json`. Each pair silently overwrote the other, and
+    the surviving file described whichever library happened to be written last.
+
+    This runs without the `data` marker: it is a property of the path rule, and
+    the only thing it needs from disk is the catalog.
+    """
+    seen: dict[Path, str] = {}
+    collisions: list[str] = []
+    for key, _pq_dir, manifest in _dirs():
+        if manifest in seen:
+            collisions.append(f"{seen[manifest]} and {key} both write {manifest}")
+        seen[manifest] = key
+    assert not collisions, "manifest path collisions:\n  " + "\n  ".join(collisions)
+
+
 @pytest.mark.data
 def test_every_xs_library_has_a_manifest() -> None:
     missing = [key for key, _, manifest in _dirs() if not manifest.exists()]

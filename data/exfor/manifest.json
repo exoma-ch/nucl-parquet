@@ -1,7 +1,7 @@
 {
   "library": "exfor",
-  "files": 406,
-  "total_rows": 257027,
+  "files": 409,
+  "total_rows": 272658,
   "projectiles": [
     "a",
     "d",
@@ -29,6 +29,7 @@
     "Ce",
     "Cf",
     "Cl",
+    "Cm",
     "Co",
     "Cr",
     "Cs",

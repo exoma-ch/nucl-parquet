@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.8.0",
-  "data_sha256": "00083bf91458e6e6cb28da1dcc6b183584f8af926924d7296afd473dde6c2d11",
+  "data_version": "2026.8.1",
+  "data_sha256": "5c3aa34e98e955159c117bb47a2086bec67a04beaf62bd6579b4be11b46aff2c",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -20,11 +20,11 @@
       "data_type": "cross_sections",
       "version": "2023-iso",
       "path": "tendl-2023-iso/xs/",
-      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release — it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
+      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release \u2014 it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
     },
     "endfb-8.1": {
       "name": "ENDF/B-VIII.1",
-      "description": "US Evaluated Nuclear Data File (NNDC/BNL) — charged-particle sublibraries (p/d/t/h/a). Neutron was retired (#263): rather than reconstruct the resonance region ourselves, neutron ships as endfb-8.0 (authoritative NJOY-processed pointwise data). Query neutron via the xs view or the endfb_8_0 library.",
+      "description": "US Evaluated Nuclear Data File (NNDC/BNL) \u2014 charged-particle sublibraries (p/d/t/h/a). Neutron was retired (#263): rather than reconstruct the resonance region ourselves, neutron ships as endfb-8.0 (authoritative NJOY-processed pointwise data). Query neutron via the xs view or the endfb_8_0 library.",
       "source_url": "https://www.nndc.bnl.gov/endf-b8.1/",
       "projectiles": [
         "p",
@@ -39,7 +39,7 @@
     },
     "endfb-8.0": {
       "name": "ENDF/B-VIII.0 neutron (NJOY-processed)",
-      "description": "Authoritative NJOY-processed pointwise neutron cross sections at 294 K, from the OpenMC ENDF/B-VIII.0 HDF5 library (the exact data OpenMC/MCNP/Serpent transport on). Carries the resolved/unresolved resonance regions (Doppler-broadened) and the thermal point — which raw MF=3 omits and which we no longer reconstruct ourselves (#263). Transmutation channels only (capture + threshold reactions; elastic/inelastic/fission excluded). Per-element files (n_<Sym>.parquet, all isotopes of the element) with the same 6-column schema as every other xs library, so it works across py/rs/ts/go with no client code. Thinned to ~1% under BOTH lin-lin and log-log, so σ(E) is accurate whether you interpolate linearly (the np.interp default) or log-log (ENDF INT=5) — including the sparse 1/v thermal region (#271). The per-isotope shards are also mirrored on Hugging Face (gerchowl/nucl-parquet-data) for lazy browser fetches.",
+      "description": "Authoritative NJOY-processed pointwise neutron cross sections at 294 K, from the OpenMC ENDF/B-VIII.0 HDF5 library (the exact data OpenMC/MCNP/Serpent transport on). Carries the resolved/unresolved resonance regions (Doppler-broadened) and the thermal point \u2014 which raw MF=3 omits and which we no longer reconstruct ourselves (#263). Transmutation channels only (capture + threshold reactions; elastic/inelastic/fission excluded). Per-element files (n_<Sym>.parquet, all isotopes of the element) with the same 6-column schema as every other xs library, so it works across py/rs/ts/go with no client code. Thinned to ~1% under BOTH lin-lin and log-log, so \u03c3(E) is accurate whether you interpolate linearly (the np.interp default) or log-log (ENDF INT=5) \u2014 including the sparse 1/v thermal region (#271). The per-isotope shards are also mirrored on Hugging Face (gerchowl/nucl-parquet-data) for lazy browser fetches.",
       "source_url": "https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC",
       "projectiles": [
         "n"
@@ -52,7 +52,7 @@
     },
     "endfb-8.0-channels": {
       "name": "ENDF/B-VIII.0 neutron transport channels",
-      "description": "Neutron *transport* cross sections — total (MT=1), elastic (2), nonelastic (3), inelastic (4), fission (18) and capture (102) — in long form (one row per Z/A/MT/energy), which is the exact complement of the transmutation-only endfb-8.0 xs library. These are the channels attenuation, shielding and self-shielding need and where the reaction products are irrelevant: Phi(x) = Phi_0 * exp(-Sigma_tot * x). Built from the same OpenMC ENDF/B-VIII.0 HDF5 as endfb-8.0, so it is resonance-resolved, Doppler-broadened to 294 K and reaches 150 MeV — unlike the raw-MF=3 meta/neutron_total view it supersedes, which is MT=1/2 only and capped at 20 MeV. MT=1 is absent from the processed files (OpenMC sums the total on the fly) and is reconstructed here by summing every non-redundant reaction on the shared grid; this reproduces Fe-56 at 14.811 b total / 2.604 b capture (0.0253 eV) and 2.584 b (14 MeV), and U-235 at 588.5 b fission / 99.6 b capture thermal. Long form so a new channel is new rows rather than a new column, and so EXFOR's measured channels concatenate into the same view. Thinned to ~1% under both lin-lin and log-log, as for endfb-8.0.",
+      "description": "Neutron *transport* cross sections \u2014 total (MT=1), elastic (2), nonelastic (3), inelastic (4), fission (18) and capture (102) \u2014 in long form (one row per Z/A/MT/energy), which is the exact complement of the transmutation-only endfb-8.0 xs library. These are the channels attenuation, shielding and self-shielding need and where the reaction products are irrelevant: Phi(x) = Phi_0 * exp(-Sigma_tot * x). Built from the same OpenMC ENDF/B-VIII.0 HDF5 as endfb-8.0, so it is resonance-resolved, Doppler-broadened to 294 K and reaches 150 MeV \u2014 unlike the raw-MF=3 meta/neutron_total view it supersedes, which is MT=1/2 only and capped at 20 MeV. MT=1 is absent from the processed files (OpenMC sums the total on the fly) and is reconstructed here by summing every non-redundant reaction on the shared grid; this reproduces Fe-56 at 14.811 b total / 2.604 b capture (0.0253 eV) and 2.584 b (14 MeV), and U-235 at 588.5 b fission / 99.6 b capture thermal. Long form so a new channel is new rows rather than a new column, and so EXFOR's measured channels concatenate into the same view. Thinned to ~1% under both lin-lin and log-log, as for endfb-8.0.",
       "source_url": "https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC",
       "projectiles": [
         "n"
@@ -199,7 +199,7 @@
     },
     "exfor": {
       "name": "EXFOR (residual production)",
-      "description": "Experimental nuclear reaction data, residual-production subset: reactions coded (proj,X) that sum over every channel reaching a named residual, which is what the evaluated xs libraries carry and so what they can be compared against directly. Measurements of a single identified channel — (n,2n), (n,a), (n,tot), (n,f) … — live in exfor-channels instead, since adding the two together would double-count. Built from the EXFOR Master Files (github.com/IAEA-NDS/exfor_master, CC-BY-4.0) pinned by release tag, not the DataExplorer retrieval API: that endpoint is hardwired to residual-production mode and returns \"mt\": \"10\" regardless of what you ask for, which is why the neutron sublibrary previously looked all but empty (#279). Carries measurement uncertainties (xs_err_mb, energy_err_MeV) and full provenance (source_entry, author, year) — the evaluated libraries carry central values only.",
+      "description": "Experimental nuclear reaction data, residual-production subset: reactions coded (proj,X) that sum over every channel reaching a named residual, which is what the evaluated xs libraries carry and so what they can be compared against directly. Measurements of a single identified channel \u2014 (n,2n), (n,a), (n,tot), (n,f) \u2026 \u2014 live in exfor-channels instead, since adding the two together would double-count. Built from the EXFOR Master Files (github.com/IAEA-NDS/exfor_master, CC-BY-4.0) pinned by release tag, not the DataExplorer retrieval API: that endpoint is hardwired to residual-production mode and returns \"mt\": \"10\" regardless of what you ask for, which is why the neutron sublibrary previously looked all but empty (#279). Carries measurement uncertainties (xs_err_mb, energy_err_MeV) and full provenance (source_entry, author, year) \u2014 the evaluated libraries carry central values only.",
       "source_url": "https://github.com/IAEA-NDS/exfor_master",
       "projectiles": [
         "n",
@@ -216,7 +216,7 @@
     },
     "exfor-channels": {
       "name": "EXFOR (reaction channels)",
-      "description": "Experimental cross sections for a single identified ENDF reaction channel — (n,tot), (n,el), (n,2n), (n,g), (n,a), (n,f) and the rest — keyed by MT. This is the bulk of neutron EXFOR and none of it was reachable before: the DataExplorer endpoint the old ingestion used only serves residual production, so 82% of measured EXFOR SIG data was simply absent (#279). Complements endfb-8.0-channels, which carries the evaluated counterpart on the same schema, so measurement and evaluation compare in one query. residual_Z/residual_A are populated where the channel names a product ((n,2n), (n,a) …) and NULL where it does not ((n,tot), (n,el), (n,f)). Carries uncertainties and provenance.",
+      "description": "Experimental cross sections for a single identified ENDF reaction channel \u2014 (n,tot), (n,el), (n,2n), (n,g), (n,a), (n,f) and the rest \u2014 keyed by MT. This is the bulk of neutron EXFOR and none of it was reachable before: the DataExplorer endpoint the old ingestion used only serves residual production, so 82% of measured EXFOR SIG data was simply absent (#279). Complements endfb-8.0-channels, which carries the evaluated counterpart on the same schema, so measurement and evaluation compare in one query. residual_Z/residual_A are populated where the channel names a product ((n,2n), (n,a) \u2026) and NULL where it does not ((n,tot), (n,el), (n,f)). Carries uncertainties and provenance.",
       "source_url": "https://github.com/IAEA-NDS/exfor_master",
       "projectiles": [
         "n",
@@ -233,7 +233,7 @@
     },
     "hi-xs-prod": {
       "name": "HI-XS Production (Geant4 INCL++/ABLA07)",
-      "description": "Heavy-ion production cross-sections σ(Zf,Af,E) computed via Geant4 11.3.2 FTFP_INCLXX physics list (INCL++ cascade + ABLA07 de-excitation).  Covers 6 projectiles × 92 targets × ~60 energy points (1–1000 MeV/u).  Normalized to Tripathi (1997) total reaction XS.",
+      "description": "Heavy-ion production cross-sections \u03c3(Zf,Af,E) computed via Geant4 11.3.2 FTFP_INCLXX physics list (INCL++ cascade + ABLA07 de-excitation).  Covers 6 projectiles \u00d7 92 targets \u00d7 ~60 energy points (1\u20131000 MeV/u).  Normalized to Tripathi (1997) total reaction XS.",
       "source_url": "https://geant4.org/",
       "projectiles": [
         "c12",
@@ -271,7 +271,7 @@
     },
     "strata-data-nuclear": {
       "name": "Geant4-derived nuclear structure + EM (via strata-data)",
-      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project — source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward (replaces the v0.10.x IAEA-LiveChart pipeline). v0.13+ also pulls the em/ subdir for ESTAR + Sternheimer density-effect data (issue #121). See ADR-0002.",
+      "description": "G4ENSDFSTATE3.0 + PhotonEvaporation6.1.2 + RadioactiveDecay6.1.2 republished as Parquet by the strata project \u2014 source for nuclides.parquet / ground_states.parquet / levels/ / radiation/ / decay.parquet from v0.11.0 onward (replaces the v0.10.x IAEA-LiveChart pipeline). v0.13+ also pulls the em/ subdir for ESTAR + Sternheimer density-effect data (issue #121). See ADR-0002.",
       "source_url": "https://huggingface.co/datasets/gerchowl/strata-data",
       "revision": "6429aad4f3b731e884499e0217dd43b17bb75a86",
       "fetcher": "scripts/fetch_strata_nuclear.py",
@@ -306,13 +306,13 @@
         "nudex_general_stat": "nudex_general_stat.parquet"
       },
       "spectrum_xs_note": "Spectrum-averaged neutron XS for thermal (Maxwellian kT=0.0253eV), epithermal (1/E), and fast (Watt fission) spectra. Built by nucl_parquet.build_spectrum_xs.",
-      "compound_compositions_note": "Elemental compositions (Z, weight_fraction) for the 33 NIST XCOM standard materials (water, air, tissue, bone, plastics, glasses, …). One row per (material, Z); weight fractions sum to 1.0 ± 1e-6 per material. Source: NIST XCOM Table 4 + ICRU-44. Join on `material` to xcom_compounds (integrated µ/ρ) or to photon_pe_total/photon_compton/photon_pair for Bragg-additive per-process σ. Built by nucl_parquet.build_compound_compositions.",
-      "nudex_shellcor_note": "Microscopic shell corrections + ground-state β₂/β₄ deformation parameters per (Z, A) from strata's NUDEX nudex_shellcor_ms. Schema: Z/A/symbol/shell_MeV/deformation_correction_MeV/beta2/beta4. Used by Hauser-Feshbach codes. Closes #77.",
-      "nudex_runtime_config_note": "nudex_special_inputs and nudex_general_stat are NUDEX runtime configuration tables (per-isotope overrides + defaults) shipped for audit/completeness — not load-bearing for typical consumers."
+      "compound_compositions_note": "Elemental compositions (Z, weight_fraction) for the 33 NIST XCOM standard materials (water, air, tissue, bone, plastics, glasses, \u2026). One row per (material, Z); weight fractions sum to 1.0 \u00b1 1e-6 per material. Source: NIST XCOM Table 4 + ICRU-44. Join on `material` to xcom_compounds (integrated \u00b5/\u03c1) or to photon_pe_total/photon_compton/photon_pair for Bragg-additive per-process \u03c3. Built by nucl_parquet.build_compound_compositions.",
+      "nudex_shellcor_note": "Microscopic shell corrections + ground-state \u03b2\u2082/\u03b2\u2084 deformation parameters per (Z, A) from strata's NUDEX nudex_shellcor_ms. Schema: Z/A/symbol/shell_MeV/deformation_correction_MeV/beta2/beta4. Used by Hauser-Feshbach codes. Closes #77.",
+      "nudex_runtime_config_note": "nudex_special_inputs and nudex_general_stat are NUDEX runtime configuration tables (per-isotope overrides + defaults) shipped for audit/completeness \u2014 not load-bearing for typical consumers."
     },
     "stopping": {
       "path": "stopping/",
-      "layout": "one file per source — stopping/{source}.parquet (NIST: PSTAR.parquet…; catima: one federated shard per beam isotope, catima_<Sym><A>.parquet e.g. catima_C12.parquet)",
+      "layout": "one file per source \u2014 stopping/{source}.parquet (NIST: PSTAR.parquet\u2026; catima: one federated shard per beam isotope, catima_<Sym><A>.parquet e.g. catima_C12.parquet)",
       "sources": [
         "PSTAR",
         "ASTAR",
@@ -320,9 +320,9 @@
         "dSTAR",
         "tSTAR"
       ],
-      "sources_note": "PSTAR/ASTAR/ESTAR are NIST ICRU-49/37 tables (reproducible via nucl_parquet.build_stopping). dSTAR/tSTAR are velocity-scaled from PSTAR (exact for electronic stopping). ³He has no NIST table — routes through catima in the loader. catima is federated into per-isotope shards catima_<Sym><A>.parquet (one beam isotope × all 92 targets each) — see the `catima` block. The former single 92×92 monolith was removed in #252.",
+      "sources_note": "PSTAR/ASTAR/ESTAR are NIST ICRU-49/37 tables (reproducible via nucl_parquet.build_stopping). dSTAR/tSTAR are velocity-scaled from PSTAR (exact for electronic stopping). \u00b3He has no NIST table \u2014 routes through catima in the loader. catima is federated into per-isotope shards catima_<Sym><A>.parquet (one beam isotope \u00d7 all 92 targets each) \u2014 see the `catima` block. The former single 92\u00d792 monolith was removed in #252.",
       "catima": {
-        "layout": "federated — one shard per beam isotope at stopping/catima_<Sym><A>.parquet (e.g. catima_C12.parquet), build-generated by nucl_parquet.build_heavy_ions. The `source` column equals the file stem so a shard is also reachable as a NIST-style source via energy_MeV (total kinetic energy).",
+        "layout": "federated \u2014 one shard per beam isotope at stopping/catima_<Sym><A>.parquet (e.g. catima_C12.parquet), build-generated by nucl_parquet.build_heavy_ions. The `source` column equals the file stem so a shard is also reachable as a NIST-style source via energy_MeV (total kinetic energy).",
         "schema": [
           "source",
           "proj_Z",
@@ -333,7 +333,7 @@
           "dedx",
           "straggling"
         ],
-        "energy_columns_note": "energy_MeV_u is catima's native MeV/u axis (used by the isotope-keyed catima lookup); energy_MeV is total kinetic energy = energy_MeV_u × proj_A (used when reading the shard as a NIST-style source). Both are stored so every consumer reads its native unit without conversion.",
+        "energy_columns_note": "energy_MeV_u is catima's native MeV/u axis (used by the isotope-keyed catima lookup); energy_MeV is total kinetic energy = energy_MeV_u \u00d7 proj_A (used when reading the shard as a NIST-style source). Both are stored so every consumer reads its native unit without conversion.",
         "proj_Z_range": [
           1,
           99
@@ -345,8 +345,8 @@
         "energy_unit": "MeV/u",
         "n_isotopes": 399,
         "n_rows": 7341600,
-        "isotope_inventory": "All stable + primordial isotopes (abundance > 0 in meta/abundances.parquet, 287 nuclides) ∪ all ground-state nuclides with T½ > 1 year in meta/decay.parquet (covers Np/Pu/Am/Cm/Bk/Cf/Es transuranics up to Z=99, plus every long-lived radio-isotope of lower-Z elements) ∪ beam/medical allowlist (C-11, N-13, O-15, F-18, P-32). For Z values with no T½>1yr isotope (At, Rn, Fr), the longest-lived ground state is shipped as fallback.",
-        "isotope_note": "Rows are keyed on (proj_Z, proj_A). At E/A > 0.1 MeV/u dedx is isotope-agnostic to <0.1%; below ~0.01 MeV/u nuclear-stopping reduced-mass effects cause real (up to ~15%) isotope dependence, captured by the per-isotope rows. Querying (Z, A) outside the inventory raises KeyError — extend nucl_parquet.build_heavy_ions._BEAM_ALLOWLIST or lower _LONGLIVED_THRESHOLD_S and rebuild."
+        "isotope_inventory": "All stable + primordial isotopes (abundance > 0 in meta/abundances.parquet, 287 nuclides) \u222a all ground-state nuclides with T\u00bd > 1 year in meta/decay.parquet (covers Np/Pu/Am/Cm/Bk/Cf/Es transuranics up to Z=99, plus every long-lived radio-isotope of lower-Z elements) \u222a beam/medical allowlist (C-11, N-13, O-15, F-18, P-32). For Z values with no T\u00bd>1yr isotope (At, Rn, Fr), the longest-lived ground state is shipped as fallback.",
+        "isotope_note": "Rows are keyed on (proj_Z, proj_A). At E/A > 0.1 MeV/u dedx is isotope-agnostic to <0.1%; below ~0.01 MeV/u nuclear-stopping reduced-mass effects cause real (up to ~15%) isotope dependence, captured by the per-isotope rows. Querying (Z, A) outside the inventory raises KeyError \u2014 extend nucl_parquet.build_heavy_ions._BEAM_ALLOWLIST or lower _LONGLIVED_THRESHOLD_S and rebuild."
       },
       "electron_stopping": {
         "path": "stopping/em/electron_stopping.parquet",
@@ -361,7 +361,7 @@
           "total_sp_mev_cm2_g",
           "density_effect_delta"
         ],
-        "source": "gerchowl/strata-data em/estar_long.parquet (Geant4 EM data → ESTAR-equivalent)",
+        "source": "gerchowl/strata-data em/estar_long.parquet (Geant4 EM data \u2192 ESTAR-equivalent)",
         "coverage": "98 elements (Z=1..98) + ~183 compounds (ICRU tissue/detector materials, water, air, etc.)",
         "energy_range_MeV": [
           0.001,
@@ -387,7 +387,7 @@
         ],
         "source": "gerchowl/strata-data em/density_effect.parquet (Sternheimer parameterization)",
         "coverage": "278 materials covering the standard Geant4 NIST_MATERIAL set (elements with G4_ prefix, plus ICRU compounds)",
-        "note": "Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList. For elements Zeff equals Z. Use these params to evaluate the density-effect correction δ above the validity range of tabulated dedx."
+        "note": "Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList. For elements Zeff equals Z. Use these params to evaluate the density-effect correction \u03b4 above the validity range of tabulated dedx."
       },
       "compounds": {
         "path": "stopping/compounds/",
@@ -404,12 +404,12 @@
         ],
         "source_url": "https://physics.nist.gov/PhysRefData/Star/Text/method.html",
         "fetcher": "nucl_parquet/build_stopping_compounds.py",
-        "note": "NIST-measured proton and α stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, …). Direct drop-in replacement for naive Bragg additivity (Σ wᵢ · elemental_dedx) which is 5–10% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
+        "note": "NIST-measured proton and \u03b1 stopping-power tables for the standard ICRU-37 compound set (water liquid + vapor, A-150 plastic, polyethylene, tissue/bone substitutes, air, \u2026). Direct drop-in replacement for naive Bragg additivity (\u03a3 w\u1d62 \u00b7 elemental_dedx) which is 5\u201310% off near the Bragg peak for these compounds. `matno` is NIST's compound identifier preserved for audit; `compound` is NIST verbatim normalized to UPPER_SNAKE_CASE."
       }
     },
     "summing_partners": {
       "path": "meta/ensdf/summing_partners/",
-      "layout": "one file per daughter element symbol — meta/ensdf/summing_partners/{Symbol}.parquet",
+      "layout": "one file per daughter element symbol \u2014 meta/ensdf/summing_partners/{Symbol}.parquet",
       "schema": [
         "Z",
         "A",
@@ -432,13 +432,13 @@
         "icc_correction_factor",
         "pure_emission_joint_intensity"
       ],
-      "source": "Derived from coincidences/{Symbol}.parquet with ICC correction factors. γ-γ pairs canonicalized (E1 ≤ E2), X-ray/Auger ⊗ γ pairs from mixed_coincidences.",
+      "source": "Derived from coincidences/{Symbol}.parquet with ICC correction factors. \u03b3-\u03b3 pairs canonicalized (E1 \u2264 E2), X-ray/Auger \u2297 \u03b3 pairs from mixed_coincidences.",
       "coverage": "104 elements, ~9.3M rows. All ground + metastable parent decay channels.",
-      "note": "ICC-corrected summing partner pairs for HPGe true-coincidence-summing (TCS) corrections. icc_correction_factor = 1/((1+α₁)×(1+α₂)) for γ-γ; 1/(1+α₂) for xray⊗γ. pure_emission_joint_intensity = pair_intensity × icc_correction_factor. Filed by daughter element (Co-60 cascades under Ni). Validated: Eu-152 344 keV ≥10 partners, Co-60 1173/1333 ICC ≈ 0.9997."
+      "note": "ICC-corrected summing partner pairs for HPGe true-coincidence-summing (TCS) corrections. icc_correction_factor = 1/((1+\u03b1\u2081)\u00d7(1+\u03b1\u2082)) for \u03b3-\u03b3; 1/(1+\u03b1\u2082) for xray\u2297\u03b3. pure_emission_joint_intensity = pair_intensity \u00d7 icc_correction_factor. Filed by daughter element (Co-60 cascades under Ni). Validated: Eu-152 344 keV \u226510 partners, Co-60 1173/1333 ICC \u2248 0.9997."
     },
     "emissions": {
       "path": "meta/ensdf/emissions/",
-      "layout": "one file per parent element symbol — meta/ensdf/emissions/{Symbol}.parquet",
+      "layout": "one file per parent element symbol \u2014 meta/ensdf/emissions/{Symbol}.parquet",
       "schema": [
         "parent_Z",
         "parent_A",
@@ -455,13 +455,13 @@
         "multipolarity",
         "rad_subtype"
       ],
-      "source": "Cascade propagation through G4 PhotonEvaporation level schemes, fed by decay_detailed.parquet branching ratios. X-ray/Auger from radiation/ (xray_auger.py). β/α endpoints from decay_detailed Q-values.",
+      "source": "Cascade propagation through G4 PhotonEvaporation level schemes, fed by decay_detailed.parquet branching ratios. X-ray/Auger from radiation/ (xray_auger.py). \u03b2/\u03b1 endpoints from decay_detailed Q-values.",
       "coverage": "All ground + metastable parents with known decays, Z=1..117. ~711k rows across 117 elements.",
-      "note": "NuDat-equivalent one-stop-shop: absolute per-decay emission intensities (0–100%) for gamma, CE, X-ray, Auger, 511 keV annihilation, β⁻/β⁺ endpoints, and α kinetic energies. Filed by PARENT element (Co-60 in Co.parquet). Key physics: G4 intensity is photon-only relative; total transition rate = intensity × (1+ICC). Validated against NuDat: Co-60 1173 keV ±0.01%, Tc-99m 140 keV ±0.02%, Eu-152 121.8 keV ±0.3%, Na-22 511 keV ±0.07%, Ra-226 α 4784 keV."
+      "note": "NuDat-equivalent one-stop-shop: absolute per-decay emission intensities (0\u2013100%) for gamma, CE, X-ray, Auger, 511 keV annihilation, \u03b2\u207b/\u03b2\u207a endpoints, and \u03b1 kinetic energies. Filed by PARENT element (Co-60 in Co.parquet). Key physics: G4 intensity is photon-only relative; total transition rate = intensity \u00d7 (1+ICC). Validated against NuDat: Co-60 1173 keV \u00b10.01%, Tc-99m 140 keV \u00b10.02%, Eu-152 121.8 keV \u00b10.3%, Na-22 511 keV \u00b10.07%, Ra-226 \u03b1 4784 keV."
     },
     "beta_spectra": {
       "path": "meta/ensdf/beta_spectra/",
-      "layout": "one file per parent element symbol — meta/ensdf/beta_spectra/{Symbol}.parquet",
+      "layout": "one file per parent element symbol \u2014 meta/ensdf/beta_spectra/{Symbol}.parquet",
       "schema": [
         "Z",
         "A",
@@ -477,8 +477,8 @@
         "shape_factor_approx"
       ],
       "source": "Endpoint Q-values + forbiddenness from strata radioactive_decay.parquet; spectrum shape from Fermi function (relativistic, with shape factors for unique 1st/2nd forbidden)",
-      "coverage": "All β-minus and β+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions × 200 energy bins each",
-      "note": "dN/dE is normalized per transition: ∫ dN/dE · dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions (K-40, Tc-99, Re-187, Cl-36, etc.) use S(E)=1 as a documented approximation — filter on shape_factor_approx=True to find them. For β+ transitions, endpoint_keV is the positron kinetic-energy endpoint (strata's q_value_kev minus 2·m_e c² = 1022 keV). State 'm' marks metastable parents (inferred from parent_ex_kev > 0). Validated: P-32 mean E = 694.9 (NNDC 694.9, exact); F-18 β+ mean E = 250 keV (NNDC 249.8); Bi-210 mean E = 390 (NNDC 389)."
+      "coverage": "All \u03b2-minus and \u03b2+ transitions with q_value > 0, parent Z=1..99; ~23,500 transitions \u00d7 200 energy bins each",
+      "note": "dN/dE is normalized per transition: \u222b dN/dE \u00b7 dE = 1. `cumulative` is the CDF (useful for inverse-CDF sampling). Non-unique forbidden transitions (K-40, Tc-99, Re-187, Cl-36, etc.) use S(E)=1 as a documented approximation \u2014 filter on shape_factor_approx=True to find them. For \u03b2+ transitions, endpoint_keV is the positron kinetic-energy endpoint (strata's q_value_kev minus 2\u00b7m_e c\u00b2 = 1022 keV). State 'm' marks metastable parents (inferred from parent_ex_kev > 0). Validated: P-32 mean E = 694.9 (NNDC 694.9, exact); F-18 \u03b2+ mean E = 250 keV (NNDC 249.8); Bi-210 mean E = 390 (NNDC 389)."
     },
     "em": {
       "path": "em/",
@@ -493,9 +493,9 @@
           "kappa",
           "dcs"
         ],
-        "source": "gerchowl/strata-data em/brem_sb_dcs.parquet (republishes G4EMLOW brem_SB.dat → Seltzer-Berger 1985)",
-        "coverage": "Z=1..92, 57 incident-electron energies (1 keV..10 GeV log-spaced), 32 κ values",
-        "note": "SCALED differential cross section per Berger & Seltzer (1985): dcs = (dσ/dκ) × β² / Z², where κ = E_γ / T_electron and β is the electron velocity. The Z² is factored out so values are O(1-10) across all Z. To recover the raw dσ/dκ multiply by Z²/β². Companion to electron_brem (integrated σ). Cite Seltzer & Berger, Nucl. Instrum. Meth. B12 (1985) 95."
+        "source": "gerchowl/strata-data em/brem_sb_dcs.parquet (republishes G4EMLOW brem_SB.dat \u2192 Seltzer-Berger 1985)",
+        "coverage": "Z=1..92, 57 incident-electron energies (1 keV..10 GeV log-spaced), 32 \u03ba values",
+        "note": "SCALED differential cross section per Berger & Seltzer (1985): dcs = (d\u03c3/d\u03ba) \u00d7 \u03b2\u00b2 / Z\u00b2, where \u03ba = E_\u03b3 / T_electron and \u03b2 is the electron velocity. The Z\u00b2 is factored out so values are O(1-10) across all Z. To recover the raw d\u03c3/d\u03ba multiply by Z\u00b2/\u03b2\u00b2. Companion to electron_brem (integrated \u03c3). Cite Seltzer & Berger, Nucl. Instrum. Meth. B12 (1985) 95."
       }
     }
   },

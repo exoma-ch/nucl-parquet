@@ -121,6 +121,58 @@ def test_kind_discriminates_production_from_channel() -> None:
 
 
 @pytest.mark.data
+def test_fission_rows_name_no_residual() -> None:
+    """MT=18 is sigma_f. Fission has no single residual — it makes two fragments.
+
+    A nuclide named after (n,f) is a fission *product yield*; ENDF keeps those in
+    MF=8/MT=454 rather than MF=3/MT=18 for exactly this reason. 15,630 yield rows
+    once carried MT=18, which made the obvious query -- `WHERE MT = 18` -- sum
+    sigma_f with a dozen fragment curves. The fragments peak near 100 mb where
+    U-235 sigma_f is thousands of barns, so it never looked wrong.
+    """
+    problems: list[str] = []
+    con = duckdb.connect()
+    for key, d in _xs_dirs():
+        n = con.sql(
+            f"SELECT count(*) FROM read_parquet('{d}/*.parquet') WHERE MT IN (18,19,20,21,38) AND residual_Z IS NOT NULL"
+        ).fetchone()[0]
+        if n:
+            problems.append(f"{key}: {n} fission rows naming a residual")
+    assert not problems, "fission yields are production rows, not MT=18:\n  " + "\n  ".join(problems)
+
+
+@pytest.mark.data
+def test_named_residuals_are_reachable_from_the_channel() -> None:
+    """Where MT fixes the residual, the stored residual must agree with it.
+
+    This is principle 2 held from the other side: MT is the primitive and the
+    residual is derived, so a residual that the MT cannot produce means the SF4
+    token was attached to the wrong reaction. Two cases are checkable without a
+    full reaction table:
+
+      * MT 1/2/3/4 (total, elastic, nonelastic, inelastic) leave Z unchanged.
+      * MT 102 (capture) absorbs the projectile whole.
+
+    A=0 targets are natural elements, so only Z is constrained for them.
+    """
+    problems: list[str] = []
+    con = duckdb.connect()
+    for key, d in _xs_dirs():
+        row = con.sql(f"""
+            SELECT
+              count(*) FILTER (WHERE MT IN (1,2,3,4) AND residual_Z <> target_Z),
+              count(*) FILTER (WHERE MT = 102 AND residual_Z <> target_Z + proj_Z),
+              count(*) FILTER (WHERE MT = 102 AND target_A > 0 AND residual_A <> target_A + proj_A)
+            FROM read_parquet('{d}/*.parquet')
+            WHERE residual_Z IS NOT NULL
+        """).fetchone()
+        for n, what in zip(row, ("scattering changing Z", "capture changing Z", "capture changing A")):
+            if n:
+                problems.append(f"{key}: {n} rows with {what}")
+    assert not problems, "residual contradicts its MT:\n  " + "\n  ".join(problems)
+
+
+@pytest.mark.data
 def test_channel_rows_carry_mt_and_production_rows_do_not() -> None:
     """The two kinds are distinguished by what identifies the datum."""
     con = duckdb.connect()
