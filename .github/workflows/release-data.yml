@@ -80,20 +80,30 @@ jobs:
     name: Sync Hugging Face mirror
     runs-on: ubuntu-latest
     needs: [verify, data-asset]
-    # Skip cleanly on forks and wherever the secret is absent, rather than
-    # failing a release for want of a mirror.
+    # Forks have no business pushing to the mirror, so they skip. On the canonical
+    # repo a missing token is a *failure*, not a skip: the card is what keeps the
+    # published licence from drifting (#234), so "mirror silently did nothing"
+    # must never be indistinguishable from "mirror is current". It reported green
+    # for the whole of 2026.8.0 and 2026.8.1 while doing nothing at all.
     if: ${{ github.repository == 'exoma-ch/nucl-parquet' }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref_name }}
       - uses: astral-sh/setup-uv@v5
-      - name: Sync card + shards
+      - name: Sync dataset card
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           if [ -z "${HF_TOKEN}" ]; then
-            echo "::warning::HF_TOKEN not set — skipping Hugging Face mirror"
-            exit 0
+            echo "::error::HF_TOKEN is not set — the Hugging Face mirror cannot be" \
+                 "updated, so its licence metadata will drift from data/licenses.toml." \
+                 "Add HF_TOKEN (write scope on gerchowl/nucl-parquet-data) as a" \
+                 "repository secret, or remove this job if the mirror is retired."
+            exit 1
           fi
-          uv run --with huggingface_hub python scripts/sync_huggingface.py
+          # Card only. The shard upload is held back until the published
+          # per-isotope layout and the local per-element layout are reconciled —
+          # syncing today would interleave two incompatible shardings. The script
+          # refuses that on its own; this keeps the release green in the meantime.
+          uv run --with huggingface_hub python scripts/sync_huggingface.py --card-only
