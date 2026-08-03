@@ -58,6 +58,27 @@ def isotope_count(data_dir: Path) -> int:
     ]
 
 
+def check_shard_layout(local: set[str], published: set[str]) -> None:
+    """Refuse to upload a shard set that does not overlap what is published.
+
+    The published mirror shards per *isotope* (`n_Nd143.parquet`); the local tree
+    shards per *element* (`n_Nd.parquet`). Uploading one into the other does not
+    overwrite anything — it interleaves two incompatible layouts in one
+    directory, leaving the same data under two namings with nothing to say which
+    is authoritative. Refuse rather than corrupt.
+
+    An empty `published` is not a mismatch: that is a first sync into an empty
+    directory, which is exactly when uploading is correct.
+    """
+    if not published or local & published:
+        return
+    raise SystemExit(
+        f"refusing to upload: {len(local)} local shards ({sorted(local)[0]}, …) share no name "
+        f"with the {len(published)} already published ({sorted(published)[0]}, …). "
+        "These are different sharding schemes; reconcile them before syncing."
+    )
+
+
 def build_card(data_dir: Path) -> str:
     """Generate the dataset card, with licence taken from licenses.toml.
 
@@ -215,23 +236,13 @@ def main() -> None:
         logger.warning("no shards at %s — card only", shard_dir)
         return
 
-    # The published mirror shards per *isotope* (`n_Nd143.parquet`); the local
-    # tree shards per *element* (`n_Nd.parquet`). Uploading one into the other
-    # does not overwrite — it interleaves two incompatible layouts in the same
-    # directory, leaving the same data under two namings and no way for a
-    # consumer to tell which is authoritative. Refuse rather than corrupt.
     published = {
         f.rsplit("/", 1)[-1]
         for f in (s.path for s in api.list_repo_tree(args.repo_id, "neutron", repo_type="dataset"))
         if f.endswith(".parquet")
     }
     local = {p.name for p in shard_dir.glob("*.parquet")}
-    if published and not local & published:
-        raise SystemExit(
-            f"refusing to upload: {len(local)} local shards ({sorted(local)[0]}, …) share no name "
-            f"with the {len(published)} already published ({sorted(published)[0]}, …). "
-            "These are different sharding schemes; reconcile them before syncing."
-        )
+    check_shard_layout(local, published)
 
     api.upload_folder(
         folder_path=str(shard_dir),

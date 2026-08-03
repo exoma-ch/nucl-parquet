@@ -117,6 +117,35 @@ def test_coverage_count_is_derived_not_hardcoded() -> None:
     assert f"Coverage:** {n} target isotopes" in _card()
 
 
+def test_shard_layout_guard_blocks_incompatible_shardings() -> None:
+    """The guard is the only thing standing between a sync and a corrupted mirror.
+
+    Uploading element shards into a directory of isotope shards does not
+    overwrite -- it interleaves, leaving `n_Nd.parquet` beside `n_Nd143.parquet`
+    with the same data under two namings. This is the live situation: 97 local
+    element files against 533 published isotope files.
+    """
+    from sync_huggingface import check_shard_layout
+
+    with pytest.raises(SystemExit) as e:
+        check_shard_layout({"n_Nd.parquet", "n_Fe.parquet"}, {"n_Nd143.parquet", "n_Fe56.parquet"})
+    assert "different sharding schemes" in str(e.value)
+
+
+def test_shard_layout_guard_allows_a_matching_sync() -> None:
+    """It must not block the case it exists to permit: same scheme, newer data."""
+    from sync_huggingface import check_shard_layout
+
+    check_shard_layout({"n_Nd143.parquet", "n_Fe56.parquet"}, {"n_Nd143.parquet"})
+
+
+def test_shard_layout_guard_allows_a_first_sync() -> None:
+    """An empty published set is not a mismatch -- it is the initial upload."""
+    from sync_huggingface import check_shard_layout
+
+    check_shard_layout({"n_Nd.parquet"}, set())
+
+
 @pytest.mark.data
 def test_card_advertises_no_api_that_does_not_exist() -> None:
     """The published card demonstrated `nucl_parquet.neutron_xs(...)`, which is
