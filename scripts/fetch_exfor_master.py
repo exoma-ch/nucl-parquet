@@ -5,20 +5,26 @@ which is hardwired to residual-production mode — the endpoint echoes back
 `"mt": "10", "reaction": "<proj>,x"` regardless of what you send, so it structurally
 cannot return the MT-coded reaction data that is the bulk of neutron EXFOR (#279).
 That path yields 12 points for 27Al(n,a)24Na and zero for 18O(p,n)18F; this one
-yields 543 and 535.
+yields 531 and 535.
 
 Source: https://github.com/IAEA-NDS/exfor_master (CC-BY-4.0), pinned by release tag.
 That is the provenance `data/licenses.toml::[libraries.exfor]` already declares —
 the current API path contradicts it ("not the live retrieval system").
 
-Two products, split on *residual absence*:
+Two products, split on how the datum was formed — which is what governs whether
+rows may be added together:
 
-    exfor/           residual-production (unchanged schema; existing queries work)
-    exfor-channels/  transport channels — (n,tot), (n,el), (n,inl), (n,f) — which
-                     name no outgoing nuclide and so cannot share a table with
-                     production data without all collapsing to residual (0, 0).
-                     Concatenates with `data/endfb-8.0/channels/` (build_channels.py)
-                     to compare measurement against evaluation.
+    exfor/           production sums: (proj,X) reactions, summed over every
+                     channel reaching a named residual. Directly comparable with
+                     the evaluated xs libraries, which carry the same quantity.
+    exfor-channels/  one identified ENDF reaction each, keyed by MT — (n,tot),
+                     (n,el), (n,2n), (n,g), (n,f) … A measurement of (n,2n) is a
+                     channel even though it also names a residual. Concatenates
+                     with `data/endfb-8.0/channels/` (build_channels.py) to
+                     compare measurement against evaluation.
+
+Both write CANONICAL_XS_SCHEMA, so either unions with any other cross-section
+table by name.
 
 Fetch the source first (259 MB, no clone needed):
 
@@ -39,6 +45,10 @@ import math
 import pathlib
 import re
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+from nucl_parquet._schemas import CANONICAL_XS_SCHEMA  # noqa: E402
 
 # ---------------------------------------------------------------- X4 constants
 
@@ -97,6 +107,10 @@ Z_BY_SYMBOL = {s.upper(): i for i, s in enumerate(_ELEMENTS)}
 
 # Incident-projectile code (SF2 head) -> nucl-parquet shorthand.
 PROJECTILE = {"N": "n", "P": "p", "D": "d", "T": "t", "HE3": "h", "A": "a"}
+
+# Projectile shorthand -> (Z, A), so the canonical schema carries a numeric
+# projectile identity alongside the label.
+PROJECTILE_ZA = {"n": (0, 1), "p": (1, 1), "d": (1, 2), "t": (1, 3), "h": (2, 3), "a": (2, 4)}
 
 # X4 outgoing-particle code (SF3) -> ENDF MT number.
 #
@@ -386,6 +400,12 @@ def convert_entry(path: pathlib.Path, stats: Stats) -> list[dict]:
                 continue
             residual_token = m.group(4).strip()
             residual = parse_nuclide(residual_token) if residual_token else None
+            # A residual that parses to Z=0, A=0 is EXFOR naming an *emitted*
+            # particle (e.g. "0-G-0", a gamma) rather than a residual nuclide.
+            # Storing it as (0, 0) would reintroduce exactly the sentinel this
+            # schema removes, and collide with "names no residual".
+            if residual is not None and residual[0] == 0 and residual[1] == 0:
+                residual = None
 
             # 'ELEM/MASS' means the residual is not fixed for the subentry: it varies
             # per row via ELEMENT (Z) and MASS (A) data columns.
@@ -395,7 +415,9 @@ def convert_entry(path: pathlib.Path, stats: Stats) -> list[dict]:
             if residual is not None:
                 rz, ra, state = residual
             else:
-                rz = ra = 0
+                # NULL, not 0 — a 0 sentinel collides with a real Z=0 product and
+                # makes (n,tot)/(n,el)/(n,f) mutually indistinguishable.
+                rz = ra = None
                 state = ""
 
             process = m.group(3).strip().upper()
@@ -523,6 +545,9 @@ def _emit_rows(
             if z_val is None or a_val is None:
                 continue
             row_rz, row_ra = int(z_val), int(a_val)
+            # Same guard as the fixed-residual path: (0, 0) is not a nuclide.
+            if row_rz == 0 and row_ra == 0:
+                row_rz = row_ra = None
             row_state = ""
             if em_iso is not None:
                 iso = parse_number(rec[em_iso[0]])
@@ -568,15 +593,31 @@ def _emit_rows(
             if v is not None and scale is not None:
                 e_err = v * scale
 
+        mt = MT_BY_PROCESS.get(process)
+        # `kind` records how the datum was formed, which is what governs whether
+        # rows may be added together:
+        #   'channel'    — one identified ENDF reaction (MT set). An EXFOR
+        #                  (n,2n) measurement is a single channel even though it
+        #                  also names a residual.
+        #   'production' — summed over every channel reaching a residual. That is
+        #                  the (proj,X) case, MT=5 "anything", and it is what the
+        #                  evaluated xs libraries carry.
+        is_channel = mt is not None and mt != MT_BY_PROCESS["X"]
+        if not is_channel and row_rz is None:
+            # Neither an MT nor a residual: the row identifies no reaction at all.
+            stats["no_reaction_identity"] += 1
+            continue
+        pz, pa = PROJECTILE_ZA[proj]
         out.append(
             {
+                "library": "exfor",
+                "kind": "channel" if is_channel else "production",
                 "projectile": proj,
-                # Match the existing entry-subentry-pointer convention, e.g. "10186-002-0".
-                "exfor_entry": f"{sub_id[:5]}-{sub_id[5:8]}-{pointer or '0'}",
-                "reaction": f"{proj.upper() if proj != 'h' else 'HE3'},{process}",
-                "MT": MT_BY_PROCESS.get(process),
+                "proj_Z": pz,
+                "proj_A": pa,
                 "target_Z": tz,
                 "target_A": ta,
+                "MT": mt if is_channel else None,  # a production sum has no single MT
                 "residual_Z": row_rz,
                 "residual_A": row_ra,
                 "state": row_state,
@@ -584,6 +625,9 @@ def _emit_rows(
                 "energy_err_MeV": e_err,
                 "xs_mb": xs,
                 "xs_err_mb": xs_err,
+                # Entry-subentry-pointer, e.g. "10186-002-0" — the provenance
+                # chain back to the measurement.
+                "source_entry": f"{sub_id[:5]}-{sub_id[5:8]}-{pointer or '0'}",
                 "author": author,
                 "year": year,
             }
@@ -626,28 +670,11 @@ def main() -> None:
 
     df = pl.DataFrame(
         all_rows,
-        schema={
-            "projectile": pl.Utf8,
-            "exfor_entry": pl.Utf8,
-            "reaction": pl.Utf8,
-            "MT": pl.Int32,
-            "target_Z": pl.Int32,
-            "target_A": pl.Int32,
-            "residual_Z": pl.Int32,
-            "residual_A": pl.Int32,
-            "state": pl.Utf8,
-            "energy_MeV": pl.Float64,
-            "energy_err_MeV": pl.Float64,
-            "xs_mb": pl.Float64,
-            "xs_err_mb": pl.Float64,
-            "author": pl.Utf8,
-            "year": pl.Int32,
-        },
-    )
-    df = df.unique(
+        schema={c: getattr(pl, t) for c, t in CANONICAL_XS_SCHEMA.items()},
+    ).unique(
         subset=[
-            "exfor_entry",
-            "reaction",
+            "source_entry",
+            "MT",
             "target_A",
             "residual_Z",
             "residual_A",
@@ -656,45 +683,21 @@ def main() -> None:
         ]
     )
 
-    # Split into the two products. The criterion is *residual absence*, not MT:
-    # a transport channel names no outgoing nuclide. Routing on MT alone
-    # misfiles fission-product production — (92-U-235(N,F)36-KR-88,PAR,SIG) is
-    # MT=18 but is a ~10 mb yield for one fragment, not the ~1.5 b fission
-    # channel, and mixing the two makes the fission channel look 30x low.
-    is_channel = pl.col("MT").is_in(list(TRANSPORT_MT)) & (pl.col("residual_Z") == 0) & (pl.col("residual_A") == 0)
+    # Two products, split on the `kind` assigned per row at parse time.
     products = {
-        "exfor": df.filter(~is_channel),
-        "exfor-channels": df.filter(is_channel),
+        "exfor": df.filter(pl.col("kind") == "production"),
+        "exfor-channels": df.filter(pl.col("kind") == "channel"),
     }
 
     for name, part in products.items():
         out_dir = args.out / name
         out_dir.mkdir(parents=True, exist_ok=True)
-        cols = (
-            [
-                "exfor_entry",
-                "reaction",
-                "MT",
-                "target_Z",
-                "target_A",
-                "energy_MeV",
-                "energy_err_MeV",
-                "xs_mb",
-                "xs_err_mb",
-                "author",
-                "year",
-            ]
-            if name == "exfor-channels"
-            else None
-        )
+        # `library` distinguishes the two once they are unioned back together.
+        part = part.with_columns(pl.lit(name, dtype=pl.Utf8).alias("library"))
         written = 0
         for (proj, tz), grp in part.group_by(["projectile", "target_Z"]):
             sym = _ELEMENTS[tz] if 0 < tz < len(_ELEMENTS) else f"Z{tz}"
-            grp = grp.drop("projectile")
-            if cols:
-                grp = grp.select(cols).sort("MT", "energy_MeV")
-            else:
-                grp = grp.sort("residual_Z", "residual_A", "energy_MeV")
+            grp = grp.select(list(CANONICAL_XS_SCHEMA)).sort("MT", "residual_Z", "residual_A", "energy_MeV")
             grp.write_parquet(out_dir / f"{proj}_{sym}.parquet", compression="zstd")
             written += 1
         print(f"wrote {written:>4} files, {part.height:>9,} rows -> {out_dir}")

@@ -2,7 +2,7 @@
   "$schema": "./catalog.schema.json",
   "version": 1,
   "data_version": "2026.8.0",
-  "data_sha256": "543dcc0d74f938b80767cf98773e41343c10817effb47e880bb6796e3eaaff0a",
+  "data_sha256": "00083bf91458e6e6cb28da1dcc6b183584f8af926924d7296afd473dde6c2d11",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -198,9 +198,9 @@
       "path": "iaea-pd-2019/xs/"
     },
     "exfor": {
-      "name": "EXFOR",
-      "description": "Experimental nuclear reaction data (IAEA NDS)",
-      "source_url": "https://www-nds.iaea.org/exfor/",
+      "name": "EXFOR (residual production)",
+      "description": "Experimental nuclear reaction data, residual-production subset: reactions coded (proj,X) that sum over every channel reaching a named residual, which is what the evaluated xs libraries carry and so what they can be compared against directly. Measurements of a single identified channel — (n,2n), (n,a), (n,tot), (n,f) … — live in exfor-channels instead, since adding the two together would double-count. Built from the EXFOR Master Files (github.com/IAEA-NDS/exfor_master, CC-BY-4.0) pinned by release tag, not the DataExplorer retrieval API: that endpoint is hardwired to residual-production mode and returns \"mt\": \"10\" regardless of what you ask for, which is why the neutron sublibrary previously looked all but empty (#279). Carries measurement uncertainties (xs_err_mb, energy_err_MeV) and full provenance (source_entry, author, year) — the evaluated libraries carry central values only.",
+      "source_url": "https://github.com/IAEA-NDS/exfor_master",
       "projectiles": [
         "n",
         "p",
@@ -210,8 +210,26 @@
         "a"
       ],
       "data_type": "experimental_cross_sections",
-      "version": "latest",
+      "version": "Backup-2026-06-29",
+      "builder": "scripts/fetch_exfor_master.py",
       "path": "exfor/"
+    },
+    "exfor-channels": {
+      "name": "EXFOR (reaction channels)",
+      "description": "Experimental cross sections for a single identified ENDF reaction channel — (n,tot), (n,el), (n,2n), (n,g), (n,a), (n,f) and the rest — keyed by MT. This is the bulk of neutron EXFOR and none of it was reachable before: the DataExplorer endpoint the old ingestion used only serves residual production, so 82% of measured EXFOR SIG data was simply absent (#279). Complements endfb-8.0-channels, which carries the evaluated counterpart on the same schema, so measurement and evaluation compare in one query. residual_Z/residual_A are populated where the channel names a product ((n,2n), (n,a) …) and NULL where it does not ((n,tot), (n,el), (n,f)). Carries uncertainties and provenance.",
+      "source_url": "https://github.com/IAEA-NDS/exfor_master",
+      "projectiles": [
+        "n",
+        "p",
+        "d",
+        "t",
+        "h",
+        "a"
+      ],
+      "data_type": "experimental_cross_sections",
+      "version": "Backup-2026-06-29",
+      "builder": "scripts/fetch_exfor_master.py",
+      "path": "exfor-channels/"
     },
     "hi-xs-prod": {
       "name": "HI-XS Production (Geant4 INCL++/ABLA07)",

@@ -109,7 +109,11 @@ impl CrossSectionDb {
                     // no key in a residual-indexed table. `value()` on a null
                     // returns the raw buffer slot (0), which would silently
                     // collide every such row onto the (0, 0) key.
-                    if rz.is_null(i) || ra.is_null(i) {
+                    // `target_A` is guarded too: it is non-null in canonical data,
+                    // but value() returns 0 on a null and target_A = 0 is the
+                    // ENDF natural-element convention — a null would silently
+                    // masquerade as a natural-abundance row.
+                    if rz.is_null(i) || ra.is_null(i) || ta.is_null(i) {
                         continue;
                     }
                     let key = (

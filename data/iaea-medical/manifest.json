@@ -1,13 +1,23 @@
 {
   "library": "iaea-medical",
   "sublibrary": "d",
-  "files": 1,
-  "total_rows": 487,
+  "files": 10,
+  "total_rows": 18435,
   "source_files": 1,
   "projectiles": [
-    "d"
+    "d",
+    "p"
   ],
   "elements": [
-    "N"
+    "Cd",
+    "Ga",
+    "I",
+    "Kr",
+    "N",
+    "Rb",
+    "Te",
+    "Tl",
+    "Xe",
+    "Zn"
   ]
 }

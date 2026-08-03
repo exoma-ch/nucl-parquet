@@ -56,6 +56,36 @@ risk = "green"
 citation = "G.P.A. Nobre et al., 'ENDF/B-VIII.1: Updated Nuclear Reaction Data Library', Nuclear Data Sheets 210 (2026) 1. DOI 10.11578/endf/2571019."
 notes = "Carry the standard DOE work-product disclaimer (see NOTICE)."
 
+[libraries.endfb-8_0]
+name = "ENDF/B-VIII.0 neutron (NJOY-processed)"
+custodian = "NNDC / Brookhaven National Laboratory / CSEWG (US DOE); processed by the OpenMC project"
+terms_url = "https://www.nndc.bnl.gov/endf-b8.0/"
+license = "US Government work — public domain in the US (17 U.S.C. §105); NJOY/OpenMC processing adds no separate claim (openmc-data-storage mirror carries NO explicit licence)"
+redistributable = true
+risk = "green"
+citation = "D.A. Brown et al., 'ENDF/B-VIII.0: The 8th Major Release of the Nuclear Reaction Data Library', Nuclear Data Sheets 148 (2018) 1."
+notes = "The evaluated content is the USG work; what we redistribute is its NJOY-processed pointwise form via the openmc-data-storage mirror, which itself carries no licence file. Attribute both. The public Hugging Face mirror previously tagged these shards license:mit, which was wrong — an MIT grant cannot be made over a USG work we did not author (#234)."
+
+[libraries.endfb-8_0-channels]
+name = "ENDF/B-VIII.0 neutron transport channels"
+custodian = "NNDC / Brookhaven National Laboratory / CSEWG (US DOE); processed by the OpenMC project"
+terms_url = "https://www.nndc.bnl.gov/endf-b8.0/"
+license = "US Government work — public domain in the US (17 U.S.C. §105)"
+redistributable = true
+risk = "green"
+citation = "D.A. Brown et al., 'ENDF/B-VIII.0: The 8th Major Release of the Nuclear Reaction Data Library', Nuclear Data Sheets 148 (2018) 1."
+notes = "Same source and terms as endfb-8_0; differs only in which MTs are extracted (transport channels rather than transmutation)."
+
+[libraries.exfor-channels]
+name = "EXFOR (reaction channels)"
+custodian = "International Network of Nuclear Reaction Data Centres (NRDC) / IAEA-NDS"
+terms_url = "https://nds.iaea.org/nrdc/exfor-master/"
+license = "CC-BY-4.0 (EXFOR Master File)"
+redistributable = true
+risk = "green"
+citation = "N. Otuka et al., 'Towards a More Complete and Accurate Experimental Nuclear Reaction Data Library (EXFOR)...', Nuclear Data Sheets 120 (2014) 272."
+notes = "Same source and terms as [libraries.exfor] — both are built from the exfor_master repository (CC-BY-4.0), pinned by release tag. Split by whether the datum identifies a single reaction channel or sums over channels to a residual."
+
 [libraries.jeff-4_0]
 name = "JEFF-4.0"
 custodian = "OECD Nuclear Energy Agency (NEA) Data Bank"

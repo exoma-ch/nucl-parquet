@@ -150,7 +150,8 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | [ENDF/B-VIII.0 neutron (NJOY-processed)](https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC) | n |  |
 | [ENDF/B-VIII.0 neutron transport channels](https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC) | n |  |
 | [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-b8.1/) | p, d, t, ³He, α |  |
-| [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS |
+| [EXFOR (reaction channels)](https://github.com/IAEA-NDS/exfor_master) | n, p, d, t, ³He, α |  |
+| [EXFOR (residual production)](https://github.com/IAEA-NDS/exfor_master) | n, p, d, t, ³He, α |  |
 | [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n | IAEA |
 | [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | ar40, c12, ca40, fe56, he4, ne20, ni58, o16, p, pb208, si28, xe132 |  |
 | [HI-XS Production (Geant4 INCL++/ABLA07)](https://geant4.org/) | c12, o16, ne20, si28, ar40, fe56 |  |

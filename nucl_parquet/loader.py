@@ -19,8 +19,9 @@ Usage:
               WHERE projectile='p' AND target_Z=29 AND target_A=63
                 AND residual_Z=30 AND residual_A=63\"\"\")
 
-    # Transport channels name no residual — filter on MT instead:
-    db.sql("SELECT * FROM xs WHERE kind='channel' AND MT=1 AND target_Z=26 AND target_A=56")
+    # Transport channels name no residual — filter on MT, via the `channels`
+    # view (the `xs` view unions the production libraries only):
+    db.sql("SELECT * FROM channels WHERE MT=1 AND target_Z=26 AND target_A=56")
 
     # Decay radiation:
     db.sql("SELECT * FROM radiation WHERE Z=27 AND A=60 AND rad_type='gamma'")
@@ -222,9 +223,13 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         columns = {r[0] for r in db.sql(f"SELECT name FROM parquet_schema('{sample}') WHERE name != 'root'").fetchall()}
         projection = "*" if "library" in columns else f"*, '{lib_key}' AS library"
 
+        # union_by_name so a directory whose files disagree on columns still
+        # mounts: the projection above is decided from one sampled file, and a
+        # partially-migrated library would otherwise fail the whole connection.
         db.execute(f"""
             CREATE VIEW {view_name} AS
-            SELECT {projection} FROM read_parquet('{glob_path}', filename=true)
+            SELECT {projection}
+            FROM read_parquet('{glob_path}', filename=true, union_by_name=true)
         """)
         if data_type == "cross_sections":
             lib_views.append(view_name)

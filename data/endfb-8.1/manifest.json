@@ -1,16 +1,37 @@
 {
   "library": "endfb-8.1",
   "sublibrary": "a",
-  "files": 4,
-  "total_rows": 4039,
+  "files": 33,
+  "total_rows": 21749,
   "source_files": 5,
   "projectiles": [
-    "a"
+    "a",
+    "d",
+    "h",
+    "p",
+    "t"
   ],
   "elements": [
+    "Al",
+    "B",
     "Be",
+    "Bi",
+    "C",
+    "Ca",
+    "Cr",
+    "Cu",
+    "Fe",
+    "H",
     "He",
+    "Hg",
     "Li",
-    "O"
+    "N",
+    "Nb",
+    "Ni",
+    "O",
+    "P",
+    "Pb",
+    "Si",
+    "W"
   ]
 }

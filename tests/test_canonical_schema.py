@@ -50,17 +50,15 @@ def test_all_xs_tables_share_the_canonical_schema() -> None:
     """One shape, so `UNION ALL BY NAME` across sources is meaningful."""
     expected = set(CANONICAL_XS_SCHEMA)
     problems: list[str] = []
+    con = duckdb.connect()
     for key, d in _xs_dirs():
-        sample = sorted(d.glob("*.parquet"))[0]
-        cols = {
-            r[0]
-            for r in duckdb.connect()
-            .sql(f"SELECT name FROM parquet_schema('{sample}') WHERE name != 'root'")
-            .fetchall()
-        }
-        missing = expected - cols
-        if missing:
-            problems.append(f"{key}: missing {sorted(missing)}")
+        for sample in sorted(d.glob("*.parquet")):
+            cols = {
+                r[0] for r in con.sql(f"SELECT name FROM parquet_schema('{sample}') WHERE name != 'root'").fetchall()
+            }
+            missing = expected - cols
+            if missing:
+                problems.append(f"{key}/{sample.name}: missing {sorted(missing)}")
     assert not problems, "tables not in canonical form:\n  " + "\n  ".join(problems)
 
 
@@ -72,14 +70,15 @@ def test_identity_spine_is_never_null() -> None:
     unified `xs` view merge five beams into one result set.
     """
     problems: list[str] = []
+    con = duckdb.connect()
+    checks = ", ".join(f"count(*) FILTER (WHERE {c} IS NULL) AS {c}_nulls" for c in CANONICAL_XS_REQUIRED)
     for key, d in _xs_dirs():
-        sample = sorted(d.glob("*.parquet"))[0]
-        con = duckdb.connect()
-        checks = ", ".join(f"count(*) FILTER (WHERE {c} IS NULL) AS {c}_nulls" for c in CANONICAL_XS_REQUIRED)
-        row = con.sql(f"SELECT {checks} FROM read_parquet('{sample}')").fetchone()
+        # One glob per library rather than per file — same coverage, far fewer
+        # round trips than 3,970 individual reads.
+        row = con.sql(f"SELECT {checks} FROM read_parquet('{d}/*.parquet')").fetchone()
         for col, n in zip(CANONICAL_XS_REQUIRED, row):
             if n:
-                problems.append(f"{key}/{sample.name}: {col} has {n} nulls")
+                problems.append(f"{key}: {col} has {n} nulls")
     assert not problems, "identity columns must never be null:\n  " + "\n  ".join(problems)
 
 
@@ -92,15 +91,13 @@ def test_no_zero_sentinel_residuals() -> None:
     residual (#279).
     """
     problems: list[str] = []
+    con = duckdb.connect()
     for key, d in _xs_dirs():
-        for sample in sorted(d.glob("*.parquet"))[:5]:
-            n = (
-                duckdb.connect()
-                .sql(f"SELECT count(*) FROM read_parquet('{sample}') WHERE residual_Z = 0 AND residual_A = 0")
-                .fetchone()[0]
-            )
-            if n:
-                problems.append(f"{key}/{sample.name}: {n} rows with residual (0,0)")
+        n = con.sql(
+            f"SELECT count(*) FROM read_parquet('{d}/*.parquet') WHERE residual_Z = 0 AND residual_A = 0"
+        ).fetchone()[0]
+        if n:
+            problems.append(f"{key}: {n} rows with residual (0,0)")
     assert not problems, "use NULL, not a 0 sentinel:\n  " + "\n  ".join(problems)
 
 
@@ -114,9 +111,9 @@ def test_kind_discriminates_production_from_channel() -> None:
     """
     allowed = {"production", "channel"}
     problems: list[str] = []
+    con = duckdb.connect()
     for key, d in _xs_dirs():
-        sample = sorted(d.glob("*.parquet"))[0]
-        kinds = {r[0] for r in duckdb.connect().sql(f"SELECT DISTINCT kind FROM read_parquet('{sample}')").fetchall()}
+        kinds = {r[0] for r in con.sql(f"SELECT DISTINCT kind FROM read_parquet('{d}/*.parquet')").fetchall()}
         bad = kinds - allowed
         if bad:
             problems.append(f"{key}: unexpected kind {sorted(bad)}")
@@ -128,12 +125,11 @@ def test_channel_rows_carry_mt_and_production_rows_do_not() -> None:
     """The two kinds are distinguished by what identifies the datum."""
     con = duckdb.connect()
     for key, d in _xs_dirs():
-        sample = sorted(d.glob("*.parquet"))[0]
         row = con.sql(f"""
             SELECT
               count(*) FILTER (WHERE kind='channel'    AND MT IS NULL),
               count(*) FILTER (WHERE kind='production' AND MT IS NOT NULL)
-            FROM read_parquet('{sample}')
+            FROM read_parquet('{d}/*.parquet')
         """).fetchone()
         assert row[0] == 0, f"{key}: {row[0]} channel rows without an MT"
         assert row[1] == 0, f"{key}: {row[1]} production rows carrying an MT"

@@ -180,6 +180,8 @@ def main() -> None:
     args = ap.parse_args()
 
     catalog = json.loads((args.data_dir / "catalog.json").read_text())
+    # `transport_cross_sections` is deliberately absent: those tables are written
+    # canonical by scripts/build_channels.py and have no legacy form to lift.
     xs_types = {
         "cross_sections",
         "production_cross_sections",
@@ -197,7 +199,9 @@ def main() -> None:
         lib_dir = args.data_dir / info["path"]
         if not lib_dir.exists():
             continue
-        kind = "channel" if info.get("data_type") == "transport_cross_sections" else "production"
+        # Every legacy table is a production sum — `xs_types` above excludes the
+        # channel libraries, which are written canonical by their own builders.
+        kind = "production"
         files = sorted(lib_dir.glob("*.parquet"))
         for f in files:
             rows, status = migrate_file(f, lib_key, kind, args.dry_run)
