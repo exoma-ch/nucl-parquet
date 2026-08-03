@@ -11,6 +11,66 @@ XS_SCHEMA = {
     "xs_mb": "Float64",
 }
 
+# ---------------------------------------------------------------------------
+# Canonical cross-section schema
+# ---------------------------------------------------------------------------
+# One shape for every sigma(E) table, so that evaluated production data,
+# transport channels and EXFOR measurements union without special cases.
+#
+# It exists because the legacy 6-column XS_SCHEMA above encodes reaction
+# identity *in the file path* rather than in the data. Two shipped bugs came
+# straight out of that:
+#
+#   #273  the unified `xs` view interleaved isobaric targets, because target_Z
+#         is not a column — the loader now regexes the filename and joins a
+#         symbol->Z table at query time to recover it.
+#   ---   the same view still silently merges FIVE projectiles: a query for
+#         Cu-63 -> Zn-63 returns (p,n), (d,2n), (a,x), (h,x) and (t,x) rows
+#         superposed, because `projectile` is likewise only in the filename.
+#
+# Identity therefore lives in columns. Nulls mean "not applicable" — never 0,
+# which collides with real Z=0 products and made (n,tot)/(n,el)/(n,f)
+# indistinguishable in the 82% of EXFOR rows that name no residual.
+CANONICAL_XS_SCHEMA = {
+    # --- provenance of the evaluation / measurement
+    "library": "Utf8",
+    # 'production' — summed over every channel reaching this residual (MT null)
+    # 'channel'    — one ENDF reaction channel (MT set; residual may be null)
+    "kind": "Utf8",
+    # --- reaction identity
+    "projectile": "Utf8",  # n p d t h a g, or a heavy ion such as 'ar40'
+    "proj_Z": "Int32",
+    "proj_A": "Int32",
+    "target_Z": "Int32",
+    "target_A": "Int32",  # 0 = natural element (ENDF convention)
+    "MT": "Int32",  # null for production sums
+    "residual_Z": "Int32",  # null when the channel names no residual
+    "residual_A": "Int32",
+    "state": "Utf8",  # residual isomeric state: '' g m m1 m2
+    # --- the datum
+    "energy_MeV": "Float64",
+    "xs_mb": "Float64",
+    "energy_err_MeV": "Float64",
+    "xs_err_mb": "Float64",
+    # --- experimental provenance (null for evaluations)
+    "source_entry": "Utf8",
+    "author": "Utf8",
+    "year": "Int32",
+}
+
+# Columns that must never be null in a canonical table — the identity spine.
+CANONICAL_XS_REQUIRED = (
+    "library",
+    "kind",
+    "projectile",
+    "proj_Z",
+    "proj_A",
+    "target_Z",
+    "target_A",
+    "energy_MeV",
+    "xs_mb",
+)
+
 # Heavy-ion production XS (hi-xs-prod): carries projectile identity
 HI_XS_PROD_SCHEMA = {
     "proj_Z": "Int32",
@@ -30,6 +90,7 @@ HI_XS_SCHEMA = {
     "energy_MeV": "Float64",
     "xs_mb": "Float64",
 }
+
 
 STOPPING_SCHEMA = {
     "source": "Utf8",
@@ -153,17 +214,7 @@ NUCLIDES_SCHEMA = {
     "decay_2_pct": "Float64",
 }
 
-EXFOR_SCHEMA = {
-    "exfor_entry": "Utf8",
-    "target_Z": "Int32",
-    "target_A": "Int32",
-    "residual_Z": "Int32",
-    "residual_A": "Int32",
-    "state": "Utf8",
-    "energy_MeV": "Float64",
-    "energy_err_MeV": "Float64",
-    "xs_mb": "Float64",
-    "xs_err_mb": "Float64",
-    "author": "Utf8",
-    "year": "Int32",
-}
+# EXFOR now shares CANONICAL_XS_SCHEMA like every other cross-section table;
+# `exfor_entry` became the source-agnostic `source_entry`. Kept as an alias so
+# external callers importing it keep working.
+EXFOR_SCHEMA = CANONICAL_XS_SCHEMA

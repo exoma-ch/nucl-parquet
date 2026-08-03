@@ -1,11 +1,14 @@
 {
   "library": "jendl-5",
   "sublibrary": "n",
-  "files": 98,
-  "total_rows": 5717111,
+  "files": 173,
+  "total_rows": 807527,
   "source_files": 793,
   "projectiles": [
-    "n"
+    "a",
+    "d",
+    "n",
+    "p"
   ],
   "elements": [
     "Ac",

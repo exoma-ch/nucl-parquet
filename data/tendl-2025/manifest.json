@@ -1,11 +1,16 @@
 {
   "library": "tendl-2025",
   "sublibrary": "a",
-  "files": 113,
-  "total_rows": 519305,
+  "files": 678,
+  "total_rows": 6443928,
   "source_files": 2849,
   "projectiles": [
-    "a"
+    "a",
+    "d",
+    "h",
+    "n",
+    "p",
+    "t"
   ],
   "elements": [
     "Ac",

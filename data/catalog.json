@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.7.2",
-  "data_sha256": "d317a2db67d7a0996e082adf34afe15666e57daa7feb95e0f72f44346f931e0a",
+  "data_version": "2026.8.0",
+  "data_sha256": "00083bf91458e6e6cb28da1dcc6b183584f8af926924d7296afd473dde6c2d11",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -49,6 +49,19 @@
       "temperature_K": 294,
       "builder": "scripts/build_neutron_njoy.py",
       "path": "endfb-8.0/xs/"
+    },
+    "endfb-8.0-channels": {
+      "name": "ENDF/B-VIII.0 neutron transport channels",
+      "description": "Neutron *transport* cross sections — total (MT=1), elastic (2), nonelastic (3), inelastic (4), fission (18) and capture (102) — in long form (one row per Z/A/MT/energy), which is the exact complement of the transmutation-only endfb-8.0 xs library. These are the channels attenuation, shielding and self-shielding need and where the reaction products are irrelevant: Phi(x) = Phi_0 * exp(-Sigma_tot * x). Built from the same OpenMC ENDF/B-VIII.0 HDF5 as endfb-8.0, so it is resonance-resolved, Doppler-broadened to 294 K and reaches 150 MeV — unlike the raw-MF=3 meta/neutron_total view it supersedes, which is MT=1/2 only and capped at 20 MeV. MT=1 is absent from the processed files (OpenMC sums the total on the fly) and is reconstructed here by summing every non-redundant reaction on the shared grid; this reproduces Fe-56 at 14.811 b total / 2.604 b capture (0.0253 eV) and 2.584 b (14 MeV), and U-235 at 588.5 b fission / 99.6 b capture thermal. Long form so a new channel is new rows rather than a new column, and so EXFOR's measured channels concatenate into the same view. Thinned to ~1% under both lin-lin and log-log, as for endfb-8.0.",
+      "source_url": "https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC",
+      "projectiles": [
+        "n"
+      ],
+      "data_type": "transport_cross_sections",
+      "version": "VIII.0",
+      "temperature_K": 294,
+      "builder": "scripts/build_channels.py",
+      "path": "endfb-8.0/channels/"
     },
     "jeff-4.0": {
       "name": "JEFF-4.0",
@@ -185,9 +198,9 @@
       "path": "iaea-pd-2019/xs/"
     },
     "exfor": {
-      "name": "EXFOR",
-      "description": "Experimental nuclear reaction data (IAEA NDS)",
-      "source_url": "https://www-nds.iaea.org/exfor/",
+      "name": "EXFOR (residual production)",
+      "description": "Experimental nuclear reaction data, residual-production subset: reactions coded (proj,X) that sum over every channel reaching a named residual, which is what the evaluated xs libraries carry and so what they can be compared against directly. Measurements of a single identified channel — (n,2n), (n,a), (n,tot), (n,f) … — live in exfor-channels instead, since adding the two together would double-count. Built from the EXFOR Master Files (github.com/IAEA-NDS/exfor_master, CC-BY-4.0) pinned by release tag, not the DataExplorer retrieval API: that endpoint is hardwired to residual-production mode and returns \"mt\": \"10\" regardless of what you ask for, which is why the neutron sublibrary previously looked all but empty (#279). Carries measurement uncertainties (xs_err_mb, energy_err_MeV) and full provenance (source_entry, author, year) — the evaluated libraries carry central values only.",
+      "source_url": "https://github.com/IAEA-NDS/exfor_master",
       "projectiles": [
         "n",
         "p",
@@ -197,8 +210,26 @@
         "a"
       ],
       "data_type": "experimental_cross_sections",
-      "version": "latest",
+      "version": "Backup-2026-06-29",
+      "builder": "scripts/fetch_exfor_master.py",
       "path": "exfor/"
+    },
+    "exfor-channels": {
+      "name": "EXFOR (reaction channels)",
+      "description": "Experimental cross sections for a single identified ENDF reaction channel — (n,tot), (n,el), (n,2n), (n,g), (n,a), (n,f) and the rest — keyed by MT. This is the bulk of neutron EXFOR and none of it was reachable before: the DataExplorer endpoint the old ingestion used only serves residual production, so 82% of measured EXFOR SIG data was simply absent (#279). Complements endfb-8.0-channels, which carries the evaluated counterpart on the same schema, so measurement and evaluation compare in one query. residual_Z/residual_A are populated where the channel names a product ((n,2n), (n,a) …) and NULL where it does not ((n,tot), (n,el), (n,f)). Carries uncertainties and provenance.",
+      "source_url": "https://github.com/IAEA-NDS/exfor_master",
+      "projectiles": [
+        "n",
+        "p",
+        "d",
+        "t",
+        "h",
+        "a"
+      ],
+      "data_type": "experimental_cross_sections",
+      "version": "Backup-2026-06-29",
+      "builder": "scripts/fetch_exfor_master.py",
+      "path": "exfor-channels/"
     },
     "hi-xs-prod": {
       "name": "HI-XS Production (Geant4 INCL++/ABLA07)",
@@ -606,6 +637,10 @@
     "level_density_params": {
       "path": "meta/level_density_params.parquet",
       "type": "file"
+    },
+    "channels": {
+      "path": "endfb-8.0/channels",
+      "type": "glob"
     },
     "neutron_total": {
       "path": "meta/neutron_total",
