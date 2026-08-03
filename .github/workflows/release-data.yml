@@ -98,7 +98,7 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref_name }}
       - uses: astral-sh/setup-uv@v5
-      - name: Sync dataset card
+      - name: Sync shards + dataset card
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -109,8 +109,8 @@ jobs:
                  "or unset HF_MIRROR_ENABLED to retire the mirror deliberately."
             exit 1
           fi
-          # Card only. The shard upload is held back until the published
-          # per-isotope layout and the local per-element layout are reconciled —
-          # syncing today would interleave two incompatible shardings. The script
-          # refuses that on its own; this keeps the release green in the meantime.
-          uv run --with huggingface_hub python scripts/sync_huggingface.py --card-only
+          # Shards are split per isotope on upload so the mirror keeps the
+          # `n_Nd143.parquet` names it already serves, while carrying the
+          # repository's current canonical schema. The card is pushed after the
+          # shards, and describes them.
+          uv run --with huggingface_hub --with polars python scripts/sync_huggingface.py

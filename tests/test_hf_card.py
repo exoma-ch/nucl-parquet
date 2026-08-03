@@ -35,7 +35,7 @@ pytestmark = pytest.mark.skipif(
 def _card() -> str:
     from sync_huggingface import build_card
 
-    return build_card(DATA_DIR)
+    return build_card(DATA_DIR, synced=True)
 
 
 @pytest.mark.data
@@ -95,16 +95,24 @@ def test_card_describes_the_published_schema_not_the_local_one() -> None:
     the local schema on the card would send consumers looking for `MT` and
     `projectile` columns that are not in the file they just fetched.
     """
-    from sync_huggingface import PUBLISHED_SCHEMA
+    from sync_huggingface import PUBLISHED_SCHEMA, build_card
 
     from nucl_parquet._schemas import CANONICAL_XS_SCHEMA
 
-    card = _card()
-    assert PUBLISHED_SCHEMA in card
     published_cols = {c.strip() for c in PUBLISHED_SCHEMA.split(",")}
     assert published_cols < set(CANONICAL_XS_SCHEMA), "published schema should be a subset of canonical"
-    # And the divergence must be disclosed, not quietly papered over.
-    assert "lags the main repository" in card
+
+    # Card-only run: the mirror still holds the pre-migration snapshot, so the
+    # card must name the old columns and disclose the divergence.
+    stale = build_card(DATA_DIR, synced=False)
+    assert PUBLISHED_SCHEMA in stale
+    assert "lag the main repository" in stale
+
+    # Shard-syncing run: the mirror is being brought up to date in the same
+    # invocation, so the card names the canonical schema and drops the notice.
+    fresh = build_card(DATA_DIR, synced=True)
+    assert ", ".join(CANONICAL_XS_SCHEMA) in fresh
+    assert "lag the main repository" not in fresh
 
 
 @pytest.mark.data
@@ -160,3 +168,35 @@ def test_card_advertises_no_api_that_does_not_exist() -> None:
         attr = line.split("nucl_parquet.", 1)[1].split("(")[0].strip()
         if attr and attr.isidentifier():
             assert hasattr(nucl_parquet, attr), f"card references nucl_parquet.{attr}, which does not exist"
+
+
+@pytest.mark.data
+def test_split_by_isotope_is_lossless_and_reproduces_published_names(tmp_path: Path) -> None:
+    """The mirror shards per isotope; the repository shards per element.
+
+    The sync converts rather than forcing one shape on the other, so that every
+    already-published `n_Nd143.parquet` URL keeps resolving. Two things have to
+    hold: no row may be lost, and the names must come out exactly as published.
+    """
+    import polars as pl
+    from sync_huggingface import split_by_isotope
+
+    src = DATA_DIR / "endfb-8.0" / "xs" / "n_Nd.parquet"
+    if not src.exists():
+        pytest.skip("endfb-8.0 shards not present")
+
+    staging = tmp_path / "in"
+    staging.mkdir()
+    (staging / src.name).write_bytes(src.read_bytes())
+
+    produced = split_by_isotope(staging, tmp_path / "out")
+
+    before = pl.read_parquet(src)
+    after = pl.concat([pl.read_parquet(p) for p in produced])
+    assert after.height == before.height, "rows lost in the split"
+    assert after.columns == before.columns, "the split must not reshape the schema"
+
+    # Names match what the mirror already serves.
+    assert {p.name for p in produced} >= {"n_Nd143.parquet", "n_Nd142.parquet"}
+    # And each shard really is one isotope.
+    assert all(pl.read_parquet(p)["target_A"].n_unique() == 1 for p in produced)
