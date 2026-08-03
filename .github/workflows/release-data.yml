@@ -80,20 +80,37 @@ jobs:
     name: Sync Hugging Face mirror
     runs-on: ubuntu-latest
     needs: [verify, data-asset]
-    # Skip cleanly on forks and wherever the secret is absent, rather than
-    # failing a release for want of a mirror.
-    if: ${{ github.repository == 'exoma-ch/nucl-parquet' }}
+    # Whether the mirror is maintained is a *declared* state, not something to
+    # infer from whether a secret happens to exist.
+    #
+    #   vars.HF_MIRROR_ENABLED unset  -> job is skipped. Grey, and honestly so.
+    #   set to 'true', token missing  -> job fails loudly (see below).
+    #   set to 'true', token present  -> card is pushed.
+    #
+    # The bug this replaces: the job keyed off the secret and warn-and-skipped
+    # when it was absent, so it reported *success* through 2026.8.0 and 2026.8.1
+    # while pushing nothing. The card is what keeps the published licence from
+    # drifting (#234), so "mirror silently did nothing" must never be
+    # indistinguishable from "mirror is current". Skipped says that; green lies.
+    if: ${{ github.repository == 'exoma-ch/nucl-parquet' && vars.HF_MIRROR_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref_name }}
       - uses: astral-sh/setup-uv@v5
-      - name: Sync card + shards
+      - name: Sync dataset card
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           if [ -z "${HF_TOKEN}" ]; then
-            echo "::warning::HF_TOKEN not set — skipping Hugging Face mirror"
-            exit 0
+            echo "::error::HF_MIRROR_ENABLED is 'true' but HF_TOKEN is not set." \
+                 "The mirror's licence metadata will drift from data/licenses.toml" \
+                 "(#234). Add HF_TOKEN with write scope on gerchowl/nucl-parquet-data," \
+                 "or unset HF_MIRROR_ENABLED to retire the mirror deliberately."
+            exit 1
           fi
-          uv run --with huggingface_hub python scripts/sync_huggingface.py
+          # Card only. The shard upload is held back until the published
+          # per-isotope layout and the local per-element layout are reconciled —
+          # syncing today would interleave two incompatible shardings. The script
+          # refuses that on its own; this keeps the release green in the meantime.
+          uv run --with huggingface_hub python scripts/sync_huggingface.py --card-only
