@@ -34,3 +34,5 @@ docs/theranostics/*
 !docs/adr/
 !docs/adr/*.md
 !docs/g4-xray-auger-design.md
+.direnv/
+.claude/

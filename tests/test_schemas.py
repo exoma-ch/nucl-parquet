@@ -13,21 +13,21 @@ import pytest
 
 from nucl_parquet._schemas import (
     ABUNDANCES_SCHEMA,
+    CANONICAL_XS_SCHEMA,
     DECAY_SCHEMA,
     ELEMENTS_SCHEMA,
-    EXFOR_SCHEMA,
-    HI_XS_PROD_SCHEMA,
-    HI_XS_SCHEMA,
     STOPPING_SCHEMA,
-    XS_SCHEMA,
 )
 
-# Maps catalog data_type → expected schema (None = skip)
+# Every cross-section table now shares one shape, so the map is no longer a
+# per-data_type dispatch to a different set of columns — it just records which
+# data_types are cross-section tables at all.
 _XS_SCHEMA_BY_TYPE: dict[str, dict | None] = {
-    "cross_sections": XS_SCHEMA,
-    "production_cross_sections": HI_XS_PROD_SCHEMA,
-    "total_reaction_cross_sections": HI_XS_SCHEMA,
-    "experimental_cross_sections": None,  # skip — EXFOR has its own test
+    "cross_sections": CANONICAL_XS_SCHEMA,
+    "transport_cross_sections": CANONICAL_XS_SCHEMA,
+    "production_cross_sections": CANONICAL_XS_SCHEMA,
+    "total_reaction_cross_sections": CANONICAL_XS_SCHEMA,
+    "experimental_cross_sections": CANONICAL_XS_SCHEMA,
 }
 
 # DuckDB type name mapping for comparison
@@ -98,4 +98,4 @@ def test_exfor_schema(data_dir_path: Path) -> None:
     files = sorted(exfor_dir.glob("*.parquet"))
     if not files:
         pytest.skip("No EXFOR parquet files")
-    _check_schema(files[0], EXFOR_SCHEMA)
+    _check_schema(files[0], CANONICAL_XS_SCHEMA)

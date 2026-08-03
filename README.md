@@ -148,6 +148,7 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | [BROND-3.1](https://vant.ippe.ru/) | n | IPPE |
 | [CENDL-3.2](http://www.nuclear.csdb.cn/) | n | CIAE |
 | [ENDF/B-VIII.0 neutron (NJOY-processed)](https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC) | n |  |
+| [ENDF/B-VIII.0 neutron transport channels](https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC) | n |  |
 | [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-b8.1/) | p, d, t, ³He, α |  |
 | [EXFOR](https://www-nds.iaea.org/exfor/) | n, p, d, t, ³He, α | IAEA NDS |
 | [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n | IAEA |
@@ -348,6 +349,7 @@ The complete inventory of DuckDB views registered by `nucl_parquet.connect()`. A
 | `capture_gammas` | `meta/capture_gammas.parquet` | file |
 | `capture_gammas_summary` | `meta/capture_gammas_summary.parquet` | file |
 | `catima_stopping` | `stopping/catima_*.parquet` | glob |
+| `channels` | `endfb-8.0/channels/*.parquet` | glob |
 | `coincidences` | `meta/ensdf/coincidences/*.parquet` | glob |
 | `compound_compositions` | `meta/compound_compositions.parquet` | file |
 | `compton_doppler_profiles` | `em/compton_doppler_profiles.parquet` | file |

@@ -7,11 +7,20 @@ Usage:
     import nucl_parquet
     db = nucl_parquet.connect()
 
-    # Cross-section query:
-    db.sql("SELECT * FROM tendl_2023_iso WHERE target_A=63 AND residual_Z=30")
+    # Cross-section query. A reaction is only fully specified by projectile +
+    # target + residual: without `projectile` this same filter returns (p,n),
+    # (d,2n), (a,x), (h,x) and (t,x) superposed as if they were one reaction.
+    db.sql(\"\"\"SELECT * FROM tendl_2023_iso
+              WHERE projectile='p' AND target_Z=29 AND target_A=63
+                AND residual_Z=30 AND residual_A=63\"\"\")
 
-    # Compare all libraries (filter target_Z to disambiguate isobaric targets):
-    db.sql("SELECT library, energy_MeV, xs_mb FROM xs WHERE target_Z=29 AND target_A=63 AND residual_Z=30")
+    # Compare all libraries for one reaction:
+    db.sql(\"\"\"SELECT library, energy_MeV, xs_mb FROM xs
+              WHERE projectile='p' AND target_Z=29 AND target_A=63
+                AND residual_Z=30 AND residual_A=63\"\"\")
+
+    # Transport channels name no residual — filter on MT instead:
+    db.sql("SELECT * FROM xs WHERE kind='channel' AND MT=1 AND target_Z=26 AND target_A=56")
 
     # Decay radiation:
     db.sql("SELECT * FROM radiation WHERE Z=27 AND A=60 AND rad_type='gamma'")
@@ -178,14 +187,16 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # --- Cross-section libraries ---
     lib_views: list[str] = []
 
-    # Element symbol → Z map as a temp table, so the cross-section views can expose
-    # a first-class `target_Z` derived from each file's element symbol. The shared
-    # 6-col xs schema has no target_Z (target is implied by the <proj>_<Symbol>
-    # filename), so without this the unified `xs` view silently interleaves isobaric
-    # targets that reach the same *absolute* residual via different reactions —
-    # e.g. Nd/Pm/Sm-145 all → Nd-143 at 14–20 MeV. target_Z makes them separable. (#273)
-    db.execute("CREATE TEMP TABLE _element_z(symbol_lc VARCHAR, z INTEGER)")
-    db.executemany("INSERT INTO _element_z VALUES (?, ?)", list(_SYMBOL_TO_Z.items()))
+    # Reaction identity now lives in the data (CANONICAL_XS_SCHEMA), not the file
+    # path. Before that, `target_Z` had to be recovered here by regexing the
+    # <proj>_<Symbol> filename and joining a symbol→Z table, or the unified `xs`
+    # view interleaved isobaric targets reaching the same absolute residual —
+    # Nd/Pm/Sm-145 all → Nd-143 at 14–20 MeV (#273). `projectile` had no such
+    # workaround at all, so the same view merged five beams: a Cu-63 → Zn-63
+    # query returned (p,n), (d,2n), (a,x), (h,x) and (t,x) rows superposed.
+    #
+    # Both are now columns, so neither defect is representable and the views are
+    # plain SELECTs. `_SYMBOL_TO_Z` is retained for callers that map symbols.
 
     for lib_key, lib_info in catalog.get("libraries", {}).items():
         # Some catalog entries (e.g. strata-data-nuclear) are build-time
@@ -203,27 +214,27 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         glob_path = str(lib_dir / "*.parquet")
 
         data_type = lib_info.get("data_type", "cross_sections")
-        if data_type == "cross_sections":
-            # Expose target_Z, derived from the <proj>_<Symbol>.parquet filename, so
-            # isobaric targets are separable in the unified `xs` view (#273).
-            db.execute(f"""
-                CREATE VIEW {view_name} AS
-                SELECT r.*, '{lib_key}' AS library, e.z AS target_Z
-                FROM read_parquet('{glob_path}', filename=true) r
-                LEFT JOIN _element_z e
-                  ON e.symbol_lc = lower(regexp_extract(r.filename, '_([A-Za-z]+)[.]parquet$', 1))
-            """)
-            lib_views.append(view_name)
-        else:
-            db.execute(f"""
-                CREATE VIEW {view_name} AS
-                SELECT *, '{lib_key}' AS library
-                FROM read_parquet('{glob_path}', filename=true)
-            """)
 
-    # Unified xs view: UNION ALL of all evaluated libraries
+        # Canonical files carry `library`; pre-migration or third-party files may
+        # not. Synthesize it only when it is genuinely absent, so a legacy tree
+        # still mounts and the column means the same thing either way.
+        sample = next(iter(sorted(lib_dir.glob("*.parquet"))))
+        columns = {r[0] for r in db.sql(f"SELECT name FROM parquet_schema('{sample}') WHERE name != 'root'").fetchall()}
+        projection = "*" if "library" in columns else f"*, '{lib_key}' AS library"
+
+        db.execute(f"""
+            CREATE VIEW {view_name} AS
+            SELECT {projection} FROM read_parquet('{glob_path}', filename=true)
+        """)
+        if data_type == "cross_sections":
+            lib_views.append(view_name)
+
+    # Unified xs view. UNION BY NAME rather than UNION ALL: the canonical schema
+    # is shared, but a library mid-migration may still carry the legacy 6 columns,
+    # and by-name union fills the gap with nulls instead of silently transposing
+    # values into the wrong columns.
     if lib_views:
-        union_sql = " UNION ALL ".join(f"SELECT * FROM {v}" for v in lib_views)
+        union_sql = " UNION ALL BY NAME ".join(f"SELECT * FROM {v}" for v in lib_views)
         db.execute(f"CREATE VIEW xs AS {union_sql}")
 
     # --- Catalog-driven view registration ---
