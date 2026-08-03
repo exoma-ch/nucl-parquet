@@ -52,11 +52,16 @@ def test_parse_stem(stem: str, expected: tuple | None) -> None:
     assert parse_stem(stem) == expected
 
 
-def test_legacy_provenance_column_is_carried_forward() -> None:
-    """`exfor_entry` was renamed, not dropped.
+def test_legacy_provenance_column_is_registered_for_rename() -> None:
+    """`exfor_entry` must be renamed, not dropped.
 
     An early migration selected only the canonical column names, which silently
     deleted the provenance chain back to the measurement for every EXFOR row --
     real data loss, recovered only because the legacy tree was still in git.
+
+    This asserts the rename is *registered*, not that a migration run applies it;
+    the end state is covered from the other side by
+    `test_canonical_schema.py::test_all_xs_tables_share_the_canonical_schema`,
+    which fails if any shipped table is missing `source_entry`.
     """
     assert _RENAMES["exfor_entry"] == "source_entry"

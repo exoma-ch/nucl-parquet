@@ -207,7 +207,7 @@ def test_xs_view_does_not_merge_projectiles(canonical_data: Path) -> None:
     got = db.sql("SELECT projectile, xs_mb FROM xs WHERE target_Z=26 AND target_A=56 ORDER BY projectile").fetchall()
     assert got == [("n", 100.0), ("p", 200.0)]
     only_n = db.sql("SELECT xs_mb FROM xs WHERE target_Z=26 AND target_A=56 AND projectile='n'").fetchall()
-    assert only_n == [(100.0)] or only_n == [(100.0,)]
+    assert only_n == [(100.0,)]
 
 
 def test_xs_view_separates_isobars(canonical_data: Path) -> None:

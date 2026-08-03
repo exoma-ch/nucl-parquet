@@ -150,6 +150,10 @@ MT_BY_PROCESS = {
 # (`WHERE MT = 18`) silently sum sigma_f with a dozen fragment curves — and since
 # the fragments peak around 100 mb where sigma_f is thousands of barns, the
 # contamination is invisible in magnitude while being wrong in every row it adds.
+#
+# Only 18 (`F`) and 21 (`3N+F`) are reachable from the current `MT_BY_PROCESS`.
+# The first- second- and third-chance partials (19, 20, 38) are listed so that
+# adding an X4 code for one later cannot reintroduce the bug by omission.
 FISSION_MT = {18, 19, 20, 21, 38}
 
 # X4 numbers may use ENDF-style implicit exponents: "1.23+5" == 1.23e5.
