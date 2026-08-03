@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Convert strata's `nuclear/radioactive_decay.parquet` into nucl-parquet's
 `meta/decay.parquet` (v0.10.x-compatible schema) plus a sibling
 `meta/decay_detailed.parquet` (per-transition detail).

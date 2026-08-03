@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """NUDEX neutron-capture primary gamma spectra (issue #115 — first deliverable).
 
 Imports two strata `nuclear/` files that ship the most-detailed available

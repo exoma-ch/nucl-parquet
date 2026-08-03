@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Convert strata's ``photon_evap_gammas.parquet`` → per-element
 ``meta/ensdf/radiation/{Symbol}.parquet`` rows with ``rad_type='gamma'``.
 

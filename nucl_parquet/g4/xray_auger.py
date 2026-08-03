@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Synthesize X-ray and Auger emission rows from G4EMLOW × per-shell EC/IC.
 
 This module convolves three independent inputs into a per-(Z, A, state)

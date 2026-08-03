@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Fetch Geant4-derived nuclear-structure parquet files from the strata HF dataset.
 
 Pulls the four nuclear-structure files (ensdfstate, photon_evap_levels,

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Derive ``meta/ensdf/coincidences/{Symbol}.parquet`` (gamma cascade pairs)
 from strata's PhotonEvaporation6.1.2 gammas + level scheme.
 

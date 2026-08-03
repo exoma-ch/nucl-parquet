@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Build photon interaction cross-sections from EPDL97 (LLNL/IAEA).
 
 Converts the Evaluated Photon Data Library (EPDL97) from ENDF/B-6 format

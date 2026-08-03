@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Compute heavy-ion total reaction cross-sections using the Tripathi (1997) formula.
 
 The Tripathi semi-empirical parameterization covers all projectile/target

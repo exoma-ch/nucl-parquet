@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Port the last three NUDEX tables from strata-data (#77 close-out).
 
 15 of the 18 NUDEX-derived tables listed in #77 are already shipped under

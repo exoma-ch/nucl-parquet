@@ -39,6 +39,15 @@ ok "hygiene clean"
 endgroup
 
 # ---------------------------------------------------------------------------
+group "licence manifest (provenance coverage + generated-artifact drift)"
+# Fails if a tracked data file has no entry in data/licenses.toml, or if NOTICE
+# / ATTRIBUTION.md / the per-directory LICENSE.txt sidecars / SPDX headers have
+# drifted from it. Stdlib-only, so it runs before `uv sync`.
+python3 scripts/build_notices.py
+ok "licence artifacts current"
+endgroup
+
+# ---------------------------------------------------------------------------
 group "ruff (lint + format)"
 ruff check nucl_parquet scripts tests
 ruff format --check nucl_parquet scripts tests
@@ -54,7 +63,7 @@ uv sync --dev
 # `-m "not data and not network"` also runs the pure builder/thinning unit tests
 # while skipping the ones that need the full data tree or network.
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
-  -m "not data and not network" -v
+  tests/test_licensing.py -m "not data and not network" -v
 ok "python tests passed"
 endgroup
 

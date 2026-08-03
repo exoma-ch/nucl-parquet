@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Extract neutron total and elastic cross-sections from ENDF/B-VIII.1.
 
 Downloads ENDF-6 format files from the IAEA NDS mirror, parses MF=3 MT=1

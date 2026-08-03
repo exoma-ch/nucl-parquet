@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Compute neutron KERMA coefficients from evaluated cross-section data.
 
 KERMA (Kinetic Energy Released in MAtter) gives the energy transferred to

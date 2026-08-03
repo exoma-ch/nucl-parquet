@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Build gamma dose rate constants from ENSDF radiation data.
 
 Computes the gamma dose rate constant k [µSv·m²/(MBq·h)] for every

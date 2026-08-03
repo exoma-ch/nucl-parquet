@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Photoelectric data from G4EMLOW × strata (issue #96 / #105).
 
 Four outputs from the strata `em/` subset:

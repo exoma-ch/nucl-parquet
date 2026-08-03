@@ -1,0 +1,26 @@
+data/hi-xs-prod/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+
+------------------------------------------------------------------------------
+HI-XS Production (Geant4 INCL++/ABLA07)
+------------------------------------------------------------------------------
+  custodian       : Computed by exoma-ch with Geant4 (CERN); normalized to Tripathi (1997)
+  licence         : Computed output (data). Geant4 Software License v1.0 (NOT OSI) governs the generator
+  SPDX            : LicenseRef-Geant4-output
+  redistributable : yes
+  terms           : https://geant4.web.cern.ch/download/license
+  cite            : S. Agostinelli et al., 'Geant4 — a simulation toolkit', Nucl. Instrum. Meth. A 506 (2003) 250; R.K. Tripathi et al. (1997).
+  notes           : MANDATORY Geant4 notice in NOTICE; do NOT imply Geant4 endorsement. Output values are redistributable as data.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

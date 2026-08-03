@@ -7,10 +7,15 @@ abstract: >-
   queryable with DuckDB, Polars, Pandas, or any Arrow-compatible tool.
 type: software
 authors:
-  - name: "eXoma (Exotic Matter Applications), ETH Zürich"
-    # TODO: add individual authors (name + ORCID) before minting the DOI.
+  - family-names: "Gerchow"
+    given-names: "Lars"
+    affiliation: "eXoma (Exotic Matter Applications), ETH Zürich"
+    # TODO: add ORCID, and any further creators, before minting the DOI.
 repository-code: "https://github.com/exoma-ch/nucl-parquet"
 license: MIT
+# Copyright is held by ETH Zürich under RSETHZ 440.4 Art. 5(3); the authors
+# above are the creators, named as Art. 27(1)(e) requires.
+copyright: "2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)"
 keywords:
   - nuclear data
   - cross sections

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Ingest NJOY-processed pointwise neutron cross sections into per-isotope Parquet.
 
 Replaces the MF=3-only ENDF ingestion (`fetch_endf_libs.py --sublibrary n`) for

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Fetch AME2020 atomic mass evaluation and convert to Parquet.
 
 Source: AMDC (Atomic Mass Data Center, hosted at IAEA-NDS), the canonical

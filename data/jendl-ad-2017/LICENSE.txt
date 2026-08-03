@@ -1,0 +1,26 @@
+data/jendl-ad-2017/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+
+------------------------------------------------------------------------------
+JENDL/AD-2017
+------------------------------------------------------------------------------
+  custodian       : JAEA, Nuclear Data Center
+  licence         : No explicit license; copyright asserted
+  SPDX            : LicenseRef-JAEA-JENDL
+  redistributable : attribution
+  terms           : https://wwwndc.jaea.go.jp/ftpnd/jendl/jendl-ad-2017.html
+  cite            : K. Shibata, N. Iwamoto, S. Kunieda, F. Minato, O. Iwamoto, 'Activation Cross-section File for Decommissioning of LWRs', JAEA-Conf 2016-004, 47.
+  notes           : Covered by the optional JAEA permission request; non-commercial reuse relies on community practice.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

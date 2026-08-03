@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Fetch EXFOR experimental cross-section data from the IAEA DataExplorer API.
 
 Downloads measured cross-sections for charged-particle reactions and stores

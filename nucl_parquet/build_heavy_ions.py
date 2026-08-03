@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Generate heavy-ion stopping power tables via pycatima and save as Parquet.
 
 Pre-computes mass stopping power [MeV cm2/g] for an enumerated set of

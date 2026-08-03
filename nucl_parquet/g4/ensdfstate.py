@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Build ``meta/ensdf/nuclides.parquet`` and ``meta/ensdf/ground_states.parquet``
 from strata's G4ENSDFSTATE3.0 mirror, joined with AME2020 (mass excess) and
 IUPAC (abundances) auxiliaries.

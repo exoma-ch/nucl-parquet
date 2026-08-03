@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Derive ``meta/ensdf/summing_partners/{Symbol}.parquet`` — ICC-corrected
 coincidence pairs for HPGe true-coincidence-summing (TCS) corrections.
 

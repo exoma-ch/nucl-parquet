@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Derive stopping power for d, t from PSTAR via velocity scaling.
 
 Electronic stopping depends only on projectile Z and velocity (MeV/u), not on A.

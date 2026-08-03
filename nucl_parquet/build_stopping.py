@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Fetch NIST ESTAR + PSTAR + ASTAR stopping power data and save as Parquet.
 
 Fetches *total* mass stopping power [MeV cm²/g] for all 92 elements (Z=1-92)

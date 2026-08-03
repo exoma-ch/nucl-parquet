@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Ship NIST XCOM compound elemental compositions (#113).
 
 `xcom_compounds.parquet` ships integrated µ/ρ for 33 standard NIST materials

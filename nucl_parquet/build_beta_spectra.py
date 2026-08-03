@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Pre-tabulate β-decay continuous spectra (#78).
 
 For each β-minus and β-plus transition in strata's radioactive_decay.parquet,

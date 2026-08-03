@@ -1,0 +1,90 @@
+data/meta/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+
+------------------------------------------------------------------------------
+eXoma-computed derived tables (KERMA, neutron total/elastic, dose constants, spectrum-averaged XS)
+------------------------------------------------------------------------------
+  custodian       : Computed by exoma-ch from the bundled evaluated libraries
+  licence         : Computed output (data). Derived from ENDF/B-VIII.1, AME2020, ENSDF and NIST XCOM — the upstream attribution obligations flow through
+  SPDX            : LicenseRef-computed-output
+  redistributable : yes
+  terms           : https://github.com/exoma-ch/nucl-parquet
+  cite            : nucl-parquet (eXoma, ETH Zürich); cite also the inputs: ENDF/B-VIII.1 (Nobre et al. 2026), AME2020 (Huang et al. 2021), ENSDF, NIST XCOM.
+  notes           : Added 2026-08-03. Computed products, not redistributed third-party files — but the inputs' attribution requirements pass through to these tables.
+
+------------------------------------------------------------------------------
+EPDL97 / EADL / EEDL (EPICS — Evaluated Photon/Atomic/Electron Data Libraries)
+------------------------------------------------------------------------------
+  custodian       : D.E. Cullen (LLNL), distributed by the IAEA Nuclear Data Section
+  licence         : LLNL (US DOE) evaluation, openly distributed by IAEA-NDS; no CC license
+  SPDX            : LicenseRef-IAEA-NDS
+  redistributable : attribution
+  terms           : https://www-nds.iaea.org/epdl97/
+  cite            : D.E. Cullen, J.H. Hubbell, L. Kissel, 'EPDL97: the Evaluated Photon Data Library, '97 version', UCRL-50400 Vol. 6, Rev. 5 (1997); distributed by IAEA-NDS.
+  notes           : Added 2026-08-03. Same IAEA-NDS posture as FENDL/IRDFF: non-commercial academic reuse with acknowledgement. Underlying evaluation is a US DOE laboratory work product.
+
+------------------------------------------------------------------------------
+Geant4 nuclear-structure data (G4ENSDFSTATE, PhotonEvaporation, RadioactiveDecay)
+------------------------------------------------------------------------------
+  custodian       : Geant4 Collaboration (CERN); underlying evaluation ENSDF (NNDC/IAEA-NDS)
+  licence         : Geant4 Software License v1.0 (NOT OSI) — notice + no-endorsement required
+  SPDX            : LicenseRef-Geant4
+  redistributable : attribution
+  terms           : https://geant4.web.cern.ch/download/license
+  cite            : S. Agostinelli et al., 'Geant4 — a simulation toolkit', Nucl. Instrum. Meth. A 506 (2003) 250; underlying data: Evaluated Nuclear Structure Data File (ENSDF), NNDC, Brookhaven National Laboratory.
+  notes           : Added 2026-08-03. CORRECTION to the pre-v2 [meta.decay] entry, which attributed these tables to ENSDF/NNDC alone. They are reformatted from the Geant4 distribution's data files, so the Geant4 notice applies in addition to the ENSDF citation.
+
+------------------------------------------------------------------------------
+NIST XCOM — X-ray mass attenuation coefficients
+------------------------------------------------------------------------------
+  custodian       : NIST (Physical Measurement Laboratory)
+  licence         : US public domain (17 U.S.C. §105) + NIST worldwide royalty-free reuse grant
+  SPDX            : LicenseRef-US-Gov-Public-Domain
+  redistributable : yes
+  terms           : https://physics.nist.gov/PhysRefData/XrayMassCoef/cover.html
+  cite            : M.J. Berger, J.H. Hubbell, S.M. Seltzer et al., XCOM: Photon Cross Section Database (version 1.5), NIST Standard Reference Database 8. DOI 10.18434/T48G6X.
+  notes           : Added 2026-08-03. Carry the same NIST notices as PSTAR/ASTAR/ESTAR: source acknowledgment, modification notice, no-endorsement statement.
+
+------------------------------------------------------------------------------
+Isotopic compositions / abundances
+------------------------------------------------------------------------------
+  custodian       : IUPAC (Commission on Isotopic Abundances and Atomic Weights)
+  licence         : Published reference data, citation requested
+  SPDX            : LicenseRef-IUPAC-reference
+  redistributable : attribution
+  terms           : https://www.degruyter.com/document/doi/10.1515/pac-2015-0503/html
+  cite            : J. Meija et al., 'Isotopic compositions of the elements 2013', Pure Appl. Chem. 88 (2016) 293.
+
+------------------------------------------------------------------------------
+Atomic masses / binding energies
+------------------------------------------------------------------------------
+  custodian       : Atomic Mass Data Center (AMDC) — AME2020
+  licence         : Openly distributed evaluated data, citation requested
+  SPDX            : LicenseRef-AMDC-open
+  redistributable : attribution
+  terms           : https://www-nds.iaea.org/amdc/
+  cite            : W.J. Huang, M. Wang, F.G. Kondev, G. Audi, S. Naimi, 'The AME 2020 atomic mass evaluation', Chinese Phys. C 45 (2021) 030002/030003.
+
+------------------------------------------------------------------------------
+NUDEX-derived statistical-model tables (level densities, PSF, ICC, capture gammas)
+------------------------------------------------------------------------------
+  custodian       : NUDEX (E. Mendoza et al., CIEMAT / IAEA CRP); underlying RIPL-3 and IAEA PSF database
+  licence         : IAEA-coordinated evaluated data, openly distributed; no CC license
+  SPDX            : LicenseRef-IAEA-NDS
+  redistributable : attribution
+  terms           : https://www-nds.iaea.org/index-meeting-crp/CRP-PSF/
+  cite            : E. Mendoza, D. Cano-Ott et al., NUDEX (nuclear de-excitation code); RIPL-3: R. Capote et al., Nuclear Data Sheets 110 (2009) 3107; IAEA Photonuclear/PSF database.
+  notes           : Added 2026-08-03. Same IAEA-NDS acknowledgement posture. Confirm the exact NUDEX release and RIPL-3 segment before any commercial use.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

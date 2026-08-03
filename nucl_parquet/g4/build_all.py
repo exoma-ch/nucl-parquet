@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """End-to-end build orchestrator for the v0.11 G4-derived nuclear-data pipeline.
 
 Runs the six converters in dependency order, performs the

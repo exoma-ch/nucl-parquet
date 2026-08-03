@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """nucl-parquet: Nuclear data as Parquet — queryable with DuckDB."""
 
 from .download import compute_data_sha256, data_dir, data_sha256, data_version, download, ensure, fetch_file

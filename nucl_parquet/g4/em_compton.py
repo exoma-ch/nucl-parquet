@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Compton (incoherent) scattering data from G4EMLOW × strata (issue #97).
 
 Three outputs from the strata `em/` subset:

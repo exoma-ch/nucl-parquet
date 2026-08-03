@@ -1,0 +1,26 @@
+data/tendl-2023-iso/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+
+------------------------------------------------------------------------------
+TENDL-2023 (+ Aug-2024 isomeric correction)
+------------------------------------------------------------------------------
+  custodian       : PSI — A.J. Koning, D. Rochman
+  licence         : No explicit license; openly distributed, citation requested
+  SPDX            : LicenseRef-TENDL-open
+  redistributable : attribution
+  terms           : https://tendl.web.psi.ch/tendl_2023/tendl2023.html
+  cite            : A.J. Koning, D. Rochman, J. Sublet, N. Dzysiuk, M. Fleming, S. van der Marck, 'TENDL: Complete Nuclear Data Library for Innovative Nuclear Science and Technology', Nuclear Data Sheets 155 (2019) 1.
+  notes           : Switzerland has no sui-generis database right. Pin exact version. Do NOT source from the NEA mirror (asserts OECD copyright).
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

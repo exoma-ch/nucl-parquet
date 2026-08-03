@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Convert strata's photon_evap_levels.parquet → meta/ensdf/levels/{Symbol}.parquet.
 
 Per epic #66 / issue #70 / ADR-0002. This is a pure schema/encoding transform on

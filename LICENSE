@@ -1,6 +1,15 @@
 MIT License
 
-Copyright (c) 2024-2026 eXoma
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+Creators: Lars Gerchow
+
+ETH Zürich holds the economic rights in this software under Art. 5(3) of
+RSETHZ 440.4 (IP- und Verwertungsreglement); the moral rights remain with the
+creators named above. This notice is required by Art. 27(1)(e).
+
+This licence covers the CODE and the ENDF-6 -> Parquet conversion only. The
+bundled evaluated nuclear data is third-party material under separate terms —
+see NOTICE, ATTRIBUTION.md, and data/licenses.toml.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

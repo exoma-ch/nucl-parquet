@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Download and parse evaluated nuclear data libraries into Parquet.
 
 Fetches ENDF-6 format files from the IAEA NDS mirror, parses cross-sections

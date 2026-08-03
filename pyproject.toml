@@ -8,16 +8,30 @@ version = "0.17.3"
 description = "Nuclear data as Parquet — queryable with DuckDB"
 readme = "README.md"
 license = "MIT"
+# Art. 27(1)(e) RSETHZ 440.4: the distributed artifact must carry the licence
+# and the ETH copyright notice, not just the git repository.
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Lars Gerchow" }]
+maintainers = [{ name = "eXoma (Exotic Matter Applications), ETH Zürich" }]
 requires-python = ">=3.11"
+# Runtime deps must stay permissively licensed: the wheel is MIT, and a copyleft
+# runtime dep would be incompatible under RSETHZ 440.4 Art. 27(1)(c).
+# pycatima (AGPL-3.0) is deliberately NOT here — see the `build` extra.
 dependencies = [
     "duckdb>=1.5.0",
     "numpy>=1.24",
-    "pycatima>=1.981",
     "zstandard>=0.22",
 ]
 
 [project.optional-dependencies]
 dev = ["polars>=1.0", "pytest>=8.0", "requests>=2.31"]
+# pycatima wraps catima, which is AGPL-3.0. It is needed ONLY to regenerate
+# data/stopping/catima_*.parquet via `python -m nucl_parquet.build_heavy_ions`;
+# the loader reads the pre-built shards and never imports it. Keeping it out of
+# [project].dependencies stops `pip install nucl-parquet` from pulling an
+# AGPL-3.0 library into every user's environment. See data/licenses.toml
+# [code_dependencies.pycatima] and COMPLIANCE.md §3.
+build = ["pycatima>=1.981"]
 
 [dependency-groups]
 dev = [
@@ -26,6 +40,8 @@ dev = [
     "huggingface-hub>=0.30",
     "jsonschema>=4.0",
     "polars>=1.0",
+    # AGPL-3.0 — build-time only, never a runtime dep. See [project.optional-dependencies].build
+    "pycatima>=1.981",
     "pytest>=8.0",
     "requests>=2.31",
     "ruff>=0.8",

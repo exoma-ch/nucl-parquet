@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """NUDEX per-shell internal-conversion factors (issue #123).
 
 Imports the G4NUDEXLIB1.0 ``ICC_factors.dat`` table — the per-shell,

@@ -4,11 +4,36 @@
 
 By submitting a contribution you certify that you wrote it (or have the right to
 submit it) and you agree it is licensed under the project's terms — **MIT** for
-code and the ENDF-6→Parquet conversion. Do not contribute third-party nuclear
-data without recording its provenance and terms in [`data/licenses.toml`](data/licenses.toml)
-and [`ATTRIBUTION.md`](ATTRIBUTION.md) (see also [`NOTICE`](NOTICE)). We follow the
+code and the ENDF-6→Parquet conversion. We follow the
 [Developer Certificate of Origin](https://developercertificate.org/); sign off
 your commits with `git commit -s`.
+
+Copyright is held by **ETH Zürich** under
+[RSETHZ 440.4](https://ethz.ch/content/dam/ethz/main/eth-zurich/organisation/rechtssammlung/440.4.pdf)
+Art. 5(3); creators are named in `LICENSE`, `CITATION.cff`, and the SPDX headers.
+
+**No CLA.** RSETHZ 440.4 Art. 27(3) forbids ETH staff from signing Contributor
+Licensing Agreements covering on-duty software without prior ETH transfer
+approval, so this project deliberately uses the DCO — it certifies origin
+without transferring rights. Do not ask ETH contributors to sign a CLA for this
+code, and if you are ETH staff contributing elsewhere, clear it with ETH transfer
+first.
+
+### Adding data or dependencies
+
+- **Data:** do not contribute third-party nuclear data without recording its
+  provenance and terms in [`data/licenses.toml`](data/licenses.toml), then
+  running `python scripts/build_notices.py --write`. Every dataset lives under
+  `data/<library>/` — that is the only data root, and `catalog.json` addresses it
+  with data-dir-relative paths so `$NUCL_PARQUET_DATA` can point at any copy of
+  the tree. CI fails if any tracked file under `data/` is not claimed by a
+  manifest entry, and fails again if the generated `NOTICE` / `ATTRIBUTION.md` /
+  `LICENSE.txt` sidecars / SPDX headers have drifted.
+- **Dependencies:** copyleft (GPL/AGPL/MPL) code must not enter
+  `[project].dependencies`. MIT-out and copyleft-in are incompatible under
+  Art. 27(1)(c). If you need a copyleft tool to *generate* data, keep it in the
+  `build` extra or the dev group, ship only its output, and record it under
+  `[code_dependencies]` in the manifest.
 
 ## Pre-commit hooks
 

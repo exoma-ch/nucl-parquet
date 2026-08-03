@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """NUDEX level-density parameters (issue #125).
 
 Imports three NUDEX tables that drive statistical-model decay calculations

@@ -1,0 +1,26 @@
+data/jendl-5/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+
+------------------------------------------------------------------------------
+JENDL-5
+------------------------------------------------------------------------------
+  custodian       : Japan Atomic Energy Agency (JAEA), Nuclear Data Center
+  licence         : No explicit license on ENDF-6 source; copyright asserted, citation requested
+  SPDX            : LicenseRef-JAEA-JENDL
+  redistributable : attribution
+  terms           : https://wwwndc.jaea.go.jp/jendl/j5/j5.html
+  cite            : O. Iwamoto et al., 'Japanese evaluated nuclear data library version 5: JENDL-5', J. Nucl. Sci. Technol. 60(1) (2023) 1. DOI 10.1080/00223131.2022.2141903.
+  notes           : No explicit license either way; non-commercial academic reuse + universal community practice. Optional permission: jendl@jaea.go.jp. JAEA's processed ACE-J50 derivative is BSD-2.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

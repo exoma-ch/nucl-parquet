@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Rayleigh (coherent) scattering data from G4EMLOW × strata (issue #98).
 
 Two outputs from the strata `em/` subset:

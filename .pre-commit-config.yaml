@@ -32,6 +32,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: licence-manifest
+        name: licence manifest (provenance coverage + notice drift)
+        entry: python3 scripts/build_notices.py
+        language: system
+        pass_filenames: false
+        # Any data file, the manifest itself, the generated artifacts, or a
+        # source file whose SPDX header could go missing.
+        files: ^(data/|nucl_parquet/.*\.py$|scripts/.*\.py$|NOTICE$|ATTRIBUTION\.md$|COMPLIANCE\.md$|pyproject\.toml$)
+
       - id: cargo-fmt-nucl-parquet
         name: cargo fmt (clients/rs/nucl-parquet)
         entry: cargo fmt --manifest-path clients/rs/nucl-parquet/Cargo.toml --check --

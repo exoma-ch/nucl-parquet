@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """NUDEX photon strength functions (issue #124).
 
 Imports the six G4NUDEXLIB1.0 PSF tables — Lorentzian/Modified-Lorentzian

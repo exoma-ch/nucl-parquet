@@ -1,6 +1,26 @@
 nucl-parquet
-Copyright (c) 2024-2026 eXoma (Exotic Matter Applications), ETH Zürich
 
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+================================================================================
+ETH Zürich — copyright and institutional terms
+================================================================================
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+Creators: Lars Gerchow
+
+This software is released by ETH Zürich under RSETHZ 440.4, the
+Reglement über Geistiges Eigentum und Verwertung von Forschungsergebnissen (IP- und Verwertungsreglement), in force since 2026-07-01.
+Under Art. 5(3) ETH Zürich holds the exclusive economic exploitation rights in
+software created by its employees in the course of their duties; the moral
+rights remain with the creators named above. Art. 27(1)(e) requires that the
+open-source distribution carry the licence together with this notice.
+
+https://ethz.ch/content/dam/ethz/main/eth-zurich/organisation/rechtssammlung/440.4.pdf
+
+================================================================================
+Scope of the MIT licence
+================================================================================
 This product's CODE and the ENDF-6 -> Parquet conversion are licensed under the
 MIT License (see LICENSE). The MIT License does NOT apply to the bundled
 evaluated nuclear data, which is third-party material redistributed under the
@@ -11,7 +31,7 @@ The nuclear data has been reformatted (ENDF-6 -> Apache Parquet) by eXoma; this
 is a format conversion only. Required third-party notices follow.
 
 ================================================================================
-NIST — PSTAR / ASTAR / ESTAR stopping-power data (Standard Reference Database 124)
+NIST — PSTAR / ASTAR stopping-power data (Standard Reference Database 124) and XCOM (SRD 8)
 ================================================================================
 Data reformatted from the free NIST Physical Reference Data (physics.nist.gov)
 by eXoma; the original values were produced by NIST. NIST does not endorse
@@ -25,7 +45,7 @@ nucl-parquet or any downstream product. NIST disclaimer:
    Database."
 
 ================================================================================
-ENDF/B-VIII.1 — NNDC / Brookhaven National Laboratory / CSEWG (US DOE)
+ENDF/B-VIII.0 and ENDF/B-VIII.1 — NNDC / Brookhaven National Laboratory / CSEWG (US DOE)
 ================================================================================
 Prepared as an account of work sponsored by an agency of the United States
 Government. Neither the United States Government nor any agency thereof, nor any
@@ -34,19 +54,28 @@ liability or responsibility for the accuracy, completeness, or usefulness of any
 information disclosed.
 
 ================================================================================
-Geant4 — used to compute the HI-XS production cross-sections (hi-xs-prod)
+Geant4 — nuclear-structure, EM and HI-XS production data
 ================================================================================
-This product includes software developed by Members of the Geant4 Collaboration
-(http://cern.ch/geant4). The Geant4 name is not used to endorse or promote
-nucl-parquet. Only computed output (data) is redistributed; no Geant4 source is
-included.
+This product includes data developed by Members of the Geant4 Collaboration
+(http://cern.ch/geant4), reformatted to Parquet by eXoma. The Geant4 name is not
+used to endorse or promote nucl-parquet, and the Geant4 Collaboration does not
+endorse this product. No Geant4 source or binary is included in this
+distribution; only computed output and reformatted data tables.
+
+Affected tables include the ENSDF-derived structure and decay tables
+(data/meta/ensdf, decay, decay_detailed), the electron bremsstrahlung and
+electron-stopping tables (data/em/electron_brem*, data/stopping/em,
+data/stopping/ESTAR.parquet), and the heavy-ion production cross-sections
+(hi-xs-prod).
 
 ================================================================================
 catima — used to compute heavy-ion stopping power (catima_*.parquet)
 ================================================================================
-Stopping-power values were computed with catima (H. Rosiak), based on ATIMA
-(GSI). Only the computed Parquet output is redistributed; catima's source/binary
-(AGPL-3.0) is NOT included in this distribution.
+Stopping-power values were computed with catima (A. Prochazka), based on ATIMA
+(GSI). Only the computed Parquet output is redistributed. catima's source and
+binaries are AGPL-3.0 and are NOT included in this distribution, and pycatima is
+NOT a runtime dependency of the nucl-parquet distribution — it is required only
+to regenerate the shards.
 
 ================================================================================
 CC-BY-4.0 data — EXFOR, JEFF, BROND
@@ -57,11 +86,11 @@ under Creative Commons Attribution 4.0 International
 ENDF-6 to Apache Parquet by eXoma.
 
 ================================================================================
-IAEA-NDS data — FENDL, IRDFF-II, IAEA-Medical, IAEA-PD-2019
+IAEA-NDS data — FENDL, IRDFF-II, IAEA-Medical, IAEA-PD-2019, EPICS (EPDL97/EADL/EEDL), NUDEX
 ================================================================================
 Reproduced with acknowledgement to the IAEA Nuclear Data Section as the source.
 Distributed "as is"; the IAEA does not guarantee the accuracy of the data or
-their suitability for particular purposes. Commercial reuse of FENDL may require
+their suitability for particular purposes. Commercial reuse may require
 IAEA Publishing/NDS permission.
 
 ================================================================================
@@ -70,6 +99,23 @@ JAEA data — JENDL-5, JENDL/AD-2017, JENDL/DEU-2020
 Copyright (c) Japan Atomic Energy Agency, Nuclear Data Center. Redistributed
 with attribution; written redistribution permission has been requested.
 
+================================================================================
+Copyleft-licensed tooling (not redistributed)
+================================================================================
+Copyleft obligations attach to DISTRIBUTION (GPL) or to network interaction
+with a modified version (AGPL-3.0 section 13) — not to 'commercial use'.
+Data computed by a program is not a derivative work of that program, so the
+computed tables above are redistributed freely. The programs themselves are
+not redistributed here:
+
+  - pycatima / catima (AGPL-3.0-only) — build-time only — generates data/stopping/catima_*.parquet.
+    Runtime dependency: no.
+  - Geant4 (LicenseRef-Geant4) — build-time only — generated hi-xs-prod; upstream of the G4EMLOW / nuclear-structure tables.
+    Runtime dependency: no.
+
+================================================================================
 For full per-library terms and required citations, see data/licenses.toml and
 ATTRIBUTION.md. This data carries inherent evaluation uncertainties — see
-DISCLAIMER.
+DISCLAIMER.md.
+
+Redistribution posture: non-commercial academic (eXoma / ETH Zürich). Custodian non-commercial / open-distribution grants cover this redistribution with acknowledgement; commercial users must obtain their own permission for IAEA- and JAEA-sourced libraries.

@@ -1,0 +1,37 @@
+data/em/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+
+------------------------------------------------------------------------------
+EPDL97 / EADL / EEDL (EPICS — Evaluated Photon/Atomic/Electron Data Libraries)
+------------------------------------------------------------------------------
+  custodian       : D.E. Cullen (LLNL), distributed by the IAEA Nuclear Data Section
+  licence         : LLNL (US DOE) evaluation, openly distributed by IAEA-NDS; no CC license
+  SPDX            : LicenseRef-IAEA-NDS
+  redistributable : attribution
+  terms           : https://www-nds.iaea.org/epdl97/
+  cite            : D.E. Cullen, J.H. Hubbell, L. Kissel, 'EPDL97: the Evaluated Photon Data Library, '97 version', UCRL-50400 Vol. 6, Rev. 5 (1997); distributed by IAEA-NDS.
+  notes           : Added 2026-08-03. Same IAEA-NDS posture as FENDL/IRDFF: non-commercial academic reuse with acknowledgement. Underlying evaluation is a US DOE laboratory work product.
+
+------------------------------------------------------------------------------
+Geant4 G4EMLOW electron data (Seltzer-Berger brem DCS, electron stopping, density effect)
+------------------------------------------------------------------------------
+  custodian       : Geant4 Collaboration (CERN); underlying evaluation Seltzer & Berger (NIST) / ICRU-37
+  licence         : Geant4 Software License v1.0 (NOT OSI) — notice + no-endorsement required
+  SPDX            : LicenseRef-Geant4
+  redistributable : attribution
+  terms           : https://geant4.web.cern.ch/download/license
+  cite            : S.M. Seltzer, M.J. Berger, 'Bremsstrahlung energy spectra from electrons...', At. Data Nucl. Data Tables 35 (1986) 345; ICRU Report 37 (1984); Geant4: Agostinelli et al., Nucl. Instrum. Meth. A 506 (2003) 250.
+  notes           : Added 2026-08-03. NOTE: data/stopping/ESTAR.parquet is NO LONGER a NIST ESTAR scrape — since the strata migration it is rebuilt from Geant4 EM data under the legacy `source='ESTAR'` label for query compatibility. Attribute it to Geant4/ICRU-37, not to NIST SRD 124.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

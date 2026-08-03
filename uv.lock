@@ -455,16 +455,18 @@ wheels = [
 
 [[package]]
 name = "nucl-parquet"
-version = "0.17.0"
+version = "0.17.3"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
     { name = "numpy" },
-    { name = "pycatima" },
     { name = "zstandard" },
 ]
 
 [package.optional-dependencies]
+build = [
+    { name = "pycatima" },
+]
 dev = [
     { name = "polars" },
     { name = "pytest" },
@@ -478,6 +480,7 @@ dev = [
     { name = "huggingface-hub" },
     { name = "jsonschema" },
     { name = "polars" },
+    { name = "pycatima" },
     { name = "pytest" },
     { name = "requests" },
     { name = "ruff" },
@@ -488,12 +491,12 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.5.0" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "polars", marker = "extra == 'dev'", specifier = ">=1.0" },
-    { name = "pycatima", specifier = ">=1.981" },
+    { name = "pycatima", marker = "extra == 'build'", specifier = ">=1.981" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "requests", marker = "extra == 'dev'", specifier = ">=2.31" },
     { name = "zstandard", specifier = ">=0.22" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "build"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -502,6 +505,7 @@ dev = [
     { name = "huggingface-hub", specifier = ">=0.30" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "polars", specifier = ">=1.0" },
+    { name = "pycatima", specifier = ">=1.981" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "requests", specifier = ">=2.31" },
     { name = "ruff", specifier = ">=0.8" },

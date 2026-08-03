@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Build the Seltzer-Berger bremsstrahlung DCS table from strata-data (#118).
 
 Geant4 ships the Seltzer-Berger (1985) differential cross section dσ/dκ for

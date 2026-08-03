@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Compute spectrum-averaged neutron cross-sections for standard neutron spectra.
 
 Reads all neutron XS parquet files from every evaluated library listed in

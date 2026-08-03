@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Build-time converters for Geant4-derived nuclear data (epic #66, ADR-0002).
 
 Each module under this package reads strata's published parquet

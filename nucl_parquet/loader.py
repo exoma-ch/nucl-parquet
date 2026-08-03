@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """DuckDB loader for nucl-parquet data.
 
 Registers all Parquet files as lazy DuckDB views for zero-copy querying

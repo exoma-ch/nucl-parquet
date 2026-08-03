@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Fetch NIST XCOM mass attenuation coefficients and save as Parquet.
 
 Fetches µ/ρ and µ_en/ρ for all 92 elements (Z=1-92) and key compounds

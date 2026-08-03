@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Derive ``meta/ensdf/emissions/{Symbol}.parquet`` — absolute per-decay
 emission intensities for all emission types, parent-keyed.
 

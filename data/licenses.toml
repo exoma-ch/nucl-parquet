@@ -4,243 +4,619 @@
 # ENDF-6 -> Parquet *conversion* ONLY. The bundled evaluated nuclear data is
 # THIRD-PARTY and is governed, per library, by the terms recorded below.
 #
-# This file is the single source of truth for attribution. Downstream
-# consumers (e.g. hyrr's scripts/copy-frontend-data.sh) generate a minimal
-# NOTICE for exactly the libraries they bundle by reading these entries.
+# THIS FILE IS THE SINGLE SOURCE OF TRUTH for attribution and for the
+# generated notices. Do not hand-edit the generated artifacts:
 #
-# Verdicts come from a primary-source audit (2026-06-01); each `terms_url`
-# was fetched directly. `redistributable`:
-#   true        - explicit permissive grant (CC-BY / US public domain / open)
+#   NOTICE                    <- generated (AUTO markers)
+#   ATTRIBUTION.md            <- generated (AUTO markers)
+#   data/**/LICENSE.txt       <- generated per-dataset sidecars
+#   nucl_parquet/**/*.py      <- SPDX headers stamped from [eth]
+#
+#   regenerate:  python scripts/build_notices.py --write
+#   verify:      python scripts/build_notices.py         (CI / pytest)
+#
+# Verdicts come from a primary-source audit (2026-06-01) extended on
+# 2026-08-03; each `terms_url` in the 2026-06-01 set was fetched directly.
+# Entries added on 2026-08-03 carry `audit_basis` recording how their
+# provenance was established. `redistributable`:
+#   true          - explicit permissive grant (CC-BY / US public domain / open)
 #   "attribution" - redistributable with attribution; no formal open license,
 #                   relying on open distribution + custodian intent (verify)
 #   "conditional" - redistribution gated (e.g. commercial use needs clearance)
-#   false       - NOT redistributable (must not be bundled)
+#   "unverified"  - bundled but provenance NOT established; must be resolved
+#   false         - NOT redistributable (must not be bundled)
 # `risk`: green | amber | red.
+#
+# `paths` are repo-relative fnmatch globs. Every tracked data file must be
+# claimed by at least one entry — enforced by tests/test_licensing.py.
 
-schema_version = 1
+schema_version = 2
 
 [manifest]
 maintainer = "eXoma (Exotic Matter Applications), ETH Zürich"
 audited = "2026-06-01"
+extended = "2026-08-03"
 note = "MIT applies to code + conversion, NOT to the data. See ATTRIBUTION.md."
 usage = "non-commercial academic (eXoma / ETH Zürich). Custodian non-commercial / open-distribution grants cover this redistribution with acknowledgement; commercial users must obtain their own permission for IAEA- and JAEA-sourced libraries."
 
-# ───────────────────────── Cross-section libraries ─────────────────────────
+# Roots scanned for coverage. There is exactly one: every bundled dataset lives
+# under `data/<library>/`, and `catalog.json` addresses it with data-dir-relative
+# paths (`tendl-2025/xs/`, not `data/tendl-2025/xs/`) so a consumer can point
+# $NUCL_PARQUET_DATA at any copy of the tree. Duplicate pre-refactor copies of
+# `hi-xs-prod/` and `tendl-2025/` used to sit at the repository root; they were
+# stale leftovers of the data->data/ move (a61afc9) and were deleted.
+#
+# Files directly under `data/` that are project metadata (catalog, schema, this
+# manifest, suppliers) are MIT, not data.
+data_roots = ["data"]
+project_metadata = [
+    "data/catalog.json",
+    "data/catalog.schema.json",
+    "data/licenses.toml",
+    "data/suppliers.json",
+]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ETH Zürich — institutional IP position (RSETHZ 440.4)
+# ═══════════════════════════════════════════════════════════════════════════
+# Reglement über Geistiges Eigentum und Verwertung von Forschungsergebnissen
+# (IP- und Verwertungsreglement), in force since 1 July 2026. It replaced the
+# 2014 "Richtlinien für die wirtschaftliche Verwertung von Forschungsergebnissen".
+#
+# Art. 5(3): ETH Zürich holds the exclusive economic exploitation rights in
+# software created by its employees on duty; moral rights stay with the
+# creators. The © notice below therefore names ETH Zürich as holder and the
+# creators as creators — required verbatim by Art. 27(1)(e).
+
+[eth]
+regulation = "RSETHZ 440.4"
+regulation_title = "Reglement über Geistiges Eigentum und Verwertung von Forschungsergebnissen (IP- und Verwertungsreglement)"
+regulation_url = "https://ethz.ch/content/dam/ethz/main/eth-zurich/organisation/rechtssammlung/440.4.pdf"
+in_force = "2026-07-01"
+copyright_holder = "ETH Zürich"
+copyright_years = "2024-2026"
+# Art. 27(1)(e) — creators must be named alongside the ETH copyright notice.
+creators = ["Lars Gerchow"]
+research_group = "eXoma — Exotic Matter Applications"
+# Art. 27(1)(a) — the OSS release decision belongs to the research group
+# leader, not to the creators. Record it here when taken.
+group_leader = "TBD — record the responsible Forschungsgruppenleiter:in"
+oss_decision_date = "TBD"
+oss_decision_recorded = false
+spdx_license = "MIT"
+spdx_copyright = "2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)"
+# Art. 27(3) — ETH staff may not sign CLAs for on-duty software without
+# prior ETH transfer approval.
+cla_policy = "prohibited-without-eth-transfer-approval"
+# Art. 24 / Art. 34 — two-month disclosure duties to ETH transfer, triggered
+# only by intended *commercial* exploitation. This project is non-commercial.
+software_disclosure_required = false
+data_disclosure_required = false
+disclosure_note = "Art. 24 (software) and Art. 34 (research data/databases) require disclosure to ETH transfer at least two months before planned COMMERCIAL exploitation. nucl-parquet is non-commercial academic; no disclosure is due. If commercialisation is ever contemplated, both become due before any commitment."
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Cross-section libraries
+# ═══════════════════════════════════════════════════════════════════════════
 
 [libraries.tendl-2023-iso]
 name = "TENDL-2023 (+ Aug-2024 isomeric correction)"
 custodian = "PSI — A.J. Koning, D. Rochman"
 terms_url = "https://tendl.web.psi.ch/tendl_2023/tendl2023.html"
 license = "No explicit license; openly distributed, citation requested"
+spdx = "LicenseRef-TENDL-open"
 redistributable = "attribution"
 risk = "green"
 citation = "A.J. Koning, D. Rochman, J. Sublet, N. Dzysiuk, M. Fleming, S. van der Marck, 'TENDL: Complete Nuclear Data Library for Innovative Nuclear Science and Technology', Nuclear Data Sheets 155 (2019) 1."
 notes = "Switzerland has no sui-generis database right. Pin exact version. Do NOT source from the NEA mirror (asserts OECD copyright)."
+paths = ["data/tendl-2023-iso/**"]
 
 [libraries.tendl-2025]
 name = "TENDL-2025"
 custodian = "PSI — A.J. Koning, D. Rochman"
 terms_url = "https://tendl.web.psi.ch/"
 license = "No explicit license; openly distributed, citation requested"
+spdx = "LicenseRef-TENDL-open"
 redistributable = "attribution"
 risk = "green"
 citation = "D. Rochman, A. Koning, S. Goriely, S. Hilaire, 'TENDL-astro...', Nucl. Phys. A 1053 (2025) 122951; and Koning et al., Nuclear Data Sheets 155 (2019) 1."
+paths = ["data/tendl-2025/**"]
 
 [libraries.endfb-8_1]
 name = "ENDF/B-VIII.1"
 custodian = "NNDC / Brookhaven National Laboratory / CSEWG (US DOE)"
 terms_url = "https://www.osti.gov/biblio/2571019"
 license = "US Government work — public domain in the US (17 U.S.C. §105)"
+spdx = "LicenseRef-US-Gov-Public-Domain"
 redistributable = true
 risk = "green"
 citation = "G.P.A. Nobre et al., 'ENDF/B-VIII.1: Updated Nuclear Reaction Data Library', Nuclear Data Sheets 210 (2026) 1. DOI 10.11578/endf/2571019."
 notes = "Carry the standard DOE work-product disclaimer (see NOTICE)."
+paths = ["data/endfb-8.1/**"]
+
+[libraries.endfb-8_0]
+name = "ENDF/B-VIII.0"
+custodian = "NNDC / Brookhaven National Laboratory / CSEWG (US DOE)"
+terms_url = "https://www.nndc.bnl.gov/endf-b8.0/"
+license = "US Government work — public domain in the US (17 U.S.C. §105)"
+spdx = "LicenseRef-US-Gov-Public-Domain"
+redistributable = true
+risk = "green"
+citation = "D.A. Brown et al., 'ENDF/B-VIII.0: The 8th Major Release of the Nuclear Reaction Data Library...', Nuclear Data Sheets 148 (2018) 1. DOI 10.1016/j.nds.2018.02.001."
+notes = "Added 2026-08-03: the tree was bundled but absent from the 2026-06-01 audit. Same custodian and legal posture as ENDF/B-VIII.1; carry the DOE disclaimer."
+audit_basis = "same custodian/regime as endfb-8_1 (CSEWG/NNDC, US DOE work product)"
+paths = ["data/endfb-8.0/**"]
 
 [libraries.jeff-4_0]
 name = "JEFF-4.0"
 custodian = "OECD Nuclear Energy Agency (NEA) Data Bank"
 terms_url = "https://data.oecd-nea.org/records/e9ajn-a3p20"
 license = "CC-BY-4.0"
+spdx = "CC-BY-4.0"
 redistributable = true
 risk = "green"
 citation = "Joint Evaluated Fission and Fusion Project (2025), JEFF-4.0 Evaluated Data, OECD Nuclear Energy Agency. DOI 10.82555/e9ajn-a3p20."
 notes = "CC-BY-4.0 also licenses sui-generis database rights. Pass attribution flow-down to sub-licensees. Source from open ENDF-6 files, not the gated ACE files."
+paths = ["data/jeff-4.0/**"]
 
 [libraries.jendl-5]
 name = "JENDL-5"
 custodian = "Japan Atomic Energy Agency (JAEA), Nuclear Data Center"
 terms_url = "https://wwwndc.jaea.go.jp/jendl/j5/j5.html"
 license = "No explicit license on ENDF-6 source; copyright asserted, citation requested"
+spdx = "LicenseRef-JAEA-JENDL"
 redistributable = "attribution"
 risk = "amber"
 citation = "O. Iwamoto et al., 'Japanese evaluated nuclear data library version 5: JENDL-5', J. Nucl. Sci. Technol. 60(1) (2023) 1. DOI 10.1080/00223131.2022.2141903."
 notes = "No explicit license either way; non-commercial academic reuse + universal community practice. Optional permission: jendl@jaea.go.jp. JAEA's processed ACE-J50 derivative is BSD-2."
+paths = ["data/jendl-5/**"]
 
 [libraries.jendl-ad-2017]
 name = "JENDL/AD-2017"
 custodian = "JAEA, Nuclear Data Center"
 terms_url = "https://wwwndc.jaea.go.jp/ftpnd/jendl/jendl-ad-2017.html"
 license = "No explicit license; copyright asserted"
+spdx = "LicenseRef-JAEA-JENDL"
 redistributable = "attribution"
 risk = "amber"
 citation = "K. Shibata, N. Iwamoto, S. Kunieda, F. Minato, O. Iwamoto, 'Activation Cross-section File for Decommissioning of LWRs', JAEA-Conf 2016-004, 47."
 notes = "Covered by the optional JAEA permission request; non-commercial reuse relies on community practice."
+paths = ["data/jendl-ad-2017/**"]
 
 [libraries.jendl-deu-2020]
 name = "JENDL/DEU-2020"
 custodian = "JAEA, Nuclear Data Center"
 terms_url = "https://wwwndc.jaea.go.jp/ftpnd/jendl/jendl-deu-2020.html"
 license = "No explicit license; copyright asserted"
+spdx = "LicenseRef-JAEA-JENDL"
 redistributable = "attribution"
 risk = "amber"
 citation = "S. Nakayama, O. Iwamoto, Y. Watanabe, K. Ogata, 'JENDL/DEU-2020...', J. Nucl. Sci. Technol. 58(7) (2021) 805. DOI 10.1080/00223131.2020.1870010."
 notes = "Covered by the optional JAEA permission request; non-commercial reuse relies on community practice."
+paths = ["data/jendl-deu-2020/**"]
 
 [libraries.cendl-3_2]
 name = "CENDL-3.2"
 custodian = "China Nuclear Data Center / CIAE"
 terms_url = "https://www-nds.iaea.org/public/download-endf/CENDL-3.2/"
 license = "No written terms; NRDC open-mirror convention"
+spdx = "LicenseRef-CENDL-open-mirror"
 redistributable = "attribution"
 risk = "amber"
 citation = "Z. Ge et al., 'CENDL-3.2: The new version of Chinese general purpose evaluated nuclear data library', EPJ Web Conf. 239 (2020) 09001."
 notes = "Source from the open IAEA-NDS mirror to anchor open-distribution provenance."
+paths = ["data/cendl-3.2/**"]
 
 [libraries.brond-3_1]
 name = "BROND-3.1"
 custodian = "IPPE (Institute of Physics and Power Engineering), Obninsk"
 terms_url = "https://vant.ippe.ru/en/brond-3-1"
 license = "CC-BY-4.0 (site-wide)"
+spdx = "CC-BY-4.0"
 redistributable = true
 risk = "green"
 citation = "A.I. Blokhin et al., 'New version of neutron evaluated data library BROND-3.1', Yad. Reak. Konst. No.2 (2016) 62."
 notes = "Russian-origin published scientific data: covered by the public-domain / basic-scientific-research export exemption (see COMPLIANCE.md)."
+paths = ["data/brond-3.1/**"]
 
 [libraries.fendl-3_2]
 name = "FENDL-3.2"
 custodian = "IAEA Nuclear Data Section"
 terms_url = "https://www-nds.iaea.org/fendl/"
 license = "IAEA website terms grant non-commercial reuse with acknowledgement (commercial use gated); no CC license"
+spdx = "LicenseRef-IAEA-NDS"
 redistributable = "attribution"
 risk = "green"
 citation = "'FENDL: A library for fusion research and applications', Nuclear Data Sheets 193 (2024) 1."
 notes = "Non-commercial academic reuse with acknowledgement is granted — this project qualifies. Commercial downstream users must obtain their own IAEA-NDS/Publishing clearance."
+paths = ["data/fendl-3.2/**"]
 
 [libraries.irdff-2]
 name = "IRDFF-II"
 custodian = "IAEA Nuclear Data Section"
 terms_url = "https://www-nds.iaea.org/IRDFF/"
 license = "IAEA-NDS site copyright (acknowledgment; 'no subsequent fee'); no CC license"
+spdx = "LicenseRef-IAEA-NDS"
 redistributable = "attribution"
 risk = "amber"
 citation = "A. Trkov, P.J. Griffin, S.P. Simakov et al., 'IRDFF-II: A New Neutron Metrology Library', Nuclear Data Sheets 163 (2020) 1."
 notes = "Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use."
+paths = ["data/irdff-2/**"]
 
 [libraries.iaea-medical]
 name = "IAEA-Medical"
 custodian = "IAEA Nuclear Data Section (Coordinated Research Projects)"
 terms_url = "https://www-nds.iaea.org/medical/"
 license = "IAEA-NDS site copyright; per-sub-dataset citation; multi-institute contributions"
+spdx = "LicenseRef-IAEA-NDS"
 redistributable = "attribution"
 risk = "amber"
 citation = "Cite the specific sub-database evaluation paper(s) listed on each medical sub-page, plus acknowledge IAEA-NDS."
 notes = "Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use. Resolve citation per sub-dataset."
+paths = ["data/iaea-medical/**"]
 
 [libraries.iaea-pd-2019]
 name = "IAEA-PD-2019 (Photonuclear)"
 custodian = "IAEA Nuclear Data Section"
 terms_url = "https://www-nds.iaea.org/photonuclear/"
 license = "No license (GitHub data repo is NO-LICENSE); IAEA-NDS site copyright"
+spdx = "LicenseRef-IAEA-NDS"
 redistributable = "attribution"
 risk = "amber"
 citation = "T. Kawano, Y.S. Cho, P. Dimitriou et al., Nuclear Data Sheets 163 (2020) 109."
 notes = "Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use."
+paths = ["data/iaea-pd-2019/**"]
 
 [libraries.exfor]
 name = "EXFOR (experimental reaction data)"
 custodian = "International Network of Nuclear Reaction Data Centres (NRDC) / IAEA-NDS"
 terms_url = "https://nds.iaea.org/nrdc/exfor-master/"
 license = "CC-BY-4.0 (EXFOR Master File)"
+spdx = "CC-BY-4.0"
 redistributable = true
 risk = "green"
 citation = "N. Otuka et al., 'Towards a More Complete and Accurate Experimental Nuclear Reaction Data Library (EXFOR)...', Nuclear Data Sheets 120 (2014) 272."
 notes = "Source from the Master File / exfor_master / exfor_json repos (CC-BY-4.0), not the live retrieval system."
+paths = ["data/exfor/**"]
 
-# ───────────────────────── Derived / computed ──────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# Atomic / photon data (EPICS, XCOM)
+# ═══════════════════════════════════════════════════════════════════════════
+
+[libraries.epics-epdl97]
+name = "EPDL97 / EADL / EEDL (EPICS — Evaluated Photon/Atomic/Electron Data Libraries)"
+custodian = "D.E. Cullen (LLNL), distributed by the IAEA Nuclear Data Section"
+terms_url = "https://www-nds.iaea.org/epdl97/"
+license = "LLNL (US DOE) evaluation, openly distributed by IAEA-NDS; no CC license"
+spdx = "LicenseRef-IAEA-NDS"
+redistributable = "attribution"
+risk = "amber"
+citation = "D.E. Cullen, J.H. Hubbell, L. Kissel, 'EPDL97: the Evaluated Photon Data Library, '97 version', UCRL-50400 Vol. 6, Rev. 5 (1997); distributed by IAEA-NDS."
+notes = "Added 2026-08-03. Same IAEA-NDS posture as FENDL/IRDFF: non-commercial academic reuse with acknowledgement. Underlying evaluation is a US DOE laboratory work product."
+audit_basis = "provenance established from nucl_parquet/build_epdl.py (source URL + UCRL reference in module docstring); IAEA-NDS site terms as already audited for FENDL/IRDFF on 2026-06-01"
+paths = [
+    "data/meta/epdl97/**",
+    "data/meta/eadl/**",
+    "data/meta/eedl/**",
+    "data/em/photon_pe.parquet",
+    "data/em/photon_pe_total.parquet",
+    "data/em/photon_pe_angular.parquet",
+    "data/em/photon_pe_high_z_params.parquet",
+    "data/em/photon_compton.parquet",
+    "data/em/photon_pair.parquet",
+    "data/em/photon_rayleigh_cdf.parquet",
+    "data/em/compton_scattering_function.parquet",
+    "data/em/compton_doppler_profiles.parquet",
+    "data/em/xray_form_factor.parquet",
+]
+
+[libraries.nist-xcom]
+name = "NIST XCOM — X-ray mass attenuation coefficients"
+custodian = "NIST (Physical Measurement Laboratory)"
+terms_url = "https://physics.nist.gov/PhysRefData/XrayMassCoef/cover.html"
+license = "US public domain (17 U.S.C. §105) + NIST worldwide royalty-free reuse grant"
+spdx = "LicenseRef-US-Gov-Public-Domain"
+redistributable = true
+risk = "amber"
+citation = "M.J. Berger, J.H. Hubbell, S.M. Seltzer et al., XCOM: Photon Cross Section Database (version 1.5), NIST Standard Reference Database 8. DOI 10.18434/T48G6X."
+notes = "Added 2026-08-03. Carry the same NIST notices as PSTAR/ASTAR/ESTAR: source acknowledgment, modification notice, no-endorsement statement."
+audit_basis = "provenance established from nucl_parquet/build_xcom.py and build_compound_compositions.py (physics.nist.gov source URLs); NIST terms as audited for SRD 124 on 2026-06-01"
+paths = [
+    "data/meta/xcom_elements.parquet",
+    "data/meta/xcom_compounds.parquet",
+    "data/meta/compound_compositions.parquet",
+]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Geant4-derived (via the strata-data republication)
+# ═══════════════════════════════════════════════════════════════════════════
+# nucl-parquet ingests several tables that originate in the ASCII data files
+# CERN ships with each Geant4 release (G4ENSDFSTATE, PhotonEvaporation,
+# RadioactiveDecay, G4EMLOW). They reach us through `gerchowl/strata-data`,
+# which parses those files and republishes Parquet. The Geant4 Software
+# License (NOT an OSI licence) governs those data files; its notice and
+# no-endorsement requirements are mandatory and are carried in NOTICE.
+
+[libraries.g4-nuclear]
+name = "Geant4 nuclear-structure data (G4ENSDFSTATE, PhotonEvaporation, RadioactiveDecay)"
+custodian = "Geant4 Collaboration (CERN); underlying evaluation ENSDF (NNDC/IAEA-NDS)"
+terms_url = "https://geant4.web.cern.ch/download/license"
+license = "Geant4 Software License v1.0 (NOT OSI) — notice + no-endorsement required"
+spdx = "LicenseRef-Geant4"
+redistributable = "attribution"
+risk = "amber"
+citation = "S. Agostinelli et al., 'Geant4 — a simulation toolkit', Nucl. Instrum. Meth. A 506 (2003) 250; underlying data: Evaluated Nuclear Structure Data File (ENSDF), NNDC, Brookhaven National Laboratory."
+notes = "Added 2026-08-03. CORRECTION to the pre-v2 [meta.decay] entry, which attributed these tables to ENSDF/NNDC alone. They are reformatted from the Geant4 distribution's data files, so the Geant4 notice applies in addition to the ENSDF citation."
+audit_basis = "provenance established from scripts/fetch_strata_nuclear.py, which names G4ENSDFSTATE3.0 / PhotonEvaporation6.1.2 / RadioactiveDecay6.1.2 as the upstream files"
+paths = [
+    "data/meta/ensdf/**",
+    "data/meta/decay.parquet",
+    "data/meta/decay_detailed.parquet",
+]
+
+[libraries.g4-emlow]
+name = "Geant4 G4EMLOW electron data (Seltzer-Berger brem DCS, electron stopping, density effect)"
+custodian = "Geant4 Collaboration (CERN); underlying evaluation Seltzer & Berger (NIST) / ICRU-37"
+terms_url = "https://geant4.web.cern.ch/download/license"
+license = "Geant4 Software License v1.0 (NOT OSI) — notice + no-endorsement required"
+spdx = "LicenseRef-Geant4"
+redistributable = "attribution"
+risk = "amber"
+citation = "S.M. Seltzer, M.J. Berger, 'Bremsstrahlung energy spectra from electrons...', At. Data Nucl. Data Tables 35 (1986) 345; ICRU Report 37 (1984); Geant4: Agostinelli et al., Nucl. Instrum. Meth. A 506 (2003) 250."
+notes = "Added 2026-08-03. NOTE: data/stopping/ESTAR.parquet is NO LONGER a NIST ESTAR scrape — since the strata migration it is rebuilt from Geant4 EM data under the legacy `source='ESTAR'` label for query compatibility. Attribute it to Geant4/ICRU-37, not to NIST SRD 124."
+audit_basis = "provenance established from nucl_parquet/build_em_stopping.py and build_em_brem_dcs.py (both read gerchowl/strata-data em/*.parquet, which republishes G4EMLOW brem_SB.dat and Geant4 material tables)"
+paths = [
+    "data/em/electron_brem.parquet",
+    "data/em/electron_brem_sb_dcs.parquet",
+    "data/stopping/ESTAR.parquet",
+    "data/stopping/em/**",
+]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Derived / computed by eXoma
+# ═══════════════════════════════════════════════════════════════════════════
 
 [libraries.hi-xs-prod]
 name = "HI-XS Production (Geant4 INCL++/ABLA07)"
 custodian = "Computed by exoma-ch with Geant4 (CERN); normalized to Tripathi (1997)"
 terms_url = "https://geant4.web.cern.ch/download/license"
 license = "Computed output (data). Geant4 Software License v1.0 (NOT OSI) governs the generator"
+spdx = "LicenseRef-Geant4-output"
 redistributable = true
 risk = "amber"
 citation = "S. Agostinelli et al., 'Geant4 — a simulation toolkit', Nucl. Instrum. Meth. A 506 (2003) 250; R.K. Tripathi et al. (1997)."
 notes = "MANDATORY Geant4 notice in NOTICE; do NOT imply Geant4 endorsement. Output values are redistributable as data."
+paths = ["data/hi-xs-prod/**"]
 
 [libraries.hi-xs]
 name = "HI-XS total reaction (Tripathi 1997)"
 custodian = "Computed by exoma-ch (Tripathi 1997 parameterization)"
 terms_url = "https://doi.org/10.1016/S0168-583X(96)00331-X"
 license = "Computed output (data) from a published parameterization"
+spdx = "LicenseRef-computed-output"
 redistributable = true
 risk = "green"
 citation = "R.K. Tripathi, F.A. Cucinotta, J.W. Wilson, 'Accurate universal parameterization of absorption cross sections', Nucl. Instrum. Meth. B 117 (1996) 347."
+paths = ["data/hi-xs/**"]
 
-# ───────────────────────── Stopping power & meta ───────────────────────────
+[libraries.derived-exoma]
+name = "eXoma-computed derived tables (KERMA, neutron total/elastic, dose constants, spectrum-averaged XS)"
+custodian = "Computed by exoma-ch from the bundled evaluated libraries"
+terms_url = "https://github.com/exoma-ch/nucl-parquet"
+license = "Computed output (data). Derived from ENDF/B-VIII.1, AME2020, ENSDF and NIST XCOM — the upstream attribution obligations flow through"
+spdx = "LicenseRef-computed-output"
+redistributable = true
+risk = "green"
+citation = "nucl-parquet (eXoma, ETH Zürich); cite also the inputs: ENDF/B-VIII.1 (Nobre et al. 2026), AME2020 (Huang et al. 2021), ENSDF, NIST XCOM."
+notes = "Added 2026-08-03. Computed products, not redistributed third-party files — but the inputs' attribution requirements pass through to these tables."
+audit_basis = "provenance established from scripts/build_kerma.py, scripts/build_neutron_total.py, nucl_parquet/build_dose_constants.py, nucl_parquet/build_spectrum_xs.py"
+paths = [
+    "data/meta/kerma/**",
+    "data/meta/neutron_total/**",
+    "data/meta/dose_constants.parquet",
+    "data/meta/spectrum_xs.parquet",
+]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stopping power
+# ═══════════════════════════════════════════════════════════════════════════
 
 [stopping.nist]
-name = "PSTAR / ASTAR / ESTAR (+ derived dSTAR / tSTAR)"
+name = "PSTAR / ASTAR (+ derived dSTAR / tSTAR) and PSTAR/ASTAR compounds"
 custodian = "NIST (Physical Measurement Laboratory) — SRD 124"
 terms_url = "https://www.nist.gov/pml/data/star/index.cfm"
 license = "US public domain (17 U.S.C. §105) + NIST worldwide royalty-free reuse grant"
+spdx = "LicenseRef-US-Gov-Public-Domain"
 redistributable = true
 risk = "amber"
 citation = "M.J. Berger, J.S. Coursey, M.A. Zucker, J. Chang, ESTAR/PSTAR/ASTAR, NIST Standard Reference Database 124. DOI 10.18434/T4NC7P. (Methodology: ICRU Reports 37 and 49.)"
-notes = "Source from FREE physics.nist.gov (NOT the paid SRD, 15 U.S.C. §290e). Carry: source acknowledgment, 'data reformatted by exoma-ch' modification notice, and no-endorsement statement (see NOTICE)."
+notes = "Source from FREE physics.nist.gov (NOT the paid SRD, 15 U.S.C. §290e). Carry: source acknowledgment, 'data reformatted by exoma-ch' modification notice, and no-endorsement statement (see NOTICE). SCOPE NARROWED 2026-08-03: ESTAR.parquet is no longer NIST-sourced — see [libraries.g4-emlow]."
+paths = [
+    "data/stopping/PSTAR.parquet",
+    "data/stopping/ASTAR.parquet",
+    "data/stopping/dSTAR.parquet",
+    "data/stopping/tSTAR.parquet",
+    "data/stopping/compounds/**",
+]
 
 [stopping.catima]
 name = "catima-computed stopping (catima_*.parquet)"
-custodian = "Computed by exoma-ch with catima (H. Rosiak), based on ATIMA (GSI)"
+custodian = "Computed by exoma-ch with catima (A. Prochazka), based on ATIMA (GSI)"
 terms_url = "https://github.com/hrosiak/catima"
 license = "Computed output (data). catima itself is AGPL-3.0 (code)"
+spdx = "LicenseRef-computed-output"
 redistributable = true
 risk = "amber"
 citation = "J. Lindhard, A.H. Sørensen, Phys. Rev. A 53 (1996) 2443; H. Weaver et al., Nucl. Instrum. Meth. B 187 (2002); ATIMA (GSI)."
-notes = "Ship ONLY the computed Parquet output. Do NOT bundle catima source/binary in any artifact (AGPL-3.0)."
+notes = "Ship ONLY the computed Parquet output. Do NOT bundle catima source/binary in any artifact, and do NOT declare pycatima as a runtime dependency of the MIT distribution (AGPL-3.0). See [code_dependencies.pycatima]."
+paths = ["data/stopping/catima_*.parquet"]
 
-[meta.decay]
-name = "Decay data, dose constants, emission spectra"
-custodian = "ENSDF (NNDC / IAEA-NDS evaluated structure & decay data)"
-terms_url = "https://www.nndc.bnl.gov/ensdf/"
-license = "Evaluated structure data, openly distributed (NNDC/IAEA)"
+# ═══════════════════════════════════════════════════════════════════════════
+# Structure / reference metadata
+# ═══════════════════════════════════════════════════════════════════════════
+
+[meta.nudex]
+name = "NUDEX-derived statistical-model tables (level densities, PSF, ICC, capture gammas)"
+custodian = "NUDEX (E. Mendoza et al., CIEMAT / IAEA CRP); underlying RIPL-3 and IAEA PSF database"
+terms_url = "https://www-nds.iaea.org/index-meeting-crp/CRP-PSF/"
+license = "IAEA-coordinated evaluated data, openly distributed; no CC license"
+spdx = "LicenseRef-IAEA-NDS"
 redistributable = "attribution"
 risk = "amber"
-citation = "Evaluated Nuclear Structure Data File (ENSDF), NNDC, Brookhaven National Laboratory."
-notes = "Confirm exact ENSDF snapshot/provenance for dose_constants and ensdf/emissions."
+citation = "E. Mendoza, D. Cano-Ott et al., NUDEX (nuclear de-excitation code); RIPL-3: R. Capote et al., Nuclear Data Sheets 110 (2009) 3107; IAEA Photonuclear/PSF database."
+notes = "Added 2026-08-03. Same IAEA-NDS acknowledgement posture. Confirm the exact NUDEX release and RIPL-3 segment before any commercial use."
+audit_basis = "provenance established from nucl_parquet/build_nudex_misc.py and the strata-data republication path"
+paths = [
+    "data/meta/nudex_*.parquet",
+    "data/meta/level_density_*.parquet",
+    "data/meta/psf_*.parquet",
+    "data/meta/icc_factors.parquet",
+    "data/meta/capture_gammas.parquet",
+    "data/meta/capture_gammas_summary.parquet",
+]
 
 [meta.masses]
 name = "Atomic masses / binding energies"
 custodian = "Atomic Mass Data Center (AMDC) — AME2020"
 terms_url = "https://www-nds.iaea.org/amdc/"
 license = "Openly distributed evaluated data, citation requested"
+spdx = "LicenseRef-AMDC-open"
 redistributable = "attribution"
 risk = "green"
 citation = "W.J. Huang, M. Wang, F.G. Kondev, G. Audi, S. Naimi, 'The AME 2020 atomic mass evaluation', Chinese Phys. C 45 (2021) 030002/030003."
+paths = ["data/auxiliary/ame2020.parquet", "data/meta/elements.parquet"]
 
 [meta.abundances]
 name = "Isotopic compositions / abundances"
 custodian = "IUPAC (Commission on Isotopic Abundances and Atomic Weights)"
 terms_url = "https://www.degruyter.com/document/doi/10.1515/pac-2015-0503/html"
 license = "Published reference data, citation requested"
+spdx = "LicenseRef-IUPAC-reference"
 redistributable = "attribution"
 risk = "green"
 citation = "J. Meija et al., 'Isotopic compositions of the elements 2013', Pure Appl. Chem. 88 (2016) 293."
+paths = [
+    "data/auxiliary/iupac_compositions.parquet",
+    "data/meta/abundances.parquet",
+]
 
-# ───────────────────────── Needs verification ──────────────────────────────
-# The following bundled directories were not part of the 2026-06-01 audit and
-# need provenance recorded before relying on them (tracked in issue #232):
-#   em, auxiliary, strata-data-nuclear
-[needs_verification]
-libraries = ["em", "auxiliary", "strata-data-nuclear"]
-note = "Record custodian, license, and citation for each; set redistributable explicitly."
+# ═══════════════════════════════════════════════════════════════════════════
+# Code dependencies with licence obligations
+# ═══════════════════════════════════════════════════════════════════════════
+# Copyleft is triggered by DISTRIBUTION (GPL) or by NETWORK INTERACTION with a
+# modified version (AGPL §13) — NOT by "commercial use". Data computed BY a
+# copyleft program is not a derivative work of that program, so the outputs
+# above ship freely; what must not happen is shipping, vendoring, or hard-
+# depending on the copyleft code itself from an MIT-licensed distribution.
+
+[code_dependencies.pycatima]
+name = "pycatima / catima"
+upstream = "https://github.com/hrosiak/catima"
+spdx = "AGPL-3.0-only"
+role = "build-time only — generates data/stopping/catima_*.parquet"
+imported_by = ["nucl_parquet/build_heavy_ions.py"]
+runtime_dependency = false
+policy = "MUST NOT appear in [project].dependencies. The published wheel is MIT; a hard runtime dep would put an AGPL-3.0 library in every installing user's environment and contradict NOTICE. Keep it in the dev/build dependency group; the loader reads the pre-built Parquet shards and never imports it."
+notes = "Upstream PyPI metadata declares no licence and the sdist ships no LICENSE file, but the catima repository is AGPL-3.0. Treat it as AGPL."
+
+[code_dependencies.geant4]
+name = "Geant4"
+upstream = "https://geant4.web.cern.ch/download/license"
+spdx = "LicenseRef-Geant4"
+role = "build-time only — generated hi-xs-prod; upstream of the G4EMLOW / nuclear-structure tables"
+imported_by = []
+runtime_dependency = false
+policy = "Not an OSI licence. No Geant4 source or binary is redistributed. The mandatory notice and the no-endorsement clause are carried in NOTICE."
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Formal notices — rendered into NOTICE in this order
+# ═══════════════════════════════════════════════════════════════════════════
+
+[[notices]]
+title = "NIST — PSTAR / ASTAR stopping-power data (Standard Reference Database 124) and XCOM (SRD 8)"
+applies_to = ["stopping.nist", "libraries.nist-xcom"]
+body = """
+Data reformatted from the free NIST Physical Reference Data (physics.nist.gov)
+by eXoma; the original values were produced by NIST. NIST does not endorse
+nucl-parquet or any downstream product. NIST disclaimer:
+
+  "The National Institute of Standards and Technology (NIST) uses its best
+   efforts to deliver a high quality copy of the Database and to verify that the
+   data contained therein have been selected on the basis of sound scientific
+   judgement. However, NIST makes no warranties to that effect, and NIST shall
+   not be liable for any damage that may result from errors or omissions in the
+   Database."
+"""
+
+[[notices]]
+title = "ENDF/B-VIII.0 and ENDF/B-VIII.1 — NNDC / Brookhaven National Laboratory / CSEWG (US DOE)"
+applies_to = ["libraries.endfb-8_0", "libraries.endfb-8_1"]
+body = """
+Prepared as an account of work sponsored by an agency of the United States
+Government. Neither the United States Government nor any agency thereof, nor any
+of their employees, makes any warranty, express or implied, or assumes any legal
+liability or responsibility for the accuracy, completeness, or usefulness of any
+information disclosed.
+"""
+
+[[notices]]
+title = "Geant4 — nuclear-structure, EM and HI-XS production data"
+applies_to = ["libraries.g4-nuclear", "libraries.g4-emlow", "libraries.hi-xs-prod"]
+body = """
+This product includes data developed by Members of the Geant4 Collaboration
+(http://cern.ch/geant4), reformatted to Parquet by eXoma. The Geant4 name is not
+used to endorse or promote nucl-parquet, and the Geant4 Collaboration does not
+endorse this product. No Geant4 source or binary is included in this
+distribution; only computed output and reformatted data tables.
+
+Affected tables include the ENSDF-derived structure and decay tables
+(data/meta/ensdf, decay, decay_detailed), the electron bremsstrahlung and
+electron-stopping tables (data/em/electron_brem*, data/stopping/em,
+data/stopping/ESTAR.parquet), and the heavy-ion production cross-sections
+(hi-xs-prod).
+"""
+
+[[notices]]
+title = "catima — used to compute heavy-ion stopping power (catima_*.parquet)"
+applies_to = ["stopping.catima"]
+body = """
+Stopping-power values were computed with catima (A. Prochazka), based on ATIMA
+(GSI). Only the computed Parquet output is redistributed. catima's source and
+binaries are AGPL-3.0 and are NOT included in this distribution, and pycatima is
+NOT a runtime dependency of the nucl-parquet distribution — it is required only
+to regenerate the shards.
+"""
+
+[[notices]]
+title = "CC-BY-4.0 data — EXFOR, JEFF, BROND"
+applies_to = ["libraries.exfor", "libraries.jeff-4_0", "libraries.brond-3_1"]
+body = """
+EXFOR (c) NRDC / IAEA-NDS, JEFF (c) OECD/NEA, and BROND (c) IPPE are licensed
+under Creative Commons Attribution 4.0 International
+(https://creativecommons.org/licenses/by/4.0/). Modified: reformatted from
+ENDF-6 to Apache Parquet by eXoma.
+"""
+
+[[notices]]
+title = "IAEA-NDS data — FENDL, IRDFF-II, IAEA-Medical, IAEA-PD-2019, EPICS (EPDL97/EADL/EEDL), NUDEX"
+applies_to = [
+    "libraries.fendl-3_2",
+    "libraries.irdff-2",
+    "libraries.iaea-medical",
+    "libraries.iaea-pd-2019",
+    "libraries.epics-epdl97",
+    "meta.nudex",
+]
+body = """
+Reproduced with acknowledgement to the IAEA Nuclear Data Section as the source.
+Distributed "as is"; the IAEA does not guarantee the accuracy of the data or
+their suitability for particular purposes. Commercial reuse may require
+IAEA Publishing/NDS permission.
+"""
+
+[[notices]]
+title = "JAEA data — JENDL-5, JENDL/AD-2017, JENDL/DEU-2020"
+applies_to = ["libraries.jendl-5", "libraries.jendl-ad-2017", "libraries.jendl-deu-2020"]
+body = """
+Copyright (c) Japan Atomic Energy Agency, Nuclear Data Center. Redistributed
+with attribution; written redistribution permission has been requested.
+"""

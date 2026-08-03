@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Mixed-emission coincidence pairs: extend γ-γ cascades with parent-side emissions.
 
 Per issue #170 / ADR-0002 (additive schema). This module supersedes the v0.11

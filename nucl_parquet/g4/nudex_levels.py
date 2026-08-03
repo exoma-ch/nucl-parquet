@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """NUDEX full ENSDF level schemes (issue #122).
 
 Imports the most-detailed available nuclear-structure source — every known

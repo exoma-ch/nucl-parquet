@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Fetch IUPAC/NIST atomic weights and isotopic compositions, convert to Parquet.
 
 Source: NIST Physics Reference Data hosting CIAAW (IUPAC Commission on Isotopic

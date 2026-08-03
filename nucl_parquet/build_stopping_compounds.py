@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Fetch NIST PSTAR/ASTAR *compound* stopping-power tables.
 
 NIST publishes proton and α-particle stopping-power tables for ~50 standard

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-2026 ETH Zürich (eXoma — Exotic Matter Applications)
+# SPDX-FileContributor: Lars Gerchow
+# SPDX-License-Identifier: MIT
 """Pair + triplet production cross-sections from G4EMLOW × strata (issue #99).
 
 Combines three input files from strata's `em/` subset into a single
