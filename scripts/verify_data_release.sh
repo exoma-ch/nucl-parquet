@@ -73,7 +73,16 @@ TAG="data-${VERSION}"
 ASSET="nucl-parquet-data-${VERSION}.tar.zst"
 
 WORKDIR=""
-cleanup() { [ -n "${WORKDIR}" ] && rm -rf "${WORKDIR}"; }
+# `return 0` is load-bearing: an EXIT trap whose last command fails sets the
+# script's exit status. With `[ -n "${WORKDIR}" ] && rm -rf ...` the test
+# returns 1 whenever no temp dir was used (--file mode), so a *successful*
+# verification would report failure.
+cleanup() {
+  if [ -n "${WORKDIR}" ]; then
+    rm -rf "${WORKDIR}"
+  fi
+  return 0
+}
 trap cleanup EXIT
 
 if [ -n "${LOCAL_FILE}" ]; then

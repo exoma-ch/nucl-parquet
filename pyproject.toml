@@ -27,6 +27,10 @@ dev = [
     "jsonschema>=4.0",
     "polars>=1.0",
     "pytest>=8.0",
+    # tests/test_data_signing.py parses the release workflow. Available
+    # transitively today (via huggingface-hub), declared here because the
+    # signing gates must not break when a transitive dep drops it.
+    "pyyaml>=6.0",
     "requests>=2.31",
     "ruff>=0.8",
 ]

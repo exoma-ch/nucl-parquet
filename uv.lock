@@ -479,6 +479,7 @@ dev = [
     { name = "jsonschema" },
     { name = "polars" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "requests" },
     { name = "ruff" },
 ]
@@ -503,6 +504,7 @@ dev = [
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "polars", specifier = ">=1.0" },
     { name = "pytest", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", specifier = ">=2.31" },
     { name = "ruff", specifier = ">=0.8" },
 ]
