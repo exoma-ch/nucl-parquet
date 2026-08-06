@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install zstd
-        run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Install zstd + minisign
+        run: sudo apt-get update && sudo apt-get install -y zstd minisign
       - name: Checkout tag (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@v5
@@ -62,11 +62,85 @@ jobs:
           tar --zstd -C data -cf "nucl-parquet-data-${CALVER}.tar.zst" .
           ls -lh "nucl-parquet-data-${CALVER}.tar.zst"
           echo "ASSET_PATH=nucl-parquet-data-${CALVER}.tar.zst" >> "$GITHUB_ENV"
+          echo "CALVER=${CALVER}" >> "$GITHUB_ENV"
+
+      # Sign the tarball with the offline data-signing key (#289).
+      #
+      # A SHA-256 pin says "these are the bytes that build was tested against";
+      # a signature says "these bytes came from the nuclear-data team". Only the
+      # second survives re-pinning, because GitHub's published asset digest is
+      # only as trustworthy as the account — and these releases are mutable.
+      #
+      # Signing is UNCONDITIONAL and hard-fails when the key is absent. The
+      # alternative (skip quietly when the secret is missing) is the exact bug
+      # #283 fixed for the HF mirror: a job that reports green while doing
+      # nothing. An unsigned data release must be impossible, not merely
+      # unusual — consumers that verify would break far more loudly downstream.
+      - name: Sign tarball (minisign)
+        env:
+          DATA_SIGNING_KEY: ${{ secrets.DATA_SIGNING_KEY }}
+          DATA_SIGNING_KEY_PASSWORD: ${{ secrets.DATA_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DATA_SIGNING_KEY}" ] || [ -z "${DATA_SIGNING_KEY_PASSWORD}" ]; then
+            echo "::error::Data releases must be signed (#289), but DATA_SIGNING_KEY and/or" \
+                 "DATA_SIGNING_KEY_PASSWORD is not set. Generate the keypair offline with" \
+                 "\`just gen-signing-key\` and set both repository secrets. See" \
+                 "docs/security/data-signing.md. Refusing to publish an unsigned release."
+            exit 1
+          fi
+
+          PUBKEY_FILE=docs/security/data-signing-key.pub
+          if [ ! -f "${PUBKEY_FILE}" ]; then
+            echo "::error::${PUBKEY_FILE} is missing. The public key consumers pin must be" \
+                 "committed before a signed release can be published (#289)."
+            exit 1
+          fi
+
+          # Keep key material out of the workspace entirely, so it can never be
+          # swept into a release asset by a glob. RUNNER_TEMP is not archived.
+          umask 077
+          KEYFILE="${RUNNER_TEMP}/data-signing.key"
+          printf '%s\n' "${DATA_SIGNING_KEY}" > "${KEYFILE}"
+          trap 'shred -u "${KEYFILE}" 2>/dev/null || rm -f "${KEYFILE}"' EXIT
+
+          TARBALL="${ASSET_PATH}"
+          SHA256=$(sha256sum "${TARBALL}" | cut -d' ' -f1)
+          TAG="${{ inputs.tag || github.ref_name }}"
+
+          # The trusted comment is covered by the signature, so binding version,
+          # tag and digest into it makes the signature attest to *which release*
+          # these bytes are — not merely that we signed some bytes. A verifier
+          # that reads the trusted comment can detect a valid signature being
+          # replayed onto a different release.
+          TRUSTED_COMMENT="nucl-parquet data ${CALVER} tag=${TAG} sha256=${SHA256}"
+
+          printf '%s\n' "${DATA_SIGNING_KEY_PASSWORD}" \
+            | minisign -S -s "${KEYFILE}" -m "${TARBALL}" -t "${TRUSTED_COMMENT}"
+
+          # Verify against the *committed* public key — the one consumers pin.
+          # This is what catches a rotated-but-not-committed key, a corrupted
+          # secret, or a swapped signing identity: the release fails here
+          # instead of shipping a signature no consumer can verify.
+          PUBKEY=$(grep -v '^untrusted comment:' "${PUBKEY_FILE}" | tr -d '[:space:]')
+          if ! minisign -V -P "${PUBKEY}" -m "${TARBALL}"; then
+            echo "::error::The signature does not verify against ${PUBKEY_FILE}." \
+                 "The DATA_SIGNING_KEY secret and the committed public key have diverged." \
+                 "Follow the rotation runbook in docs/security/data-signing.md."
+            exit 1
+          fi
+
+          echo "SIG_PATH=${TARBALL}.minisig" >> "$GITHUB_ENV"
+          echo "Signed ${TARBALL} (sha256=${SHA256})"
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          files: ${{ env.ASSET_PATH }}
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.SIG_PATH }}
           fail_on_unmatched_files: true
           generate_release_notes: true
 
