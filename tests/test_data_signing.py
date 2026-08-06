@@ -432,3 +432,32 @@ def test_keygen_validates_the_passphrase_before_uploading() -> None:
     idx_upload = src.find("gh secret set")
     assert idx_check != -1, "keygen must verify the passphrase decrypts the key"
     assert idx_check < idx_upload, "passphrase check must happen before any secret is uploaded"
+
+
+def test_keygen_prompts_for_the_passphrase_once_and_confirms_it() -> None:
+    """The passphrase is read once, confirmed, then fed to minisign.
+
+    Letting minisign prompt and *then* asking again for the copy to upload
+    means typing the same secret three times, and a typo on the third puts a
+    passphrase in CI that cannot decrypt the key. It also breaks outright when
+    stdin is not a terminal: minisign drains stdin, so the follow-up read hits
+    EOF and `set -e` aborts after the keypair is already on disk.
+    """
+    src = _KEYGEN_SCRIPT.read_text()
+    assert "PASSPHRASE_CONFIRM" in src, "keygen must ask the passphrase twice and compare"
+    assert "passphrases do not match" in src, "keygen must reject a mismatched confirmation"
+
+    idx_prompt = src.find("read -r -s -p")
+    idx_gen = src.find("minisign -G")
+    assert idx_prompt != -1 and idx_gen != -1
+    assert idx_prompt < idx_gen, "the passphrase must be collected before minisign -G, then piped into it"
+
+
+def test_keygen_rejects_an_empty_passphrase() -> None:
+    """An empty passphrase leaves the offline master copy unprotected.
+
+    The copy in the password manager is the one the passphrase actually
+    protects — the CI copy is guarded by the secret store either way.
+    """
+    src = _KEYGEN_SCRIPT.read_text()
+    assert "empty passphrase" in src, "keygen must reject an empty passphrase"

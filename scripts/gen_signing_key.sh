@@ -30,6 +30,7 @@ die() { echo "error: $*" >&2; exit 1; }
 command -v minisign >/dev/null 2>&1 || die "minisign not found (nix develop -c $0)"
 command -v gh >/dev/null 2>&1 || die "gh not found — needed to set repository secrets"
 
+FORCE=""
 if [ -f "${PUBKEY_FILE}" ]; then
   echo "WARNING: ${PUBKEY_FILE} already exists."
   echo "Generating a NEW key rotates the trust root: every consumer that pinned"
@@ -38,6 +39,7 @@ if [ -f "${PUBKEY_FILE}" ]; then
   echo "overwriting blind."
   read -r -p "Type 'rotate' to continue: " confirm
   [ "${confirm}" = "rotate" ] || die "aborted"
+  FORCE="-f"
 fi
 
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated — run 'gh auth login'"
@@ -47,17 +49,28 @@ echo "Choose a strong passphrase. It protects the offline master copy of the key
 echo "(the copy you put in your password manager). Store BOTH in the same entry."
 echo
 
+# Prompt once, here, and feed minisign — rather than letting minisign prompt
+# and then asking again for the copy to upload. Three prompts for the same
+# secret invites a typo that would put a passphrase in CI which cannot decrypt
+# the key, and it breaks entirely when stdin is not a terminal (minisign drains
+# stdin, so the follow-up `read` hits EOF and `set -e` aborts mid-generation,
+# leaving a keypair on disk and nothing uploaded).
+read -r -s -p "Passphrase for the new signing key: " PASSPHRASE
+echo
+read -r -s -p "Confirm passphrase: " PASSPHRASE_CONFIRM
+echo
+[ -n "${PASSPHRASE}" ] || die "empty passphrase — the offline master copy would be unprotected"
+[ "${PASSPHRASE}" = "${PASSPHRASE_CONFIRM}" ] || die "passphrases do not match"
+
 umask 077
 mkdir -p "$(dirname "${PUBKEY_FILE}")"
-minisign -G -p "${PUBKEY_FILE}" -s "${SECKEY}"
+# shellcheck disable=SC2086  # FORCE is intentionally word-split (empty or -f)
+printf '%s\n%s\n' "${PASSPHRASE}" "${PASSPHRASE}" \
+  | minisign -G ${FORCE} -p "${PUBKEY_FILE}" -s "${SECKEY}"
 
-echo
-read -r -s -p "Re-enter the passphrase so it can be stored as a repo secret: " PASSPHRASE
-echo
-
-# Fail before touching secrets if the passphrase is wrong — otherwise CI would
-# hold a password that cannot decrypt the key, and the first signed release
-# would be the thing that discovers it.
+# Prove the passphrase actually decrypts the key before uploading anything.
+# Otherwise CI would hold a password that cannot sign, and the first signed
+# release is what discovers it — after the tag has already been pushed.
 TESTFILE="${OUTDIR}/.keycheck"
 echo keycheck > "${TESTFILE}"
 printf '%s\n' "${PASSPHRASE}" | minisign -S -s "${SECKEY}" -m "${TESTFILE}" >/dev/null 2>&1 \
