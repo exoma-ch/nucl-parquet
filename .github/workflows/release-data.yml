@@ -80,6 +80,14 @@ jobs:
         env:
           DATA_SIGNING_KEY: ${{ secrets.DATA_SIGNING_KEY }}
           DATA_SIGNING_KEY_PASSWORD: ${{ secrets.DATA_SIGNING_KEY_PASSWORD }}
+          # Bound through the environment rather than interpolated into the
+          # script body. `inputs.tag` is attacker-influenced (anyone who can
+          # dispatch this workflow), and a `${{ }}` expansion is textual
+          # substitution *before* bash parses the line — so a crafted tag would
+          # execute shell in the one step that holds the signing key. As an env
+          # var it is data, never code.
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -107,7 +115,16 @@ jobs:
 
           TARBALL="${ASSET_PATH}"
           SHA256=$(sha256sum "${TARBALL}" | cut -d' ' -f1)
-          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG="${INPUT_TAG:-${REF_NAME}}"
+
+          # The tag ends up inside the signed trusted comment, so constrain it
+          # before signing: a signature is a durable assertion, and asserting
+          # over unvalidated text is how a verifier gets fed something it will
+          # happily parse as a different release.
+          if ! [[ "${TAG}" =~ ^data-[0-9]{4}\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::refusing to sign for tag '${TAG}' — expected data-YYYY.MM.MICRO"
+            exit 1
+          fi
 
           # The trusted comment is covered by the signature, so binding version,
           # tag and digest into it makes the signature attest to *which release*
