@@ -96,10 +96,20 @@ Consumers should therefore:
 - fall back to the SHA-256 pin alone for older releases, and treat that as a
   known gap rather than a passing check.
 
-`scripts/verify_data_release.sh` hard-fails on a missing signature and requires
-an explicit `--allow-unsigned` to accept one, so "this release predates signing"
-can never be silently indistinguishable from "an attacker stripped the
-signature".
+`scripts/verify_data_release.sh` enforces this rather than merely documenting
+it. A missing signature hard-fails, and `--allow-unsigned` is **refused at or
+above the cutoff** — it only applies to releases that genuinely predate signing.
+
+That refusal is the point. Without it, an attacker who can strip the `.minisig`
+(a MITM, or anyone able to rewrite these mutable releases) lets the consumer hit
+the "carries no signature" error, and relies on them re-running with the flag
+that error just suggested. If the flag worked at any version, the whole scheme
+would be one retry away from bypass. "This release predates signing" and "an
+attacker stripped the signature" must never be the same code path.
+
+The opt-out warning says plainly that *nothing* was verified — not the origin,
+not the digest. It deliberately does not cite the catalog SHA-256 pin, because
+this script does not check it.
 
 ## Key custody
 
