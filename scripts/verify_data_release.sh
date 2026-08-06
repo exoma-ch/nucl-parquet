@@ -25,6 +25,13 @@ PUBKEY_FILE="${PUBKEY_FILE:-${ROOT}/docs/security/data-signing-key.pub}"
 # over — see docs/security/data-signing.md. Verifying one of those requires
 # opting out explicitly, so "old release" can never be silently indistinguishable
 # from "signature stripped by an attacker".
+#
+# This is the single source of truth for the cutoff — consumers implementing
+# "require a signature at or above version X" read it from here, and
+# docs/security/data-signing.md is gated against it by tests/test_data_signing.py.
+# It is the first release published after signing landed; adjust it if that
+# release ships under a different CalVer than planned.
+FIRST_SIGNED_VERSION="2026.8.2"
 ALLOW_UNSIGNED=0
 
 VERSION=""
@@ -90,9 +97,10 @@ else
       exit 0
     fi
     die "release ${TAG} carries no .minisig asset.
-Releases published before signing landed are unsigned — see the grandfathering
-rule in docs/security/data-signing.md. To accept an unsigned release knowingly,
-re-run with --allow-unsigned."
+Releases before ${FIRST_SIGNED_VERSION} are unsigned by design — see the
+grandfathering rule in docs/security/data-signing.md. If ${VERSION} is at or
+above ${FIRST_SIGNED_VERSION}, a missing signature is a RED FLAG, not an old
+release. To accept an unsigned release knowingly, re-run with --allow-unsigned."
   fi
 fi
 

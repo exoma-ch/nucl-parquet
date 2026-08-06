@@ -41,6 +41,17 @@ Data tarballs and code packages release on independent cadences. Data refreshes 
 
 Per-package code semver (split MCP from core, etc.) is tracked in #150.
 
+### Verifying a data release
+
+Data releases from `data-2026.8.2` onward are signed with [minisign](https://jedisct1.github.io/minisign/); the signature ships as `nucl-parquet-data-<CalVer>.tar.zst.minisig` on the GitHub release.
+
+```bash
+just verify-release              # verify the version in data/catalog.json
+just verify-release 2026.8.2     # verify a specific CalVer
+```
+
+The `data_sha256` pin and the signature answer different questions — "are these the bytes that build was tested against?" versus "did these bytes come from the nuclear-data team?". Only the second survives re-pinning, since GitHub's asset digest is only as trustworthy as the account. The public key consumers pin, the grandfathering rule for older unsigned releases, and the rotation runbook are in [docs/security/data-signing.md](docs/security/data-signing.md).
+
 ## Usage
 
 ```python
