@@ -27,6 +27,27 @@ SECKEY="${OUTDIR}/data-signing.key"
 
 die() { echo "error: $*" >&2; exit 1; }
 
+# If the script aborts anywhere after `minisign -G` — a wrong passphrase, a gh
+# failure, Ctrl-C — a freshly generated secret key is sitting in a temp dir at
+# 0600 that nobody has been told about. Shred it on any unsuccessful exit: an
+# abandoned run must not leave an undocumented signing key on the filesystem.
+# On success the key is deliberately kept, because the operator still has to
+# move it into their password manager; the closing message names the path and
+# the shred command.
+COMPLETED=0
+on_exit() {
+  if [ "${COMPLETED}" -eq 0 ] && [ -f "${SECKEY}" ]; then
+    shred -u "${SECKEY}" 2>/dev/null || rm -f "${SECKEY}"
+    echo >&2
+    echo "aborted before completion — the partially-provisioned secret key at" >&2
+    echo "  ${SECKEY}" >&2
+    echo "has been shredded. Nothing was left on disk. Re-run to start over," >&2
+    echo "and check whether either repository secret was already updated:" >&2
+    echo "  gh secret list --repo ${REPO}" >&2
+  fi
+}
+trap on_exit EXIT
+
 command -v minisign >/dev/null 2>&1 || die "minisign not found (nix develop -c $0)"
 command -v gh >/dev/null 2>&1 || die "gh not found — needed to set repository secrets"
 
@@ -79,6 +100,10 @@ printf '%s\n' "${PASSPHRASE}" | minisign -S -s "${SECKEY}" -m "${TESTFILE}" >/de
 echo "Passphrase verified. Setting repository secrets on ${REPO} ..."
 gh secret set DATA_SIGNING_KEY --repo "${REPO}" < "${SECKEY}"
 printf '%s' "${PASSPHRASE}" | gh secret set DATA_SIGNING_KEY_PASSWORD --repo "${REPO}"
+
+# Past this point the run succeeded: the key is provisioned and the operator
+# needs the on-disk copy to back up, so the EXIT trap must stop shredding it.
+COMPLETED=1
 
 cat <<EOF
 

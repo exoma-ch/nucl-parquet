@@ -299,14 +299,63 @@ def test_public_key_is_a_valid_minisign_key() -> None:
 # -- Layer 2: it actually signs, and the attacks actually fail ---------------
 
 
+def _run_workflow_signing_step(
+    workdir: Path,
+    *,
+    secret_key: str,
+    password: str,
+    asset: str,
+    calver: str,
+    input_tag: str = "",
+    ref_name: str = "",
+) -> subprocess.CompletedProcess:
+    """Execute the signing step's actual `run:` body from release-data.yml.
+
+    Not a re-implementation — the shell is lifted verbatim out of the workflow
+    and executed. That is only possible because the step contains no `${{ }}`
+    interpolation (enforced by
+    test_signing_step_does_not_interpolate_untrusted_input_into_shell), which
+    is also why the step is safe from script injection. The two properties are
+    the same property, so this test and that one reinforce each other.
+
+    Running the real body is what makes the wiring assertions meaningful: a
+    string check like `'umask 077' in run` still passes if a `then` is missing
+    or a quote is wrong, but this does not.
+    """
+    runner_temp = workdir / "runner-temp"
+    runner_temp.mkdir(exist_ok=True)
+    github_env = workdir / "github-env"
+    github_env.touch()
+
+    env = {
+        "PATH": __import__("os").environ["PATH"],
+        "HOME": str(workdir),
+        "DATA_SIGNING_KEY": secret_key,
+        "DATA_SIGNING_KEY_PASSWORD": password,
+        "INPUT_TAG": input_tag,
+        "REF_NAME": ref_name,
+        # Exported into the step's environment by the preceding Build step via
+        # $GITHUB_ENV; supplied directly here.
+        "ASSET_PATH": asset,
+        "CALVER": calver,
+        "RUNNER_TEMP": str(runner_temp),
+        "GITHUB_ENV": str(github_env),
+    }
+    return subprocess.run(
+        ["bash", "-c", _signing_step()["run"]],
+        cwd=workdir,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
 @pytest.fixture()
 def signed_release(tmp_path: Path) -> dict:
-    """Generate a throwaway key and sign a fake tarball with the workflow's own logic.
-
-    The signing commands are extracted from release-data.yml rather than
-    retyped, so this exercises the shell that will really run in CI.
-    """
-    pubkey = tmp_path / "data-signing-key.pub"
+    """Generate a throwaway key and sign a tarball by running the workflow's own step."""
+    pubkey_dir = tmp_path / "docs" / "security"
+    pubkey_dir.mkdir(parents=True)
+    pubkey = pubkey_dir / "data-signing-key.pub"
     seckey = tmp_path / "data-signing.key"
     password = "test-passphrase"
 
@@ -319,22 +368,21 @@ def signed_release(tmp_path: Path) -> dict:
     )
 
     version = "2026.8.2"
-    tarball = tmp_path / f"nucl-parquet-data-{version}.tar.zst"
+    asset = f"nucl-parquet-data-{version}.tar.zst"
+    tarball = tmp_path / asset
     tarball.write_bytes(b"not really zstd, but the signature does not care\n" * 64)
 
-    import hashlib
-
-    sha = hashlib.sha256(tarball.read_bytes()).hexdigest()
-    tag = f"data-{version}"
-    trusted = f"nucl-parquet data {version} tag={tag} sha256={sha}"
-
-    subprocess.run(
-        ["minisign", "-S", "-s", str(seckey), "-m", str(tarball), "-t", trusted],
-        input=f"{password}\n",
-        text=True,
-        capture_output=True,
-        check=True,
+    proc = _run_workflow_signing_step(
+        tmp_path,
+        secret_key=seckey.read_text(),
+        password=password,
+        asset=asset,
+        calver=version,
+        ref_name=f"data-{version}",
     )
+    assert proc.returncode == 0, f"the workflow's signing step failed:\n{proc.stdout}\n{proc.stderr}"
+
+    import hashlib
 
     return {
         "dir": tmp_path,
@@ -344,8 +392,8 @@ def signed_release(tmp_path: Path) -> dict:
         "tarball": tarball,
         "sig": tarball.with_suffix(tarball.suffix + ".minisig"),
         "version": version,
-        "tag": tag,
-        "sha": sha,
+        "tag": f"data-{version}",
+        "sha": hashlib.sha256(tarball.read_bytes()).hexdigest(),
     }
 
 
@@ -443,6 +491,164 @@ def test_verify_rejects_a_doctored_trusted_comment(signed_release: dict) -> None
 # -- Layer 2b: the keygen script is safe to run ------------------------------
 
 
+@_needs_minisign
+def test_workflow_step_hard_fails_when_the_key_is_absent(tmp_path: Path) -> None:
+    """Run the real step with no key and confirm it exits non-zero.
+
+    The wiring test only checks that the strings `::error::` and `exit 1`
+    appear. This runs the shell.
+    """
+    (tmp_path / "docs" / "security").mkdir(parents=True)
+    (tmp_path / "docs" / "security" / "data-signing-key.pub").write_text("untrusted comment: x\nRWQ\n")
+    (tmp_path / "asset.tar.zst").write_bytes(b"x")
+
+    proc = _run_workflow_signing_step(
+        tmp_path, secret_key="", password="", asset="asset.tar.zst", calver="2026.8.2", ref_name="data-2026.8.2"
+    )
+    assert proc.returncode != 0, "signing step succeeded with no key — an unsigned release would publish"
+    assert "::error::" in proc.stdout + proc.stderr
+
+
+@_needs_minisign
+def test_workflow_step_rejects_an_injected_tag(tmp_path: Path) -> None:
+    """A crafted dispatch tag must be rejected, not executed.
+
+    The canary file would only appear if the tag were interpreted as shell.
+    """
+    (tmp_path / "docs" / "security").mkdir(parents=True)
+    pub = tmp_path / "docs" / "security" / "data-signing-key.pub"
+    sec = tmp_path / "k.key"
+    subprocess.run(
+        ["minisign", "-G", "-f", "-p", str(pub), "-s", str(sec)],
+        input="pw\npw\n",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    (tmp_path / "asset.tar.zst").write_bytes(b"x")
+    canary = tmp_path / "PWNED"
+
+    proc = _run_workflow_signing_step(
+        tmp_path,
+        secret_key=sec.read_text(),
+        password="pw",
+        asset="asset.tar.zst",
+        calver="2026.8.2",
+        input_tag=f'data-2026.8.2"; touch {canary}; #',
+    )
+    assert not canary.exists(), "the dispatch tag was executed as shell — script injection is possible"
+    assert proc.returncode != 0, "a malformed tag was accepted for signing"
+
+
+@_needs_minisign
+def test_verify_rejects_a_signature_file_with_extra_lines(signed_release: dict) -> None:
+    """An appended `trusted comment:` line must be refused, not parsed.
+
+    minisign accepts a 5-line .minisig — it ignores anything past line 4
+    (confirmed against 0.12). Only line 3 is covered by the global signature,
+    so a naive `sed -n 's/^trusted comment: //p'` would parse the attacker's
+    appended line alongside the real one and make claims from unsigned text.
+    """
+    sig = signed_release["sig"]
+    with sig.open("a") as fh:
+        fh.write("trusted comment: nucl-parquet data 9999.1.1 tag=data-9999.1.1 sha256=" + "de" * 32 + "\n")
+    proc = _verify(signed_release)
+    assert proc.returncode != 0, "a .minisig with unsigned extra lines was accepted"
+    assert "malformed signature file" in proc.stderr
+
+
+# -- Layer 2c: the grandfathering cutoff is enforced, not just documented ----
+
+
+@_needs_minisign
+def test_allow_unsigned_is_refused_at_or_above_the_cutoff(signed_release: dict) -> None:
+    """--allow-unsigned must not downgrade a version that should be signed.
+
+    The attack it closes: strip the .minisig in transit (or rewrite the mutable
+    release), let the consumer hit the 'carries no signature' error, and rely on
+    them re-running with the flag that error suggests. If the flag applied at
+    any version, the whole signing scheme would be one retry away from bypass.
+    """
+    signed_release["sig"].unlink()
+    proc = subprocess.run(
+        [
+            str(_VERIFY_SCRIPT),
+            "--file",
+            str(signed_release["tarball"]),
+            "--version",
+            _first_signed_version(),
+            "--pubkey",
+            str(signed_release["pubkey"]),
+            "--allow-unsigned",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+    )
+    assert proc.returncode != 0, "--allow-unsigned bypassed verification at the cutoff version"
+    assert "refusing --allow-unsigned" in proc.stderr
+
+
+@_needs_minisign
+def test_allow_unsigned_is_permitted_below_the_cutoff(signed_release: dict) -> None:
+    """Genuinely pre-signing releases stay verifiable-with-opt-out.
+
+    The cutoff has to permit as well as refuse, or the grandfathering rule is
+    just a hard failure with extra steps.
+    """
+    signed_release["sig"].unlink()
+    proc = subprocess.run(
+        [
+            str(_VERIFY_SCRIPT),
+            "--file",
+            str(signed_release["tarball"]),
+            "--version",
+            "2026.7.2",
+            "--pubkey",
+            str(signed_release["pubkey"]),
+            "--allow-unsigned",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+    )
+    assert proc.returncode == 0, f"--allow-unsigned rejected a pre-cutoff release:\n{proc.stderr}"
+    assert "NOTHING about these bytes has been verified" in proc.stderr, (
+        "the opt-out warning must state plainly that nothing was checked"
+    )
+
+
+def test_unsigned_warning_does_not_claim_checks_it_does_not_run() -> None:
+    """The opt-out path must not name a control that is not running.
+
+    It previously claimed integrity rested on 'the catalog SHA-256 pin' — a
+    check this script never performs. Naming an absent control in the one
+    message a user reads while deciding to trust unverified bytes is worse
+    than saying nothing.
+    """
+    src = _VERIFY_SCRIPT.read_text()
+    # Only the emitted WARNING lines matter — prose comments may legitimately
+    # discuss the pin in order to explain why it is *not* claimed here.
+    warnings = [ln for ln in src.splitlines() if "WARNING:" in ln and not ln.strip().startswith("#")]
+    assert warnings, "the unsigned opt-out must warn"
+    joined = " ".join(warnings)
+    assert "pin" not in joined and "data_sha256" not in joined, (
+        f"the opt-out warning claims a SHA-256 pin check this script never performs: {joined}"
+    )
+    assert "NOTHING about these bytes has been verified" in joined
+
+
+def test_calver_comparison_is_numeric_not_lexical() -> None:
+    """2026.8.10 is newer than 2026.8.9; a string compare disagrees.
+
+    Exercised through the script itself: a .9 release must still be treated as
+    below a .10 cutoff.
+    """
+    src = _VERIFY_SCRIPT.read_text()
+    assert "_calver_lt" in src, "the cutoff comparison must be numeric"
+    assert "(( a[i] < b[i] ))" in src, "CalVer components must be compared as integers"
+
+
 def test_keygen_refuses_to_silently_overwrite_an_existing_key() -> None:
     """Rotation must be deliberate.
 
@@ -481,9 +687,11 @@ def test_keygen_prompts_for_the_passphrase_once_and_confirms_it() -> None:
     assert "PASSPHRASE_CONFIRM" in src, "keygen must ask the passphrase twice and compare"
     assert "passphrases do not match" in src, "keygen must reject a mismatched confirmation"
 
-    idx_prompt = src.find("read -r -s -p")
-    idx_gen = src.find("minisign -G")
-    assert idx_prompt != -1 and idx_gen != -1
+    # Match executable lines only — comments mention `minisign -G` too, and
+    # matching one of those would compare against the wrong position.
+    code = [ln for ln in src.splitlines() if not ln.strip().startswith("#")]
+    idx_prompt = next(i for i, ln in enumerate(code) if "read -r -s -p" in ln)
+    idx_gen = next(i for i, ln in enumerate(code) if "minisign -G" in ln)
     assert idx_prompt < idx_gen, "the passphrase must be collected before minisign -G, then piped into it"
 
 
@@ -495,3 +703,21 @@ def test_keygen_rejects_an_empty_passphrase() -> None:
     """
     src = _KEYGEN_SCRIPT.read_text()
     assert "empty passphrase" in src, "keygen must reject an empty passphrase"
+
+
+def test_keygen_shreds_the_key_on_an_unsuccessful_exit() -> None:
+    """An aborted run must not leave an undocumented signing key on disk.
+
+    If the script dies between `minisign -G` and the closing message — wrong
+    passphrase, gh failure, Ctrl-C — a real secret key sits in a temp dir that
+    nobody has been told about. It is kept only once the run completes, because
+    at that point the operator still has to move it into their password
+    manager and the closing message names the path.
+    """
+    src = _KEYGEN_SCRIPT.read_text()
+    assert "trap on_exit EXIT" in src, "keygen must clean up key material on abnormal exit"
+    assert "COMPLETED=0" in src and "COMPLETED=1" in src, "the trap must distinguish success from abort"
+
+    idx_completed = src.find("COMPLETED=1")
+    idx_upload = src.rfind("gh secret set")
+    assert idx_upload < idx_completed, "the run is only 'completed' after both secrets are uploaded"

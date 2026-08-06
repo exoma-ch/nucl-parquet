@@ -39,11 +39,19 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
       - name: Build tarball
+        env:
+          # Bound through the environment, not interpolated into the script
+          # body. This step holds no secrets, but it runs in the same job as
+          # the signing step and can write to $GITHUB_ENV — so an injection
+          # here escalates: prepend a directory to PATH and the signing step
+          # runs an attacker-supplied `minisign` with the key in its
+          # environment. Data, never code (#289).
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           # Tag form: data-YYYY.MM.MICRO → strip the `data-` prefix to get CalVer.
           # workflow_dispatch passes the tag via inputs.tag; push events via GITHUB_REF.
-          if [ -n "${{ inputs.tag }}" ]; then
-            CALVER="${{ inputs.tag }}"
+          if [ -n "${INPUT_TAG}" ]; then
+            CALVER="${INPUT_TAG}"
             CALVER=${CALVER#data-}
           else
             CALVER=${GITHUB_REF#refs/tags/data-}
@@ -140,13 +148,27 @@ jobs:
           # This is what catches a rotated-but-not-committed key, a corrupted
           # secret, or a swapped signing identity: the release fails here
           # instead of shipping a signature no consumer can verify.
-          PUBKEY=$(grep -v '^untrusted comment:' "${PUBKEY_FILE}" | tr -d '[:space:]')
+          # `|| true` so a comment-only key file reports the diagnosis below
+          # rather than aborting the assignment under `set -o pipefail`.
+          PUBKEY=$( { grep -v '^untrusted comment:' "${PUBKEY_FILE}" || true; } | tr -d '[:space:]')
+          if [ -z "${PUBKEY}" ]; then
+            echo "::error::${PUBKEY_FILE} contains no key line."
+            exit 1
+          fi
           if ! minisign -V -P "${PUBKEY}" -m "${TARBALL}"; then
             echo "::error::The signature does not verify against ${PUBKEY_FILE}." \
                  "The DATA_SIGNING_KEY secret and the committed public key have diverged." \
                  "Follow the rotation runbook in docs/security/data-signing.md."
             exit 1
           fi
+
+          # Cheaper than reasoning about whether action-gh-release treats an
+          # empty line in its `files:` list as unmatched: if the signature is
+          # not on disk here, fail now rather than publish a lone tarball.
+          [ -f "${TARBALL}.minisig" ] || {
+            echo "::error::expected ${TARBALL}.minisig to exist after signing"
+            exit 1
+          }
 
           echo "SIG_PATH=${TARBALL}.minisig" >> "$GITHUB_ENV"
           echo "Signed ${TARBALL} (sha256=${SHA256})"

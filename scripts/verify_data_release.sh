@@ -40,6 +40,20 @@ LOCAL_SIG=""
 
 die() { echo "error: $*" >&2; exit 1; }
 
+# The one place the opt-out is spelled out, so the local-file and network paths
+# cannot drift into saying different things about the same situation.
+#
+# It states what was NOT checked. An earlier version claimed integrity rested
+# on "TLS and the catalog SHA-256 pin" — a control this script never performs.
+# Naming an absent check in the one message a user reads while deciding to
+# trust unverified bytes is worse than saying nothing at all.
+warn_unsigned() {
+  echo "WARNING: $1 carries no signature, and --allow-unsigned was passed." >&2
+  echo "WARNING: ${VERSION} predates ${FIRST_SIGNED_VERSION}, so this is expected." >&2
+  echo "WARNING: NOTHING about these bytes has been verified by this script —" >&2
+  echo "WARNING: not the origin, not the digest. Treat them as unverified." >&2
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --file)            LOCAL_FILE="$2"; shift 2 ;;
@@ -61,7 +75,9 @@ The key consumers pin must be committed before releases can be verified (#289).
 See docs/security/data-signing.md."
 
 # minisign -P wants the bare base64 line, not the commented file.
-PUBKEY="$(grep -v '^untrusted comment:' "${PUBKEY_FILE}" | tr -d '[:space:]')"
+# `|| true` keeps `set -o pipefail` from aborting on a comment-only file, which
+# would skip the friendly diagnosis on the next line.
+PUBKEY="$( { grep -v '^untrusted comment:' "${PUBKEY_FILE}" || true; } | tr -d '[:space:]')"
 [ -n "${PUBKEY}" ] || die "no key line found in ${PUBKEY_FILE}"
 
 if [ -z "${VERSION}" ]; then
@@ -69,8 +85,43 @@ if [ -z "${VERSION}" ]; then
   echo "No version given — using data/catalog.json::data_version = ${VERSION}"
 fi
 
+[[ "${VERSION}" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]] \
+  || die "version '${VERSION}' is not CalVer YYYY.MM.MICRO"
+
 TAG="data-${VERSION}"
 ASSET="nucl-parquet-data-${VERSION}.tar.zst"
+
+# Compare CalVer numerically: 2026.8.10 is newer than 2026.8.9, which a string
+# compare gets backwards.
+_calver_lt() {
+  local a b
+  IFS=. read -r -a a <<< "$1"
+  IFS=. read -r -a b <<< "$2"
+  for i in 0 1 2; do
+    (( a[i] < b[i] )) && return 0
+    (( a[i] > b[i] )) && return 1
+  done
+  return 1
+}
+
+# Is this version old enough that an absent signature is expected?
+if _calver_lt "${VERSION}" "${FIRST_SIGNED_VERSION}"; then
+  PREDATES_SIGNING=1
+else
+  PREDATES_SIGNING=0
+fi
+
+# The cutoff has to be *enforced*, not merely documented. Otherwise an attacker
+# who can strip the .minisig (a MITM, or anyone who can rewrite these mutable
+# releases) just downgrades the consumer into the unsigned path, and
+# --allow-unsigned — offered by the error message the consumer just read —
+# accepts arbitrary bytes for a version that should always be signed.
+if [ "${ALLOW_UNSIGNED}" -eq 1 ] && [ "${PREDATES_SIGNING}" -eq 0 ]; then
+  die "refusing --allow-unsigned for ${VERSION}.
+Releases from ${FIRST_SIGNED_VERSION} onward are always signed, so a missing
+signature means the signature was removed — not that this release predates
+signing. --allow-unsigned only applies below ${FIRST_SIGNED_VERSION}."
+fi
 
 WORKDIR=""
 # `return 0` is load-bearing: an EXIT trap whose last command fails sets the
@@ -89,6 +140,14 @@ if [ -n "${LOCAL_FILE}" ]; then
   TARBALL="${LOCAL_FILE}"
   SIG="${LOCAL_SIG:-${LOCAL_FILE}.minisig}"
   [ -f "${TARBALL}" ] || die "no such file: ${TARBALL}"
+  # Honour --allow-unsigned here too. It used to apply only on the network
+  # path, so verifying an already-downloaded tarball ignored the flag and died
+  # regardless — the flag was silently inert exactly where a maintainer is most
+  # likely to reach for it.
+  if [ ! -f "${SIG}" ] && [ "${ALLOW_UNSIGNED}" -eq 1 ]; then
+    warn_unsigned "${TARBALL}"
+    exit 0
+  fi
 else
   WORKDIR="$(mktemp -d)"
   TARBALL="${WORKDIR}/${ASSET}"
@@ -101,8 +160,7 @@ else
 
   if ! curl -fsSL --retry 3 -o "${SIG}" "${BASE}/${ASSET}.minisig"; then
     if [ "${ALLOW_UNSIGNED}" -eq 1 ]; then
-      echo "WARNING: ${TAG} carries no signature, and --allow-unsigned was passed." >&2
-      echo "WARNING: integrity rests on TLS and the catalog SHA-256 pin alone." >&2
+      warn_unsigned "${TAG}"
       exit 0
     fi
     die "release ${TAG} carries no .minisig asset.
@@ -127,9 +185,28 @@ These bytes were not signed by the nuclear-data key. Do not use them."
 # genuine signature from release A being served as release B. The trusted
 # comment is covered by the signature and names the version, tag and digest,
 # so cross-checking it is what closes the replay gap.
-# Safe to read straight from the .minisig: the trusted comment is covered by
-# the signature verified in step 1, so by this point the line is authentic.
-TRUSTED="$(sed -n 's/^trusted comment: //p' "${SIG}")"
+#
+# Read ONLY line 3, and only from a file that is exactly 4 lines. A minisign
+# signature file is:
+#
+#   1  untrusted comment: ...
+#   2  <base64 signature>
+#   3  trusted comment: ...          <-- the only line covered by the global signature
+#   4  <base64 global signature>
+#
+# minisign ignores anything after line 4: appending a second `trusted comment:`
+# line to a valid .minisig still verifies (confirmed against minisign 0.12). A
+# naive `sed -n 's/^trusted comment: //p'` would then return the real line AND
+# the attacker's, so every field below would be parsed from partly unsigned
+# text. Pinning to line 3 is what makes "the comment is covered by the
+# signature" actually true of the value we use.
+SIG_LINES="$(wc -l < "${SIG}")"
+if [ "${SIG_LINES}" -ne 4 ]; then
+  die "malformed signature file: ${SIG} has ${SIG_LINES} lines, expected exactly 4.
+Extra lines in a .minisig are not covered by the signature — refusing to parse it."
+fi
+TRUSTED="$(sed -n '3s/^trusted comment: //p' "${SIG}")"
+[ -n "${TRUSTED}" ] || die "no trusted comment on line 3 of ${SIG}"
 
 ACTUAL_SHA="$(sha256sum "${TARBALL}" | cut -d' ' -f1)"
 SIGNED_SHA="$(printf '%s' "${TRUSTED}" | sed -n 's/.*sha256=\([0-9a-f]\{64\}\).*/\1/p')"
