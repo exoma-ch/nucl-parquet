@@ -25,6 +25,8 @@ dev = [
     "h5py>=3.10",
     "huggingface-hub>=0.30",
     "jsonschema>=4.0",
+    # scripts/fetch_stsv.py parses Fedlex's Akoma Ntoso XML (#294).
+    "lxml>=5.0",
     "polars>=1.0",
     "pytest>=8.0",
     # tests/test_data_signing.py parses the release workflow. Available
