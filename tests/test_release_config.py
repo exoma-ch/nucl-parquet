@@ -63,22 +63,36 @@ def test_mcp_pins_the_sibling_version_it_is_built_against() -> None:
     )
 
 
-def test_release_please_is_configured_to_keep_them_in_sync() -> None:
-    """The automation must exist, not just the check.
+def test_release_please_config_has_no_parent_relative_extra_files() -> None:
+    """`extra-files` paths are package-relative and may not escape upward.
 
-    Without the rule this invariant is maintained by a comment, which is how it
-    broke: every release PR would need a manual edit before it could go green.
+    The obvious automation for the sync invariant — have release-please rewrite
+    the sibling's constraint via an `extra-files` rule on
+    `clients/rs/nucl-parquet` — is not expressible. release-please resolves the
+    path against the package directory and rejects `..` outright:
+
+        release-please failed: illegal pathing characters in path:
+        clients/rs/nucl-parquet/../nucl-parquet-mcp/Cargo.toml
+
+    That is not a silent no-op, which would have been survivable. It aborts the
+    whole release-please run, so *no* release PR updates at all until the config
+    is fixed — one bad path takes out release automation for every package in
+    the repo.
+
+    The real fix is a cargo workspace plus the `cargo-workspace` plugin, which
+    is designed for exactly this and is tracked separately. Until then the
+    invariant is maintained by hand and caught by
+    `test_mcp_pins_the_sibling_version_it_is_built_against`.
     """
     cfg = json.loads((ROOT / "release-please-config.json").read_text())
-    extra = cfg["packages"]["clients/rs/nucl-parquet"].get("extra-files", [])
-    targets = [e for e in extra if isinstance(e, dict) and "nucl-parquet-mcp/Cargo.toml" in e.get("path", "")]
-    assert targets, (
-        "release-please must update the sibling's dependency constraint when it "
-        "bumps clients/rs/nucl-parquet, or every release PR opens red."
-    )
-    rule = targets[0]
-    assert rule.get("type") == "toml"
-    assert rule.get("jsonpath") == "$.dependencies.nucl-parquet.version"
+    for name, pkg in cfg["packages"].items():
+        for entry in pkg.get("extra-files", []):
+            path = entry.get("path", "") if isinstance(entry, dict) else entry
+            assert ".." not in path, (
+                f"package {name!r} has an extra-files path containing '..' ({path!r}). "
+                "release-please rejects these and aborts the entire run, so every "
+                "package stops releasing — not just this one."
+            )
 
 
 def test_every_published_crate_has_a_release_please_entry() -> None:

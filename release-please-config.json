@@ -40,14 +40,7 @@
       "include-component-in-tag": true,
       "tag-separator": "-",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "../nucl-parquet-mcp/Cargo.toml",
-          "jsonpath": "$.dependencies.nucl-parquet.version"
-        }
-      ]
+      "bump-patch-for-minor-pre-major": true
     },
     "clients/rs/nucl-parquet-mcp": {
       "release-type": "rust",
