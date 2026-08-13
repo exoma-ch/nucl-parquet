@@ -53,7 +53,11 @@ uv sync --dev
 # guard) — must run in CI so a data re-release can't ship an inconsistent hash.
 # `-m "not data and not network"` also runs the pure builder/thinning unit tests
 # while skipping the ones that need the full data tree or network.
+# test_data_signing: gates the minisign release-signing path (#289) — that the
+# workflow signs unconditionally, that the signature actually verifies, and that
+# tampering/replay/stripping are all rejected. Needs no data and no network.
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
+  tests/test_data_signing.py \
   -m "not data and not network" -v
 ok "python tests passed"
 endgroup

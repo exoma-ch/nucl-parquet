@@ -34,6 +34,8 @@
           ruff
           git
           cacert # TLS roots for uv/npm/go/cargo fetches
+          minisign # data-release signing + verification (#289)
+          zstd # unpack data tarballs when verifying a release
         ];
 
         # Only the code needed for the pure `nix flake check` lint — deliberately

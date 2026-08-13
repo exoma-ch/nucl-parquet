@@ -34,5 +34,16 @@ docs/theranostics/*
 !docs/adr/
 !docs/adr/*.md
 !docs/g4-xray-auger-design.md
+# Data-release signing (#289). Allowlisted by name, not as `!docs/security/*`,
+# so a secret key accidentally written into this directory stays ignored and
+# cannot be committed by a stray `git add`.
+!docs/security/
+!docs/security/data-signing.md
+!docs/security/data-signing-key.pub
+
+# Minisign secret key material must never be committed. The public key is
+# allowlisted above by name; everything else stays out.
+*.key
+*.sec
 .direnv/
 .claude/
