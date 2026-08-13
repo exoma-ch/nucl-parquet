@@ -67,7 +67,13 @@ jobs:
             echo "ERROR: tag CalVer (${CALVER}) does not match data/catalog.json::data_version (${CATALOG_VERSION})" >&2
             exit 1
           fi
-          tar --zstd -C data -cf "nucl-parquet-data-${CALVER}.tar.zst" .
+          # --exclude keeps the archive and the content manifest (#296) describing
+          # the same set of files. `data/g4_raw/` is a gitignored build cache that
+          # the manifest deliberately skips (_HASH_EXCLUDE_DIRS), but a bare
+          # `tar -C data .` sweeps it in. A clean CI checkout does not have it, so
+          # the mismatch is latent rather than absent — and a file that ships in
+          # the tarball without a manifest entry is unverifiable, silently.
+          tar --zstd -C data --exclude='./g4_raw' -cf "nucl-parquet-data-${CALVER}.tar.zst" .
           ls -lh "nucl-parquet-data-${CALVER}.tar.zst"
           echo "ASSET_PATH=nucl-parquet-data-${CALVER}.tar.zst" >> "$GITHUB_ENV"
           echo "CALVER=${CALVER}" >> "$GITHUB_ENV"
@@ -118,6 +124,29 @@ jobs:
             echo "::error::manifest lists only ${COUNT} files — refusing to sign an empty manifest"
             exit 1
           fi
+
+          # The manifest must describe exactly what the archive carries. These
+          # are built by different tools over different exclusion rules, so
+          # asserting it here — rather than trusting that they agree — is what
+          # stops a file shipping without a manifest entry, which is the one
+          # failure this whole feature would not survive: unverifiable, and
+          # invisible, because both artefacts are individually well-formed.
+          tar --zstd -tf "${ASSET_PATH}" \
+            | sed 's|^\./||' | grep -v '/$' | grep -v '^$' | LC_ALL=C sort > /tmp/tar_members.txt
+          uv run python -c "
+          import json, sys
+          print('\n'.join(sorted(json.load(open(sys.argv[1]))['files'])))
+          " "${MANIFEST}" | LC_ALL=C sort > /tmp/manifest_files.txt
+
+          if ! diff -q /tmp/tar_members.txt /tmp/manifest_files.txt >/dev/null; then
+            echo "::error::the tarball and the manifest describe different file sets."
+            echo "In the tarball but NOT in the manifest (would be unverifiable):"
+            comm -23 /tmp/tar_members.txt /tmp/manifest_files.txt | head -20
+            echo "In the manifest but NOT in the tarball:"
+            comm -13 /tmp/tar_members.txt /tmp/manifest_files.txt | head -20
+            exit 1
+          fi
+          echo "manifest and tarball agree on ${COUNT} files"
           ls -lh "${MANIFEST}"
           echo "MANIFEST_PATH=${MANIFEST}" >> "$GITHUB_ENV"
 

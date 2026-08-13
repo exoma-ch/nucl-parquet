@@ -859,3 +859,50 @@ def test_verifier_checks_manifest_replay_and_partial_transfers() -> None:
     assert "REPLAY DETECTED: manifest" in src, "a manifest for another release must be rejected"
     assert "--ignore-missing" in src, "a partial transfer must be verifiable without faking completeness"
     assert "--partial" in src
+
+
+def test_tarball_and_manifest_cover_the_same_files() -> None:
+    """The archive and the manifest must describe one set of files.
+
+    They are produced by different tools over different exclusion rules: `tar`
+    takes everything under `data/`, while the manifest honours
+    `_HASH_EXCLUDE_DIRS`. `data/g4_raw/` is a gitignored build cache that the
+    manifest skips and a bare `tar -C data .` sweeps in — a clean CI checkout
+    does not have it, so the mismatch is latent rather than absent.
+
+    A file that ships in the tarball without a manifest entry is unverifiable,
+    and invisible: both artefacts are individually well-formed and both
+    signatures verify. Hence the exclusion on the tar side, and a release-time
+    assertion that the two sets are equal.
+    """
+    wf = yaml.safe_load(_WORKFLOW.read_text())
+    steps = wf["jobs"]["data-asset"]["steps"]
+
+    build = next(s for s in steps if s.get("name") == "Build tarball")["run"]
+    assert "--exclude='./g4_raw'" in build, (
+        "the tarball must exclude the same build cache the manifest does, or it ships unverifiable files"
+    )
+
+    manifest_step = next(s for s in steps if s.get("name") == "Build content manifest")["run"]
+    assert "tar --zstd -tf" in manifest_step, "the release must compare the tarball's members to the manifest"
+    assert "describe different file sets" in manifest_step, "the comparison must fail the release, not just log"
+
+
+def test_hash_exclude_dirs_is_the_single_source_of_the_exclusion() -> None:
+    """If a directory is added to the exclusion set, the tar step must follow.
+
+    This is a reminder rather than a mechanism — the workflow cannot import the
+    constant — but it fails loudly the moment the two drift.
+    """
+    from nucl_parquet.download import _HASH_EXCLUDE_DIRS
+
+    build = next(
+        s
+        for s in yaml.safe_load(_WORKFLOW.read_text())["jobs"]["data-asset"]["steps"]
+        if s.get("name") == "Build tarball"
+    )["run"]
+    for excluded in _HASH_EXCLUDE_DIRS:
+        assert f"--exclude='./{excluded}'" in build, (
+            f"_HASH_EXCLUDE_DIRS contains {excluded!r} but the tar step does not exclude it; "
+            "the tarball would carry files the manifest cannot vouch for"
+        )
