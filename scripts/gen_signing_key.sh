@@ -34,10 +34,19 @@ die() { echo "error: $*" >&2; exit 1; }
 # On success the key is deliberately kept, because the operator still has to
 # move it into their password manager; the closing message names the path and
 # the shred command.
+# Overwrite-then-unlink where the platform offers it. macOS ships no `shred`
+# (GNU coreutils); its `rm -P` is the closest equivalent. In practice the
+# devShell supplies GNU shred on both platforms — the preflight requires
+# minisign, which on macOS arrives from that same devShell — but the fallback
+# keeps a bare invocation from silently degrading to a plain unlink.
+secure_rm() {
+  shred -u "$1" 2>/dev/null || rm -P "$1" 2>/dev/null || rm -f "$1"
+}
+
 COMPLETED=0
 on_exit() {
   if [ "${COMPLETED}" -eq 0 ] && [ -f "${SECKEY}" ]; then
-    shred -u "${SECKEY}" 2>/dev/null || rm -f "${SECKEY}"
+    secure_rm "${SECKEY}"
     echo >&2
     echo "aborted before completion — the partially-provisioned secret key at" >&2
     echo "  ${SECKEY}" >&2
@@ -122,7 +131,11 @@ Done. Two things left, both yours:
        ${SECKEY}
 
    Put it in your password manager alongside the passphrase, then:
-       shred -u ${SECKEY}
+       cd ${ROOT} && nix develop -c shred -u ${SECKEY}
+
+   (The \`nix develop\` is not decoration: macOS ships no \`shred\`, so a bare
+   \`shred -u\` fails there. Running it through the devShell works on both
+   platforms, which is where this script got its own copy of the binary.)
 
    If you lose it you cannot sign new releases without rotating the trust
    root — which costs a release on every consumer that pinned the old key.
