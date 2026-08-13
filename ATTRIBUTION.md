@@ -34,6 +34,7 @@ permission from the relevant custodian for the IAEA- and JAEA-sourced libraries.
 | 🟡 IAEA-PD-2019 | IAEA-NDS | no repo license | Kawano et al., NDS 163 (2020) 109 |
 | 🟡 JENDL-5 / AD-2017 / DEU-2020 | JAEA | copyright asserted, no explicit license; non-commercial + community practice | Iwamoto et al., JNST 60 (2023) 1; + per-sublibrary |
 | 🟡 CENDL-3.2 | CIAE/CNDC | no written terms; NRDC open-mirror | Ge et al., EPJ Web Conf. 239 (2020) 09001 |
+| 🟢 Swiss StSV Annex 3 | Swiss Confederation (BAG / Fedlex) | not copyrightable — URG Art. 5(1)(a) | StSV, SR 814.501, Anhang 3 (2026-07-01) |
 | 🟡 ENSDF / AME2020 / IUPAC (meta) | NNDC, AMDC, IUPAC | open evaluated/reference data | ENSDF; Huang et al. (2021); Meija et al. (2016) |
 
 🔴 **EAF-2010 was removed** (UKAEA licence forbids redistribution) — see issue #233.

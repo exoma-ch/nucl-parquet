@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.8.1",
-  "data_sha256": "5c3aa34e98e955159c117bb47a2086bec67a04beaf62bd6579b4be11b46aff2c",
+  "data_version": "2026.8.2",
+  "data_sha256": "4b8aa6ee58b9b2ba9b72268217113fd6a70d46f0acd2a54a6bb17e34ee64ae8b",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -290,6 +290,22 @@
         "PhotonEvaporation": "6.1.2",
         "RadioactiveDecay": "6.1.2"
       }
+    },
+    "stsv-2026-limits": {
+      "source_url": "https://www.fedlex.admin.ch/eli/cc/2017/502/de",
+      "version": "2026-07-01",
+      "name": "Swiss StSV Annex 3 — regulatory limits (LL, LA, CA, CS)",
+      "description": "Clearance limit LL (Befreiungsgrenze, Bq/g), licensing limit LA (Bewilligungsgrenze, Bq), and guideline values for air CA (Bq/m3) and surface contamination CS (Bq/cm2), from Annex 3 of the Swiss Radiological Protection Ordinance (StSV, SR 814.501), consolidation 2026-07-01. Long format: one row per (nuclide identity, quantity). Jurisdiction-specific Swiss law, not evaluated physics. Values from the authoritative German text; labels from the official English translation, cross-checked cell-by-cell. Not copyrightable subject matter (URG Art. 5).",
+      "data_type": "regulatory_limits",
+      "path": "stsv/limits/"
+    },
+    "stsv-2026-dose-coefficients": {
+      "source_url": "https://www.fedlex.admin.ch/eli/cc/2017/502/de",
+      "version": "2026-07-01",
+      "name": "Swiss StSV Annex 3 — dose coefficients",
+      "description": "Committed effective dose per unit intake by inhalation (e_inh) and ingestion (e_ing) in Sv/Bq, plus external dose rate coefficients h_10, h_0.07 and skin-contamination h_c,0.07, from Annex 3 of the StSV (SR 814.501), consolidation 2026-07-01. Underlying sources are ICRP and Petoussi et al. (GSF-Bericht 7/93); the ordinance is the compilation. Long format: one row per (nuclide identity, quantity).",
+      "data_type": "dose_coefficients",
+      "path": "stsv/dose_coefficients/"
     }
   },
   "shared": {

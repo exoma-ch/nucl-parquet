@@ -274,3 +274,38 @@ citation = "J. Meija et al., 'Isotopic compositions of the elements 2013', Pure 
 [needs_verification]
 libraries = ["em", "auxiliary", "strata-data-nuclear"]
 note = "Record custodian, license, and citation for each; set redistributable explicitly."
+
+# ─────────────────── Regulatory limits & dose coefficients ───────────────────
+
+[libraries.stsv-2026]
+name = "Swiss StSV Annex 3 (SR 814.501), consolidation 2026-07-01"
+custodian = "Swiss Confederation — Bundesamt für Gesundheit (BAG) / Federal Chancellery (Fedlex)"
+terms_url = "https://www.fedlex.admin.ch/eli/cc/2017/502/de"
+license = "Not copyrightable subject matter — URG (SR 231.1) Art. 5(1)(a)"
+redistributable = true
+risk = "green"
+citation = "Strahlenschutzverordnung (StSV) vom 26. April 2017, SR 814.501, Anhang 3, Fassung vom 1. Juli 2026. Schweizerische Eidgenossenschaft."
+notes = """
+Strongest basis in this file, and the only entry that does not depend on a
+custodian's grant. Swiss copyright law excludes official enactments from
+protection outright:
+
+  URG Art. 5(1)(a) — "Durch das Urheberrecht nicht geschützt sind:
+  a. Gesetze, Verordnungen, völkerrechtliche Verträge und andere amtliche
+  Erlasse"
+
+The StSV is a Verordnung, so Annex 3 is not protected subject matter rather
+than permissively licensed. Attribution below is scholarly practice, not a
+licence condition, and no grant can be withdrawn.
+
+Sourced from the Fedlex Akoma Ntoso XML, not the PDF or the JS site. The file
+URL must be discovered via the Fedlex SPARQL endpoint: the trailing artifact
+number is per-consolidation, and a wrong URL returns HTTP 200 with an HTML
+shell rather than a 404 (see scripts/fetch_stsv.py).
+
+Values come from the authoritative German text. The English labels come from
+Fedlex's own translation, which is published but marked "not an official
+language of the Swiss Confederation ... no legal force"; the build cross-checks
+every numeric cell DE-vs-EN and fails on divergence, so a non-binding
+translation can never change a number.
+"""

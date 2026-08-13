@@ -424,6 +424,40 @@ The complete inventory of DuckDB views registered by `nucl_parquet.connect()`. A
 | `fluorescence` | filtered from `atomic_relaxation` | derived |
 <!-- /AUTO:views -->
 
+## Regulatory limits — Swiss StSV Annex 3 (v0.18+)
+
+Annex 3 of the Swiss Radiological Protection Ordinance (StSV, SR 814.501) as a queryable table instead of a PDF annex — 792 radionuclide entries, consolidation of 2026-07-01.
+
+```bash
+# Clearance limit (Freigrenze) for Co-60, in Bq/g
+duckdb -c "SELECT nuclide_label_en, value, unit FROM 'data/stsv/limits/*.parquet'
+           WHERE quantity='LL' AND nuclide_Z=27 AND nuclide_A=60"
+
+# Everything below 1 Bq/g clearance
+duckdb -c "SELECT nuclide_label_en, value FROM 'data/stsv/limits/*.parquet'
+           WHERE quantity='LL' AND value < 1 ORDER BY value"
+```
+
+Two tables, both long (one row per nuclide × quantity):
+
+| Table | Quantities |
+|---|---|
+| `stsv/limits/` | `LL` clearance limit (Bq/g), `LA` licensing limit (Bq), `CA` air (Bq/m³), `CS` surface (Bq/cm²) |
+| `stsv/dose_coefficients/` | `e_inh`, `e_ing` (Sv/Bq), `h_10`, `h_0.07`, `h_c,0.07` |
+
+They are split because one is Swiss law and the other is jurisdiction-neutral physics (ICRP / Petoussi et al.), with different revision cadences.
+
+Three things the schema carries that the PDF makes easy to lose:
+
+- **`value_is_upper_bound`** — 233 cells are written `<0.001`, not `0.001`. The bound travels with the number rather than being flattened into a false measurement.
+- **`chemical_form` / `isomer` / `includes_daughters`** — `H-3` appears three times (OBT, HTO, gas) with three different licensing limits, `Sb-124n` carries a second isomeric state, and some entries cover a whole decay chain. Each is a different kind of claim and gets its own column; keying on `(Z, A)` alone silently merges them.
+- **`source_note`** — the ordinance's footnote markers, recording which IAEA basis a clearance limit came from and whether daughter nuclides were folded in.
+
+Values come from the authoritative German text; `nuclide_label_en` from Fedlex's official English translation, which is marked *"not an official language of the Swiss Confederation"*. The build cross-checks every numeric cell across both languages and fails on divergence, so a non-binding translation can never move a number.
+
+Not copyrightable subject matter: Swiss URG Art. 5(1)(a) excludes *Gesetze, Verordnungen … und andere amtliche Erlasse* from protection. Rebuild with `python scripts/fetch_stsv.py --out data/stsv`.
+
+
 ## MCP servers
 
 Three MCP servers expose nucl-parquet data to AI assistants:
