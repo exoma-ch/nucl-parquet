@@ -77,6 +77,82 @@ Because the trusted comment is covered by the signature and names the version,
 tag and digest, comparing it to the release you *asked for* is what closes that
 gap. `scripts/verify_data_release.sh` does this; a bare `minisign -Vm` does not.
 
+## The signed content manifest
+
+From `data-2026.8.3` a release also carries:
+
+```
+nucl-parquet-data-<CalVer>.manifest.json          # relpath -> {sha256, size}
+nucl-parquet-data-<CalVer>.manifest.json.minisig  # signed with the same key
+```
+
+### Why a second control
+
+The tarball signature covers the *archive bytes*. It stops verifying the moment
+anything legitimately rewrites the archive — and that is routine on the way into
+an isolated network. Content Disarm & Reconstruction appliances (OPSWAT
+MetaDefender, Deep CDR) are standard at hospitals and Tier-1 nuclear sites: they
+open a `.tar.zst`, scan each entry, and **repack it**. The nuclear data arrives
+intact; the signature does not survive, because the bytes are no longer the bytes
+that were signed. Roughly a fifth of realistic deployments, and precisely the
+ones with the strictest verification requirements ([hyrr#614](https://github.com/exoma-ch/hyrr/issues/614)).
+
+A signed map of per-file digests survives anything that preserves file
+*contents* while changing archive *framing*. It also makes a **partial**
+transfer verifiable: a consumer who carried only `tendl-2023-iso/` across a data
+diode can check what they hold, instead of moving all 785 MB because only the
+whole archive is signed.
+
+This is Debian's `Release`/`InRelease` model. Both controls stay — the archive
+signature is cheaper and stronger when the bytes survive; the manifest is what
+remains when they do not.
+
+### Verifying an extracted tree
+
+```bash
+just verify-extracted /path/to/extracted 2026.8.3
+just verify-extracted /path/to/extracted 2026.8.3 --partial   # subset transfer
+```
+
+Standalone, with `minisign`, `jq` and `sha256sum`:
+
+```bash
+VERSION=2026.8.3
+BASE="https://github.com/exoma-ch/nucl-parquet/releases/download/data-${VERSION}"
+curl -fLO "${BASE}/nucl-parquet-data-${VERSION}.manifest.json"
+curl -fLO "${BASE}/nucl-parquet-data-${VERSION}.manifest.json.minisig"
+
+minisign -Vm "nucl-parquet-data-${VERSION}.manifest.json" -P "$(tail -1 data-signing-key.pub)"
+jq -r '.files | to_entries[] | "\(.value.sha256)  \(.key)"' \
+  "nucl-parquet-data-${VERSION}.manifest.json" > SHA256SUMS
+cd /path/to/extracted && sha256sum -c SHA256SUMS
+```
+
+### What it covers, and what that is not
+
+The manifest covers **every file in the archive**, which is deliberately wider
+than `catalog.json::data_sha256`. The tree hash covers only `*.parquet`, because
+it answers "did the data change" — a catalog edit must not read as a data
+change. The manifest answers "are these the bytes we published", so it must
+include `catalog.json` and `licenses.toml`: they ride inside the tarball and are
+the files most worth tampering with. [#234](https://github.com/exoma-ch/nucl-parquet/issues/234)
+is a live case of a wrong licence claim shipping on a published artefact.
+
+Both are built from one tree walk (`nucl_parquet.iter_file_digests`), so they
+cannot disagree about the same tree.
+
+**The manifest is bound to its release.** `data_version` and `tag` are signed
+fields inside it, and its `.minisig` trusted comment repeats them. Without that,
+a genuine manifest for release A verifies happily against release B's extracted
+files, and every digest unchanged between the two agrees — a consumer doing a
+partial check might never notice. `verify_data_release.sh` refuses on mismatch.
+
+**A caveat worth stating plainly.** A gateway that rewrites file *contents*
+rather than only archive framing — re-encoding something it believes it
+understands — will fail the manifest check too. That is correct: the manifest
+converts "unverifiable" into "verifiably modified". It is not a claim that
+verification works everywhere.
+
 ## Grandfathering — releases before signing
 
 Data releases published before `data-2026.8.2` carry **no** `.minisig`, and no

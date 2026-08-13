@@ -72,6 +72,55 @@ jobs:
           echo "ASSET_PATH=nucl-parquet-data-${CALVER}.tar.zst" >> "$GITHUB_ENV"
           echo "CALVER=${CALVER}" >> "$GITHUB_ENV"
 
+      - uses: astral-sh/setup-uv@v5
+
+      # Build the content manifest (#296).
+      #
+      # The tarball signature proves the *archive bytes* are ours, and stops
+      # being verifiable the moment anything legitimately rewrites the archive.
+      # That is routine on the way into an isolated network: Content Disarm &
+      # Reconstruction gateways open a .tar.zst, scan each entry and repack it,
+      # so the data arrives intact and the signature does not survive
+      # (exoma-ch/hyrr#614). A signed map of per-file digests survives a repack,
+      # and lets a partial transfer be verified too — Debian's Release model.
+      #
+      # Built from the same tree walk as catalog.json::data_sha256, so the two
+      # cannot disagree, but with the wider scope: the manifest covers every
+      # file the tarball carries, including catalog.json and licenses.toml.
+      # Those ride inside the archive and are the ones most worth tampering
+      # with (#234 shipped a wrong licence claim on a published artefact).
+      - name: Build content manifest
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-${REF_NAME}}"
+          TARBALL_SHA=$(sha256sum "${ASSET_PATH}" | cut -d' ' -f1)
+          MANIFEST="nucl-parquet-data-${CALVER}.manifest.json"
+
+          uv run --with zstandard python - "$TAG" "$TARBALL_SHA" "$MANIFEST" <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from nucl_parquet.download import build_release_manifest, dump_release_manifest
+
+          tag, tarball_sha, out = sys.argv[1], sys.argv[2], sys.argv[3]
+          manifest = build_release_manifest("data", tag=tag, tarball_sha256=tarball_sha)
+          with open(out, "w", encoding="utf-8") as fh:
+              fh.write(dump_release_manifest(manifest))
+          print(f"manifest: {manifest['file_count']} files, data_version={manifest['data_version']}")
+          PY
+
+          # A manifest that lists nothing would sign and publish perfectly
+          # happily while asserting nothing at all.
+          COUNT=$(uv run python -c "import json,sys; print(json.load(open(sys.argv[1]))['file_count'])" "${MANIFEST}")
+          if [ "${COUNT}" -lt 100 ]; then
+            echo "::error::manifest lists only ${COUNT} files — refusing to sign an empty manifest"
+            exit 1
+          fi
+          ls -lh "${MANIFEST}"
+          echo "MANIFEST_PATH=${MANIFEST}" >> "$GITHUB_ENV"
+
       # Sign the tarball with the offline data-signing key (#289).
       #
       # A SHA-256 pin says "these are the bytes that build was tested against";
@@ -144,6 +193,20 @@ jobs:
           printf '%s\n' "${DATA_SIGNING_KEY_PASSWORD}" \
             | minisign -S -s "${KEYFILE}" -m "${TARBALL}" -t "${TRUSTED_COMMENT}"
 
+          # Sign the manifest with the SAME key (#296). A second key would
+          # double the rotation ceremony for no threat-model gain: both
+          # artefacts assert the same thing from the same publisher.
+          #
+          # The manifest carries data_version and tag internally, and its
+          # trusted comment repeats them. Belt and braces on purpose — the
+          # internal fields survive the file being handed around without its
+          # signature, and the trusted comment is what a verifier can trust
+          # before it has decided to trust the file's contents.
+          MANIFEST_SHA=$(sha256sum "${MANIFEST_PATH}" | cut -d' ' -f1)
+          printf '%s\n' "${DATA_SIGNING_KEY_PASSWORD}" \
+            | minisign -S -s "${KEYFILE}" -m "${MANIFEST_PATH}" \
+              -t "nucl-parquet manifest ${CALVER} tag=${TAG} sha256=${MANIFEST_SHA}"
+
           # Verify against the *committed* public key — the one consumers pin.
           # This is what catches a rotated-but-not-committed key, a corrupted
           # secret, or a swapped signing identity: the release fails here
@@ -155,23 +218,26 @@ jobs:
             echo "::error::${PUBKEY_FILE} contains no key line."
             exit 1
           fi
-          if ! minisign -V -P "${PUBKEY}" -m "${TARBALL}"; then
-            echo "::error::The signature does not verify against ${PUBKEY_FILE}." \
-                 "The DATA_SIGNING_KEY secret and the committed public key have diverged." \
-                 "Follow the rotation runbook in docs/security/data-signing.md."
-            exit 1
-          fi
-
-          # Cheaper than reasoning about whether action-gh-release treats an
-          # empty line in its `files:` list as unmatched: if the signature is
-          # not on disk here, fail now rather than publish a lone tarball.
-          [ -f "${TARBALL}.minisig" ] || {
-            echo "::error::expected ${TARBALL}.minisig to exist after signing"
-            exit 1
-          }
+          for artefact in "${TARBALL}" "${MANIFEST_PATH}"; do
+            if ! minisign -V -P "${PUBKEY}" -m "${artefact}"; then
+              echo "::error::The signature for ${artefact} does not verify against ${PUBKEY_FILE}." \
+                   "The DATA_SIGNING_KEY secret and the committed public key have diverged." \
+                   "Follow the rotation runbook in docs/security/data-signing.md."
+              exit 1
+            fi
+            # Cheaper than reasoning about whether action-gh-release treats an
+            # empty line in its `files:` list as unmatched: if a signature is
+            # not on disk here, fail now rather than publish an artefact alone.
+            [ -f "${artefact}.minisig" ] || {
+              echo "::error::expected ${artefact}.minisig to exist after signing"
+              exit 1
+            }
+          done
 
           echo "SIG_PATH=${TARBALL}.minisig" >> "$GITHUB_ENV"
+          echo "MANIFEST_SIG_PATH=${MANIFEST_PATH}.minisig" >> "$GITHUB_ENV"
           echo "Signed ${TARBALL} (sha256=${SHA256})"
+          echo "Signed ${MANIFEST_PATH} (sha256=${MANIFEST_SHA})"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
@@ -180,6 +246,8 @@ jobs:
           files: |
             ${{ env.ASSET_PATH }}
             ${{ env.SIG_PATH }}
+            ${{ env.MANIFEST_PATH }}
+            ${{ env.MANIFEST_SIG_PATH }}
           fail_on_unmatched_files: true
           generate_release_notes: true
 

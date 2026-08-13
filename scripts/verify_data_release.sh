@@ -34,6 +34,18 @@ PUBKEY_FILE="${PUBKEY_FILE:-${ROOT}/docs/security/data-signing-key.pub}"
 FIRST_SIGNED_VERSION="2026.8.2"
 ALLOW_UNSIGNED=0
 
+# Manifest mode (#296). A signature over the tarball proves the *archive bytes*
+# are ours, and stops verifying the moment anything legitimately rewrites the
+# archive. That is routine on the way into an isolated network: Content Disarm
+# & Reconstruction gateways open a .tar.zst, scan each entry and repack it, so
+# the data arrives intact and the signature does not survive. These flags verify
+# the signed per-file manifest instead, which survives a repack — and lets a
+# consumer who moved only one library check what they actually have.
+EXTRACTED=""
+LOCAL_MANIFEST=""
+PARTIAL=0
+FIRST_MANIFEST_VERSION="2026.8.3"
+
 VERSION=""
 LOCAL_FILE=""
 LOCAL_SIG=""
@@ -61,6 +73,9 @@ while [ $# -gt 0 ]; do
     --version)         VERSION="$2"; shift 2 ;;
     --pubkey)          PUBKEY_FILE="$2"; shift 2 ;;
     --allow-unsigned)  ALLOW_UNSIGNED=1; shift ;;
+    --extracted)       EXTRACTED="$2"; shift 2 ;;
+    --manifest)        LOCAL_MANIFEST="$2"; shift 2 ;;
+    --partial)         PARTIAL=1; shift ;;
     -h|--help)         sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
     -*)                die "unknown flag: $1" ;;
     *)                 VERSION="$1"; shift ;;
@@ -121,6 +136,90 @@ if [ "${ALLOW_UNSIGNED}" -eq 1 ] && [ "${PREDATES_SIGNING}" -eq 0 ]; then
 Releases from ${FIRST_SIGNED_VERSION} onward are always signed, so a missing
 signature means the signature was removed — not that this release predates
 signing. --allow-unsigned only applies below ${FIRST_SIGNED_VERSION}."
+fi
+
+# --- manifest mode: verify an extracted tree, not an archive ----------------
+#
+# Runs instead of the tarball path, because a consumer here does not have an
+# archive to check — a CDR gateway repacked it, or they only carried one
+# library across a diode.
+if [ -n "${EXTRACTED}" ]; then
+  [ -d "${EXTRACTED}" ] || die "no such directory: ${EXTRACTED}"
+  command -v jq >/dev/null 2>&1 || die "jq is required for manifest verification"
+
+  MWORK="$(mktemp -d)"
+  trap 'rm -rf "${MWORK}"' EXIT
+
+  if [ -n "${LOCAL_MANIFEST}" ]; then
+    MANIFEST="${LOCAL_MANIFEST}"
+    MSIG="${LOCAL_MANIFEST}.minisig"
+  else
+    BASE="https://github.com/${REPO}/releases/download/${TAG}"
+    MANIFEST="${MWORK}/manifest.json"
+    MSIG="${MANIFEST}.minisig"
+    echo "Fetching manifest for ${TAG} ..."
+    curl -fsSL --retry 3 -o "${MANIFEST}" "${BASE}/nucl-parquet-data-${VERSION}.manifest.json" \
+      || die "release ${TAG} carries no manifest.
+Releases before ${FIRST_MANIFEST_VERSION} predate the signed content manifest (#296).
+For those, verify the tarball itself: $0 ${VERSION}"
+    curl -fsSL --retry 3 -o "${MSIG}" "${BASE}/nucl-parquet-data-${VERSION}.manifest.json.minisig" \
+      || die "manifest is published but its signature is not — refusing to trust an unsigned manifest.
+An unsigned manifest beside the files it describes is rewritable by anyone who
+can rewrite the files, and reads as a control while being none."
+  fi
+  [ -f "${MSIG}" ] || die "manifest signature not found: ${MSIG}"
+
+  # 1. Is the manifest itself authentic?
+  echo "Verifying manifest signature ..."
+  minisign -V -P "${PUBKEY}" -m "${MANIFEST}" -x "${MSIG}" >/dev/null \
+    || die "MANIFEST SIGNATURE VERIFICATION FAILED.
+This manifest was not signed by the nuclear-data key. Do not use it."
+
+  # 2. Does it describe the release we asked for? Same replay gap the tarball
+  #    signature closes — a genuine manifest for release A verifies happily
+  #    against release B's files, and every digest unchanged between the two
+  #    agrees. Checked twice: the signed trusted comment, and the signed
+  #    fields inside the manifest.
+  MSIG_LINES="$(wc -l < "${MSIG}")"
+  [ "${MSIG_LINES}" -eq 4 ] || die "malformed manifest signature: ${MSIG_LINES} lines, expected 4"
+  MTRUSTED="$(sed -n '3s/^trusted comment: //p' "${MSIG}")"
+  MSIGNED_TAG="$(printf '%s' "${MTRUSTED}" | sed -n 's/.*tag=\([^ ]*\).*/\1/p')"
+  if [ -n "${MSIGNED_TAG}" ] && [ "${MSIGNED_TAG}" != "${TAG}" ]; then
+    die "REPLAY DETECTED: manifest is validly signed but was issued for ${MSIGNED_TAG}, not ${TAG}."
+  fi
+  M_VERSION="$(jq -r '.data_version // empty' "${MANIFEST}")"
+  M_TAG="$(jq -r '.tag // empty' "${MANIFEST}")"
+  [ "${M_VERSION}" = "${VERSION}" ] || die "manifest declares data_version ${M_VERSION}, expected ${VERSION}"
+  [ -z "${M_TAG}" ] || [ "${M_TAG}" = "${TAG}" ] || die "manifest declares tag ${M_TAG}, expected ${TAG}"
+
+  # 3. Do the files on disk match it? `sha256sum -c` is exactly this check, and
+  #    is present anywhere the data is.
+  jq -r '.files | to_entries[] | "\(.value.sha256)  \(.key)"' "${MANIFEST}" > "${MWORK}/SHA256SUMS"
+  TOTAL=$(wc -l < "${MWORK}/SHA256SUMS")
+  echo "Checking $(printf '%d' "${TOTAL}") files against the signed manifest ..."
+
+  CHECK_ARGS=(--quiet)
+  # A partial transfer legitimately lacks files; a full one must not.
+  [ "${PARTIAL}" -eq 1 ] && CHECK_ARGS+=(--ignore-missing)
+
+  if ( cd "${EXTRACTED}" && sha256sum -c "${CHECK_ARGS[@]}" "${MWORK}/SHA256SUMS" ); then
+    if [ "${PARTIAL}" -eq 1 ]; then
+      PRESENT=$( cd "${EXTRACTED}" && sha256sum -c --ignore-missing "${MWORK}/SHA256SUMS" 2>/dev/null | grep -c ': OK$' || true )
+      echo
+      echo "OK  ${PRESENT}/${TOTAL} files present, all matching the signed manifest  (${TAG})"
+      echo "    partial transfer: files absent locally were not checked"
+    else
+      echo
+      echo "OK  all ${TOTAL} files match the signed manifest  (${TAG})"
+    fi
+    echo "    signed by: $(grep '^untrusted comment:' "${PUBKEY_FILE}" | sed 's/^untrusted comment: //')"
+    echo "    trusted comment: ${MTRUSTED}"
+    exit 0
+  fi
+
+  die "One or more files do not match the signed manifest.
+Re-run without --quiet for the list. A mismatch after a legitimate repack means
+the contents were altered, not merely the archive framing."
 fi
 
 WORKDIR=""
