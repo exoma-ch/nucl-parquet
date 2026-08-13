@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.18.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.17.3...nucl-parquet-py-v0.18.0) (2026-08-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **schema:** cross-section tables gain identity columns and use NULL rather than 0 for "no residual"; `exfor_entry` → `source_entry`; `data/exfor/` is rebuilt from a different source with different content, and `data/exfor-channels/` is new. Queries relying on `residual_Z=0`, or on one projectile per file, must be updated — a reaction is only fully specified by projectile + target + residual.
+
+### Features
+
+* **hf:** Split shards per isotope on upload, unblocking the mirror sync ([#285](https://github.com/exoma-ch/nucl-parquet/issues/285)) ([e8dfb87](https://github.com/exoma-ch/nucl-parquet/commit/e8dfb87961e970a72137bfbcac93b454a4c12907))
+* **release:** Publish a signed content manifest alongside the tarball ([#297](https://github.com/exoma-ch/nucl-parquet/issues/297)) ([3b12bc3](https://github.com/exoma-ch/nucl-parquet/commit/3b12bc3a1384cd56431a2ee4d86f33df4c28128b))
+* **release:** Sign data tarballs with minisign ([#290](https://github.com/exoma-ch/nucl-parquet/issues/290)) ([7f5837a](https://github.com/exoma-ch/nucl-parquet/commit/7f5837a7a2c1cd70d83e7f7484517c3955b1abd9))
+* **schema:** Canonical cross-section schema, transport channels, EXFOR from exfor_master ([#280](https://github.com/exoma-ch/nucl-parquet/issues/280)) ([8c8e414](https://github.com/exoma-ch/nucl-parquet/commit/8c8e414f644f1ca4fc822aa1c9d9e15785886477))
+* **stsv:** Ingest Swiss StSV Annex 3 as two long Parquet tables ([#295](https://github.com/exoma-ch/nucl-parquet/issues/295)) ([a1b84f8](https://github.com/exoma-ch/nucl-parquet/commit/a1b84f8cd5328ff42b2b62691696ce5bd19e90dd))
+
+
+### Bug Fixes
+
+* **exfor:** Fission product yields are production rows, not MT=18 ([#282](https://github.com/exoma-ch/nucl-parquet/issues/282)) ([3880b5a](https://github.com/exoma-ch/nucl-parquet/commit/3880b5a21809ec04c05af145c2bfac16977f8919))
+* **hf:** Mirror job reported green while doing nothing, and would have damaged the card ([#283](https://github.com/exoma-ch/nucl-parquet/issues/283)) ([404f38a](https://github.com/exoma-ch/nucl-parquet/commit/404f38a118ac3b19bec6b795edaf23879ab59e1f))
+* **release:** Keep the mcp crate's sibling pin in sync automatically ([#306](https://github.com/exoma-ch/nucl-parquet/issues/306)) ([f9b123e](https://github.com/exoma-ch/nucl-parquet/commit/f9b123e33ae851866d97872d9f574725c635aefc))
+* **release:** Revert the extra-files rule — it breaks release-please entirely ([#307](https://github.com/exoma-ch/nucl-parquet/issues/307)) ([33c50b3](https://github.com/exoma-ch/nucl-parquet/commit/33c50b313cc379d05fbed10ef7edebcbdd526f85))
+
 ## [0.17.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.17.2...nucl-parquet-py-v0.17.3) (2026-07-29)
 
 
