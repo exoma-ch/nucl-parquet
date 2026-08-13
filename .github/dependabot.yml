@@ -1,0 +1,107 @@
+# Dependency update automation.
+#
+# This repo ships five package ecosystems from one tree, and nothing was
+# watching any of them: `arrow`/`parquet` sat pinned at 54 while upstream
+# reached 59 — five majors, silently. Security *alerts* are on by default for
+# public repos, but alerts only fire on a published advisory; they say nothing
+# about drifting five majors behind, which is how an eventual security bump
+# turns into a migration.
+#
+# Grouping is deliberate. arrow-rs publishes `arrow` and `parquet` from one
+# workspace on a shared version, so they must move together or the build breaks
+# on a version mismatch — separate PRs would each be individually red.
+version: 2
+
+updates:
+  # --- Rust -----------------------------------------------------------------
+  - package-ecosystem: cargo
+    directory: /clients/rs/nucl-parquet
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Same upstream workspace, same version, released together.
+      arrow-rs:
+        patterns:
+          - arrow
+          - arrow-*
+          - parquet
+          - parquet-*
+      rust-minor-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: cargo
+    directory: /clients/rs/nucl-parquet-mcp
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      arrow-rs:
+        patterns:
+          - arrow
+          - arrow-*
+          - parquet
+          - parquet-*
+      rust-minor-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  # --- TypeScript -----------------------------------------------------------
+  - package-ecosystem: npm
+    directory: /clients/ts/nucl-parquet
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      js-minor-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  # --- Go -------------------------------------------------------------------
+  - package-ecosystem: gomod
+    directory: /clients/go/nucl-parquet
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+
+  # --- Python ---------------------------------------------------------------
+  # The runtime deps are few and load-bearing (duckdb, numpy, pycatima,
+  # zstandard); dev deps carry the build and test surface.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  # --- GitHub Actions -------------------------------------------------------
+  # The release workflow holds the data-signing key, so a stale or abandoned
+  # action there is a supply-chain concern, not housekeeping. Also catches
+  # drift like setup-uv being on v5 in one workflow and v6 in another.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(ci)"
