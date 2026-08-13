@@ -450,7 +450,7 @@ They are split because one is Swiss law and the other is jurisdiction-neutral ph
 Three things the schema carries that the PDF makes easy to lose:
 
 - **`value_is_upper_bound`** — 233 cells are written `<0.001`, not `0.001`. The bound travels with the number rather than being flattened into a false measurement.
-- **`chemical_form`** — `H-3` appears three times (OBT, HTO, gas) with three different licensing limits. Keying on `(Z, A)` alone silently merges them.
+- **`chemical_form` / `isomer` / `includes_daughters`** — `H-3` appears three times (OBT, HTO, gas) with three different licensing limits, `Sb-124n` carries a second isomeric state, and some entries cover a whole decay chain. Each is a different kind of claim and gets its own column; keying on `(Z, A)` alone silently merges them.
 - **`source_note`** — the ordinance's footnote markers, recording which IAEA basis a clearance limit came from and whether daughter nuclides were folded in.
 
 Values come from the authoritative German text; `nuclide_label_en` from Fedlex's official English translation, which is marked *"not an official language of the Swiss Confederation"*. The build cross-checks every numeric cell across both languages and fails on divergence, so a non-binding translation can never move a number.

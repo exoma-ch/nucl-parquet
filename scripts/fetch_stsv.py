@@ -116,8 +116,17 @@ QUANTITIES: dict[str, Quantity] = {
     "CS": Quantity(13, 14, "Bq/cm2", "limits", "Guideline value for surface contamination"),
 }
 
-_NUCLIDE_RE = re.compile(r"^([A-Z][a-z]?)-(\d{1,3})(m\d?)?")
+# Isomer suffixes run m, n, p, q for successive metastable states — Sb-124n and
+# Ir-192n are real entries here. Matching only `m` silently files the rest as a
+# chemical form, which puts "n" in the same column as "HTO" and makes a filter
+# on isomer='n' return nothing.
+_NUCLIDE_RE = re.compile(r"^([A-Z][a-z]?)-(\d{1,3})([mnpq]\d?)?")
+_ELEMENT_ONLY_RE = re.compile(r"^([A-Z][a-z]?)(?![a-z-])")
 _FOOTNOTE_RE = re.compile(r"\[(\d+)\]")
+# "(+ Töchter)" / "(+ daughters)" says the value covers the decay chain. That is
+# a statement about scope, not a chemical form, and it must not share a column
+# with HTO and monoxyde.
+_DAUGHTERS_RE = re.compile(r"\(\s*\+\s*(Töchter|daughters|filles|figlie)\s*\)", re.I)
 
 _ELEMENTS = (
     "n H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr "
@@ -257,36 +266,76 @@ def parse_value(raw: str) -> Value:
     upper = s.startswith("<")
     s = s.lstrip("<").strip()
     # Source writes exponents as "4.10 E-11" and "1.E+02".
-    s = s.replace(" ", "").replace(",", ".")
+    # No comma handling on purpose. "1,000" is 1.0 under a European reading and
+    # 1000 under an English one, and nothing in the cell says which. This source
+    # uses "." as the decimal separator and no thousands separator, so a comma
+    # means the format changed — and build_records raises on any cell that fails
+    # to parse rather than letting a guess through.
+    s = s.replace(" ", "")
     s = re.sub(r"(?<=[\d.])E", "e", s)
-    s = re.sub(r"^(\d+)\.e", r"\1e", s)
     try:
         return Value(float(s), upper, raw)
     except ValueError:
         return Value(None, upper, raw)
 
 
-def parse_identity(label: str) -> tuple[int | None, int | None, str | None, str | None]:
-    """Split a source label into (Z, A, isomer, chemical_form).
+@dataclass(frozen=True)
+class Identity:
+    """The structured half of a source label.
 
-    The label is not a bare nuclide. `H-3` appears three times — as OBT, HTO and
+    Every field here is an assertion, so each has to be independently true —
+    lumping them together is what produced two separate collisions:
+
+    * `Th (+ Töchter)` and `U (+ Töchter)` are elements, not nuclides. Returning
+      an all-null identity for both made them share a key across all nine
+      quantities, so any group-by silently merged natural thorium's limits with
+      natural uranium's. Null Z was being used to mean "elemental", which is an
+      assertion, not absence of data — the sentinel trap in a different coat.
+      Z is recoverable from the symbol; only A is genuinely unknown.
+
+    * `Sb-124n`, `Ir-192n` and friends carry the second isomeric state. Filing
+      that "n" as a chemical form put it beside HTO and monoxyde, and made
+      `isomer = 'n'` match nothing.
+    """
+
+    Z: int | None
+    A: int | None
+    isomer: str | None
+    chemical_form: str | None
+    includes_daughters: bool
+
+
+def parse_identity(label: str) -> Identity:
+    """Split a source label into its structured parts.
+
+    The label is not a bare nuclide. `H-3` appears three times — OBT, HTO and
     gaz — with different e_inh and different LA, so keying on the nuclide alone
-    silently merges three legally distinct rows. Some rows are decay chains
-    (`Bi-212 / Po-212, Tl-208`); for those the parent identifies the row and the
-    verbatim label is retained.
+    merges three legally distinct rows. Some rows are decay chains
+    (`Bi-212 / Po-212, Tl-208`); the parent identifies those and the verbatim
+    label is kept alongside.
     """
     cleaned = _FOOTNOTE_RE.sub("", label).strip()
+    includes_daughters = bool(_DAUGHTERS_RE.search(cleaned))
+    cleaned = _DAUGHTERS_RE.sub("", cleaned).strip()
+
     head = cleaned.split("/")[0].strip()
-    parts = [p.strip() for p in head.split(",")]
-    m = _NUCLIDE_RE.match(parts[0])
-    if not m:
-        return None, None, None, (parts[1] if len(parts) > 1 else None)
-    symbol, mass, isomer = m.group(1), int(m.group(2)), m.group(3)
+    parts = [p.strip() for p in head.split(",") if p.strip()]
+    if not parts:
+        return Identity(None, None, None, None, includes_daughters)
+
     form = ", ".join(parts[1:]).strip() or None
-    if form is None:
+    m = _NUCLIDE_RE.match(parts[0])
+    if m:
+        symbol, mass, isomer = m.group(1), int(m.group(2)), m.group(3)
         trailing = parts[0][m.end() :].strip()
-        form = trailing or None
-    return SYMBOL_TO_Z.get(symbol), mass, isomer, form
+        return Identity(SYMBOL_TO_Z.get(symbol), mass, isomer, form or trailing or None, includes_daughters)
+
+    # No mass number: an element-wide entry such as "Th" or "U". Z is known,
+    # A genuinely is not.
+    em = _ELEMENT_ONLY_RE.match(parts[0])
+    z = SYMBOL_TO_Z.get(em.group(1)) if em else None
+    trailing = parts[0][em.end() :].strip() if em else parts[0]
+    return Identity(z, None, None, form or trailing or None, includes_daughters)
 
 
 def build_records(de_rows: list[list[str]], en_rows: list[list[str]], consolidation: str) -> list[dict]:
@@ -303,13 +352,16 @@ def build_records(de_rows: list[list[str]], en_rows: list[list[str]], consolidat
                     "The English text is a non-binding translation and must never change a number."
                 )
 
+    unparsed: list[tuple[str, str, str]] = []
     iso_date = f"{consolidation[:4]}-{consolidation[4:6]}-{consolidation[6:]}"
     records: list[dict] = []
     for de, en in zip(de_rows, en_rows, strict=True):
-        z, a, isomer, form = parse_identity(de[COL["label"]])
+        ident = parse_identity(de[COL["label"]])
         for qty, q in QUANTITIES.items():
             cell = de[q.value_idx]
             val = parse_value(cell)
+            if val.number is None and _FOOTNOTE_RE.sub("", cell).strip(" -–—\xa0"):
+                unparsed.append((de[COL["label"]], qty, cell))
             # Markers can sit inline in the value cell or in the dedicated
             # footnote column beside it; collect both.
             notes = _FOOTNOTE_RE.findall(cell)
@@ -317,10 +369,11 @@ def build_records(de_rows: list[list[str]], en_rows: list[list[str]], consolidat
                 notes += _FOOTNOTE_RE.findall(de[q.note_idx])
             records.append(
                 {
-                    "nuclide_Z": z,
-                    "nuclide_A": a,
-                    "isomer": isomer,
-                    "chemical_form": form,
+                    "nuclide_Z": ident.Z,
+                    "nuclide_A": ident.A,
+                    "isomer": ident.isomer,
+                    "chemical_form": ident.chemical_form,
+                    "includes_daughters": ident.includes_daughters,
                     "nuclide_label_en": en[COL["label"]],
                     "nuclide_label_de": de[COL["label"]],
                     "half_life": de[COL["half_life"]] or None,
@@ -336,6 +389,13 @@ def build_records(de_rows: list[list[str]], en_rows: list[list[str]], consolidat
                     "consolidation_date": iso_date,
                 }
             )
+    if unparsed:
+        shown = "\n".join(f"  {lbl!r} {q}: {cell!r}" for lbl, q, cell in unparsed[:10])
+        raise RuntimeError(
+            f"{len(unparsed)} value cells did not parse as numbers:\n{shown}\n"
+            "A cell that looks numeric but is not understood must stop the build — "
+            "silently emitting null is how a wrong table ships with the right row count."
+        )
     return records
 
 
@@ -377,6 +437,7 @@ def main(argv: list[str] | None = None) -> int:
         "nuclide_A": pl.Int32,
         "isomer": pl.Utf8,
         "chemical_form": pl.Utf8,
+        "includes_daughters": pl.Boolean,
         "nuclide_label_en": pl.Utf8,
         "nuclide_label_de": pl.Utf8,
         "half_life": pl.Utf8,

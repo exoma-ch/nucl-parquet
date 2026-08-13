@@ -9,11 +9,14 @@ plausible rows that are wrong in ways nothing downstream would notice:
     chemical forms, which carry different limits;
   * parsing ``<0.001`` as 0.001 turns an upper bound into a measurement;
   * accepting Fedlex's HTML shell (served with HTTP 200) yields zero rows from
-    a "successful" fetch.
+    a "successful" fetch;
+  * an identity that does not identify — two element-wide rows collapsing to the
+    same all-null key, or an isomeric state filed as a chemical form.
 
-Each of those gets a test. The pure-parsing ones run everywhere; anything that
-touches the published parquet is marked ``data``, and the live fetch is marked
-``network`` so CI stays hermetic.
+Each of those gets a test, and the ones asserting on the published parquet are
+deliberately *not* marked ``data`` — they are where the real invariants live, so
+letting CI's ``-m "not data"`` deselect them would defeat the point. Only the
+live Fedlex fetch is marked ``network``, to keep CI hermetic.
 """
 
 from __future__ import annotations
@@ -87,21 +90,55 @@ def test_upper_bound_keeps_the_number_and_the_flag() -> None:
 @pytest.mark.parametrize(
     ("label", "expect"),
     [
-        ("H-3, OBT", (1, 3, None, "OBT")),
-        ("H-3, HTO", (1, 3, None, "HTO")),
-        ("Co-60", (27, 60, None, None)),
-        ("Ag-104m", (47, 104, "m", None)),
-        ("Cs-137 / Ba-137m", (55, 137, None, None)),
-        ("Bi-212 / Po-212, Tl-208", (83, 212, None, None)),
+        ("H-3, OBT", (1, 3, None, "OBT", False)),
+        ("H-3, HTO", (1, 3, None, "HTO", False)),
+        ("Co-60", (27, 60, None, None, False)),
+        ("Ag-104m", (47, 104, "m", None, False)),
+        ("Cs-137 / Ba-137m", (55, 137, None, None, False)),
+        ("Bi-212 / Po-212, Tl-208", (83, 212, None, None, False)),
+        # Successive isomeric states run m, n, p, q. Accepting only "m" filed
+        # the "n" as a chemical form, so it sat beside HTO and a query for
+        # isomer='n' matched nothing.
+        ("Sb-124n", (51, 124, "n", None, False)),
+        ("Ir-192n", (77, 192, "n", None, False)),
+        # Element-wide entries. Returning an all-null identity for both made
+        # natural thorium and natural uranium share a key across all nine
+        # quantities — Z is recoverable, only A is genuinely unknown.
+        ("Th (+ Töchter)", (90, None, None, None, True)),
+        ("U (+ Töchter)", (92, None, None, None, True)),
+        # "+ daughters" is a statement about scope, not a chemical form.
+        ("Sr-90 (+ Töchter)", (38, 90, None, None, True)),
     ],
 )
 def test_parse_identity(label: str, expect: tuple) -> None:
-    """Z/A/isomer/form recovered from the source label.
+    """Z/A/isomer/form/daughter-scope recovered from the source label.
 
     Decay-chain rows are identified by their parent; the verbatim label is kept
     alongside so the daughters are not lost.
     """
-    assert stsv.parse_identity(label) == expect
+    ident = stsv.parse_identity(label)
+    assert (ident.Z, ident.A, ident.isomer, ident.chemical_form, ident.includes_daughters) == expect
+
+
+def test_value_parser_refuses_to_guess_a_separator() -> None:
+    """ "1,000" is 1.0 in one convention and 1000 in another, and the cell does not say.
+
+    The source uses "." as its decimal separator and no thousands separator, so
+    a comma means the format changed. Guessing silently would put a value off by
+    1000x into a legal limit; build_records raises on any such cell instead.
+    """
+    assert stsv.parse_value("1,000").number is None
+
+
+def test_unparsed_value_cell_stops_the_build() -> None:
+    """A cell that looks numeric but is not understood must not become null.
+
+    Emitting null keeps the row count right and the table wrong, which is the
+    hardest kind of error to notice downstream.
+    """
+    row = ["Co-60", "5.27 a", "b", "1", "1", "1", "1", "1", "12,5", "", "3.E+05", "5.E+02", "", "3", ""]
+    with pytest.raises(RuntimeError, match="did not parse as numbers"):
+        stsv.build_records([row], [row[:]], "20260701")
 
 
 def test_footnote_columns_are_not_treated_as_padding() -> None:
@@ -200,6 +237,65 @@ def test_published_tables_exist_and_are_long() -> None:
         assert df.height == n, f"{path.name}: expected {n} rows, got {df.height}"
         # long, not wide: the quantity is a value, not a column name
         assert {"quantity", "value", "unit"} <= set(df.columns)
+
+
+def test_identity_key_is_unique_per_quantity() -> None:
+    """The identity tuple must actually identify a row.
+
+    This is the invariant the scalar count tests cannot express, and the one
+    that would have caught both identity bugs found in review: `Th (+ Töchter)`
+    and `U (+ Töchter)` collapsing to an all-null key, and `Sb-124n` /`Ir-192n`
+    losing their isomer. Neither moved any row count, so every other assertion
+    in this file still passed while natural thorium and natural uranium shared
+    a key across all nine quantities.
+
+    Any group-by or join on this key must be safe; if a future row cannot be
+    told apart from another, that is a representation defect, not a query bug.
+    """
+    import polars as pl
+
+    key = ["nuclide_Z", "nuclide_A", "isomer", "chemical_form", "includes_daughters", "quantity"]
+    for path in (_LIMITS, _DOSE):
+        df = pl.read_parquet(path)
+        dupes = df.group_by(key).len().filter(pl.col("len") > 1)
+        assert dupes.height == 0, (
+            f"{path.name}: {dupes.height} identity keys match more than one row.\n"
+            f"{dupes.head(5)}\n"
+            "Two rows sharing an identity means a consumer grouping on it silently "
+            "merges distinct regulatory values."
+        )
+
+
+def test_chemical_form_holds_only_chemical_forms() -> None:
+    """The column must not become a dumping ground for unparsed label fragments.
+
+    It previously held 'n' (an isomeric state) and '(+ Töchter)' (a statement
+    that the value covers the decay chain) alongside HTO and monoxyde. Each of
+    those is a different kind of claim and needs its own column.
+    """
+    import polars as pl
+
+    forms = set(pl.concat([pl.read_parquet(_LIMITS), pl.read_parquet(_DOSE)])["chemical_form"].drop_nulls().to_list())
+    assert "n" not in forms, "an isomeric state leaked into chemical_form"
+    assert not any("Töchter" in f or "daughter" in f for f in forms), (
+        "decay-chain scope leaked into chemical_form; it belongs in includes_daughters"
+    )
+
+
+def test_daughter_inclusive_entries_are_flagged() -> None:
+    """'(+ Töchter)' rows are marked, not silently indistinguishable.
+
+    A clearance limit that covers a whole decay chain is a different claim from
+    one that covers a single nuclide.
+    """
+    import polars as pl
+
+    lim = pl.read_parquet(_LIMITS)
+    assert lim.filter("includes_daughters").height > 0, "no daughter-inclusive rows found — parsing regressed"
+    th = lim.filter((pl.col("nuclide_Z") == 90) & pl.col("nuclide_A").is_null() & (pl.col("quantity") == "LL"))
+    u = lim.filter((pl.col("nuclide_Z") == 92) & pl.col("nuclide_A").is_null() & (pl.col("quantity") == "LL"))
+    assert th.height == 1 and u.height == 1, "elemental Th and U must be separately identifiable"
+    assert th["includes_daughters"][0] and u["includes_daughters"][0]
 
 
 def test_h3_chemical_forms_stay_distinct() -> None:
