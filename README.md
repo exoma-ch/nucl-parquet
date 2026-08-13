@@ -50,6 +50,12 @@ just verify-release              # verify the version in data/catalog.json
 just verify-release 2026.8.2     # verify a specific CalVer
 ```
 
+Releases from `data-2026.8.3` also carry a **signed content manifest** (`*.manifest.json` + `.minisig`) listing every file's SHA-256. Content-scanning gateways at air-gapped sites repack archives, which breaks the tarball signature while leaving the data intact — the manifest still verifies, and makes a partial transfer checkable too:
+
+```bash
+just verify-extracted /path/to/extracted 2026.8.3 --partial
+```
+
 The `data_sha256` pin and the signature answer different questions — "are these the bytes that build was tested against?" versus "did these bytes come from the nuclear-data team?". Only the second survives re-pinning, since GitHub's asset digest is only as trustworthy as the account. The public key consumers pin, the grandfathering rule for older unsigned releases, and the rotation runbook are in [docs/security/data-signing.md](docs/security/data-signing.md).
 
 ## Usage

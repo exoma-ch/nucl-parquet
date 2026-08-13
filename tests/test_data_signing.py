@@ -327,6 +327,14 @@ def _run_workflow_signing_step(
     github_env = workdir / "github-env"
     github_env.touch()
 
+    # The step signs the tarball and the content manifest (#296), so the
+    # fixture must supply both. A manifest is created here rather than mocked
+    # away: the point of running the real step body is that it fails when the
+    # workflow expects something the caller does not provide.
+    manifest = workdir / asset.replace(".tar.zst", ".manifest.json")
+    if not manifest.exists():
+        manifest.write_text(f'{{"data_version":"{calver}","tag":"data-{calver}","file_count":1,"files":{{}}}}\n')
+
     env = {
         "PATH": __import__("os").environ["PATH"],
         "HOME": str(workdir),
@@ -338,6 +346,7 @@ def _run_workflow_signing_step(
         # $GITHUB_ENV; supplied directly here.
         "ASSET_PATH": asset,
         "CALVER": calver,
+        "MANIFEST_PATH": manifest.name,
         "RUNNER_TEMP": str(runner_temp),
         "GITHUB_ENV": str(github_env),
     }
@@ -721,3 +730,357 @@ def test_keygen_shreds_the_key_on_an_unsuccessful_exit() -> None:
     idx_completed = src.find("COMPLETED=1")
     idx_upload = src.rfind("gh secret set")
     assert idx_upload < idx_completed, "the run is only 'completed' after both secrets are uploaded"
+
+
+# -- Signed content manifest (#296) -----------------------------------------
+#
+# The tarball signature covers archive *framing*. Content Disarm &
+# Reconstruction gateways — standard at hospitals and Tier-1 nuclear sites —
+# open a .tar.zst, scan each entry and repack it, so the data arrives intact
+# and the signature does not survive (exoma-ch/hyrr#614). The manifest is what
+# remains verifiable, and what makes a partial transfer checkable at all.
+
+
+def test_manifest_scope_is_wider_than_the_tree_hash() -> None:
+    """The manifest must cover files the drift check deliberately ignores.
+
+    `compute_data_sha256` covers only `*.parquet` — a catalog edit must not look
+    like a data change. But the tarball is `tar -C data .`, so `catalog.json`
+    and `licenses.toml` ride inside it, and those are the files most worth
+    tampering with: #234 is a live case of a wrong licence claim shipping on a
+    published artefact. Building the manifest from the narrow scope would leave
+    them unsigned while looking complete.
+    """
+    from nucl_parquet import iter_file_digests
+
+    parquet = {rel for rel, _, _ in iter_file_digests(_REPO_ROOT / "data", parquet_only=True)}
+    everything = {rel for rel, _, _ in iter_file_digests(_REPO_ROOT / "data", parquet_only=False)}
+
+    assert parquet < everything, "manifest scope must be strictly wider than the tree-hash scope"
+    assert "catalog.json" in everything and "catalog.json" not in parquet
+    assert "licenses.toml" in everything and "licenses.toml" not in parquet
+
+
+def test_manifest_is_deterministic() -> None:
+    """Two builds of one tree must be byte-identical.
+
+    A signature over a non-deterministic serialisation is unreproducible by
+    anyone auditing it, and diffing two releases becomes noise.
+    """
+    from nucl_parquet import build_release_manifest, dump_release_manifest
+
+    a = dump_release_manifest(build_release_manifest(_REPO_ROOT / "data", tag="data-2026.8.2"))
+    b = dump_release_manifest(build_release_manifest(_REPO_ROOT / "data", tag="data-2026.8.2"))
+    assert a == b
+    assert a.endswith("\n")
+    assert '": {"' in a or '":{"' in a, "expected compact separators, not pretty-printing"
+
+
+def test_manifest_binds_itself_to_a_release() -> None:
+    """Without version/tag inside it, a manifest is replayable.
+
+    A genuine manifest for release A verifies happily against release B's
+    extracted files, and every per-file digest unchanged between the two
+    agrees — so a consumer doing a partial check may never notice. This is the
+    same gap the tarball signature closes via its signed trusted comment.
+    """
+    from nucl_parquet import build_release_manifest, data_sha256
+
+    m = build_release_manifest(_REPO_ROOT / "data", tag="data-2026.8.2", tarball_sha256="ab" * 32)
+    assert m["tag"] == "data-2026.8.2"
+    assert m["data_version"] == "2026.8.2"
+    assert m["tarball_sha256"] == "ab" * 32
+    # Cross-links the two controls so a consumer can confirm they describe one release.
+    assert m["data_sha256"] == data_sha256(_REPO_ROOT / "data")
+
+
+def test_manifest_detects_modification_missing_and_extra(tmp_path) -> None:
+    """The three outcomes are distinguished, because they mean different things.
+
+    A missing file may be a deliberate partial transfer; a digest mismatch is
+    corruption or tampering. Collapsing them would force a consumer to treat a
+    legitimate subset as an attack.
+    """
+    from nucl_parquet import build_release_manifest, verify_against_manifest
+
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a.parquet").write_bytes(b"alpha")
+    (tmp_path / "sub" / "b.parquet").write_bytes(b"beta")
+    (tmp_path / "catalog.json").write_text('{"data_version":"2026.8.2"}')
+
+    m = build_release_manifest(tmp_path, tag="data-2026.8.2")
+    assert verify_against_manifest(m, tmp_path) == []
+
+    (tmp_path / "sub" / "b.parquet").write_bytes(b"EVIL")
+    assert any(p.startswith("MODIFIED") for p in verify_against_manifest(m, tmp_path))
+
+    (tmp_path / "sub" / "b.parquet").unlink()
+    assert any(p.startswith("MISSING") for p in verify_against_manifest(m, tmp_path))
+
+    (tmp_path / "planted.parquet").write_bytes(b"x")
+    assert any(p.startswith("EXTRA") for p in verify_against_manifest(m, tmp_path))
+
+
+def test_workflow_builds_signs_and_publishes_the_manifest() -> None:
+    """All four assets, and both signatures verified before any upload."""
+    wf = yaml.safe_load(_WORKFLOW.read_text())
+    steps = wf["jobs"]["data-asset"]["steps"]
+
+    build = next(s for s in steps if s.get("name") == "Build content manifest")
+    assert "${{" not in build["run"], "manifest step must not interpolate expressions into shell"
+    assert "file_count" in build["run"], "a manifest listing nothing would sign and publish happily"
+
+    sign = _signing_step()["run"]
+    assert "MANIFEST_PATH" in sign, "the manifest must be signed with the same key as the tarball"
+    assert sign.count("minisign -S") == 2, "expected exactly two signing invocations"
+    assert 'for artefact in "${TARBALL}" "${MANIFEST_PATH}"' in sign, (
+        "both artefacts must be verified against the committed pubkey before upload"
+    )
+
+    upload = next(s for s in steps if "softprops" in str(s.get("uses", "")))
+    files = str(upload["with"]["files"])
+    for expected in ("ASSET_PATH", "SIG_PATH", "MANIFEST_PATH", "MANIFEST_SIG_PATH"):
+        assert expected in files, f"release must publish {expected}"
+
+
+def test_verifier_refuses_an_unsigned_manifest() -> None:
+    """An unsigned manifest reads as a control while being none.
+
+    It sits beside the files it describes, so anyone who can rewrite the files
+    can rewrite it. All four HYRR reviewers converged on this point.
+    """
+    src = _VERIFY_SCRIPT.read_text()
+    assert "refusing to trust an unsigned manifest" in src
+    assert "MANIFEST SIGNATURE VERIFICATION FAILED" in src
+
+
+def test_verifier_checks_manifest_replay_and_partial_transfers() -> None:
+    src = _VERIFY_SCRIPT.read_text()
+    assert "REPLAY DETECTED: manifest" in src, "a manifest for another release must be rejected"
+    assert "--ignore-missing" in src, "a partial transfer must be verifiable without faking completeness"
+    assert "--partial" in src
+
+
+def test_tarball_and_manifest_cover_the_same_files() -> None:
+    """The archive and the manifest must describe one set of files.
+
+    They are produced by different tools over different exclusion rules: `tar`
+    takes everything under `data/`, while the manifest honours
+    `_HASH_EXCLUDE_DIRS`. `data/g4_raw/` is a gitignored build cache that the
+    manifest skips and a bare `tar -C data .` sweeps in — a clean CI checkout
+    does not have it, so the mismatch is latent rather than absent.
+
+    A file that ships in the tarball without a manifest entry is unverifiable,
+    and invisible: both artefacts are individually well-formed and both
+    signatures verify. Hence the exclusion on the tar side, and a release-time
+    assertion that the two sets are equal.
+    """
+    wf = yaml.safe_load(_WORKFLOW.read_text())
+    steps = wf["jobs"]["data-asset"]["steps"]
+
+    build = next(s for s in steps if s.get("name") == "Build tarball")["run"]
+    assert "--exclude='./g4_raw'" in build, (
+        "the tarball must exclude the same build cache the manifest does, or it ships unverifiable files"
+    )
+
+    manifest_step = next(s for s in steps if s.get("name") == "Build content manifest")["run"]
+    assert "tar --zstd -tf" in manifest_step, "the release must compare the tarball's members to the manifest"
+    assert "describe different file sets" in manifest_step, "the comparison must fail the release, not just log"
+
+
+def test_hash_exclude_dirs_is_the_single_source_of_the_exclusion() -> None:
+    """If a directory is added to the exclusion set, the tar step must follow.
+
+    This is a reminder rather than a mechanism — the workflow cannot import the
+    constant — but it fails loudly the moment the two drift.
+    """
+    from nucl_parquet.download import _HASH_EXCLUDE_DIRS
+
+    build = next(
+        s
+        for s in yaml.safe_load(_WORKFLOW.read_text())["jobs"]["data-asset"]["steps"]
+        if s.get("name") == "Build tarball"
+    )["run"]
+    for excluded in _HASH_EXCLUDE_DIRS:
+        assert f"--exclude='./{excluded}'" in build, (
+            f"_HASH_EXCLUDE_DIRS contains {excluded!r} but the tar step does not exclude it; "
+            "the tarball would carry files the manifest cannot vouch for"
+        )
+
+
+# -- Manifest mode, exercised rather than grepped ---------------------------
+#
+# The string-matching tests above prove the script *mentions* the right things.
+# They did not catch that `sha256sum -c` verifies only one direction, so a file
+# planted in the extracted tree passed with "OK all N files match". These run
+# the verifier.
+
+
+@pytest.fixture()
+def signed_tree(tmp_path: Path) -> dict:
+    """An extracted tree plus a manifest signed with a throwaway key."""
+    import json
+
+    pubdir = tmp_path / "docs" / "security"
+    pubdir.mkdir(parents=True)
+    pubkey = pubdir / "data-signing-key.pub"
+    seckey = tmp_path / "k.key"
+    subprocess.run(
+        ["minisign", "-G", "-f", "-p", str(pubkey), "-s", str(seckey)],
+        input="pw\npw\n",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "a.parquet").write_bytes(b"alpha")
+    (tree / "sub" / "b.parquet").write_bytes(b"beta")
+    (tree / "catalog.json").write_text('{"data_version":"2026.8.3"}')
+
+    import hashlib
+
+    files = {}
+    for p in sorted(tree.rglob("*")):
+        if p.is_file():
+            data = p.read_bytes()
+            files[p.relative_to(tree).as_posix()] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+    manifest = tmp_path / "m.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "data_version": "2026.8.3",
+                "tag": "data-2026.8.3",
+                "file_count": len(files),
+                "files": files,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    msha = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    subprocess.run(
+        [
+            "minisign",
+            "-S",
+            "-s",
+            str(seckey),
+            "-m",
+            str(manifest),
+            "-t",
+            f"nucl-parquet manifest 2026.8.3 tag=data-2026.8.3 sha256={msha}",
+        ],
+        input="pw\n",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return {"tree": tree, "manifest": manifest, "pubkey": pubkey}
+
+
+def _verify_tree(st: dict, *, version: str = "2026.8.3", extra: list[str] | None = None):
+    return subprocess.run(
+        [
+            str(_VERIFY_SCRIPT),
+            "--extracted",
+            str(st["tree"]),
+            "--manifest",
+            str(st["manifest"]),
+            "--version",
+            version,
+            "--pubkey",
+            str(st["pubkey"]),
+            *(extra or []),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+    )
+
+
+@_needs_minisign
+def test_manifest_mode_accepts_an_intact_tree(signed_tree: dict) -> None:
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "files match the signed manifest" in proc.stdout
+
+
+@_needs_minisign
+def test_manifest_mode_rejects_a_planted_file(signed_tree: dict) -> None:
+    """A file on disk that the manifest does not list must fail.
+
+    `sha256sum -c` checks only that every *listed* file matches; it ignores
+    extras entirely. The threat model for this feature is a gateway or mirror
+    that can write into the extracted tree, and a consumer that then globs
+    `data/**/*.parquet` — so a tree blessed as OK while carrying unlisted bytes
+    defeats the whole control. This shipped and was caught in review.
+    """
+    (signed_tree["tree"] / "rogue.parquet").write_bytes(b"ROGUE")
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0, "a planted file was accepted — the manifest vouched for bytes it never saw"
+    assert "NOT in the signed manifest" in proc.stderr
+
+
+@_needs_minisign
+def test_manifest_mode_allows_extras_only_when_asked(signed_tree: dict) -> None:
+    """The escape hatch exists for extracting into a shared directory."""
+    (signed_tree["tree"] / "rogue.parquet").write_bytes(b"ROGUE")
+    proc = _verify_tree(signed_tree, extra=["--allow-extra"])
+    assert proc.returncode == 0
+    assert "accepted via --allow-extra" in proc.stdout, "an accepted extra must still be reported"
+
+
+@_needs_minisign
+def test_manifest_mode_rejects_a_modified_file(signed_tree: dict) -> None:
+    (signed_tree["tree"] / "sub" / "b.parquet").write_bytes(b"EVIL")
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0
+    assert "do not match the signed manifest" in proc.stderr
+
+
+@_needs_minisign
+def test_partial_transfer_needs_the_flag(signed_tree: dict) -> None:
+    """A missing file is an error unless the consumer says the transfer was partial.
+
+    Otherwise "I only carried one library" and "a file was removed in transit"
+    are the same result.
+    """
+    (signed_tree["tree"] / "sub" / "b.parquet").unlink()
+    assert _verify_tree(signed_tree).returncode != 0
+    ok = _verify_tree(signed_tree, extra=["--partial"])
+    assert ok.returncode == 0, f"{ok.stdout}\n{ok.stderr}"
+    assert "files present" in ok.stdout
+
+
+@_needs_minisign
+def test_manifest_mode_detects_replay_onto_another_release(signed_tree: dict) -> None:
+    """A validly signed manifest for a different release must not be accepted."""
+    proc = _verify_tree(signed_tree, version="2026.9.9")
+    assert proc.returncode != 0
+    assert "REPLAY DETECTED" in proc.stderr or "declares data_version" in proc.stderr
+
+
+@_needs_minisign
+def test_manifest_mode_refuses_an_unsigned_manifest(signed_tree: dict) -> None:
+    """Deleting the signature must not degrade to trusting the manifest."""
+    Path(str(signed_tree["manifest"]) + ".minisig").unlink()
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0
+    assert "signature not found" in proc.stderr or "VERIFICATION FAILED" in proc.stderr
+
+
+@_needs_minisign
+def test_manifest_mode_rejects_a_foreign_key(signed_tree: dict, tmp_path: Path) -> None:
+    other = tmp_path / "other.pub"
+    subprocess.run(
+        ["minisign", "-G", "-W", "-f", "-p", str(other), "-s", str(tmp_path / "o.key")],
+        capture_output=True,
+        check=True,
+    )
+    signed_tree["pubkey"] = other
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0
+    assert "MANIFEST SIGNATURE VERIFICATION FAILED" in proc.stderr
