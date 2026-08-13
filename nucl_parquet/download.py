@@ -17,6 +17,7 @@ import re
 import tarfile
 import tempfile
 import warnings
+from collections.abc import Iterator
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -82,6 +83,48 @@ _HASH_EXCLUDE_DIRS = frozenset(
 )
 
 
+def iter_file_digests(
+    data_dir_path: Path | str | None = None,
+    *,
+    parquet_only: bool = True,
+) -> Iterator[tuple[str, str, int]]:
+    """Yield `(posix_relpath, sha256_hex, size_bytes)` in sorted relpath order.
+
+    The single walk behind both the tree hash and the signed release manifest
+    (#296). Deriving them from one traversal is what makes it impossible for
+    `catalog.json::data_sha256` and `manifest.json` to disagree about the same
+    tree — two independently-written walks would eventually drift on some
+    exclusion rule or path-separator detail, and the disagreement would surface
+    as an unverifiable release rather than a test failure.
+
+    `parquet_only` is the difference in scope between the two callers, and it is
+    deliberate:
+
+      * the **tree hash** covers only `*.parquet`, because it answers "did the
+        *data* change" — a catalog edit must not look like a data change;
+      * the **manifest** covers everything the tarball carries, because it
+        answers "are these the bytes we published". `catalog.json` and
+        `licenses.toml` ride inside the archive, and they are the files most
+        worth tampering with: #234 is a live example of a wrong licence claim
+        shipping on a published artefact.
+    """
+    root = Path(data_dir_path) if data_dir_path else data_dir()
+    pattern = "*.parquet" if parquet_only else "*"
+    for path in sorted(root.rglob(pattern)):
+        if not path.is_file():
+            continue
+        rel_parts = path.relative_to(root).parts
+        if rel_parts and rel_parts[0] in _HASH_EXCLUDE_DIRS:
+            continue
+        fh = hashlib.sha256()
+        size = 0
+        with open(path, "rb") as f:
+            for chunk in iter(lambda f=f: f.read(1 << 20), b""):
+                fh.update(chunk)
+                size += len(chunk)
+        yield path.relative_to(root).as_posix(), fh.hexdigest(), size
+
+
 def compute_data_sha256(data_dir_path: Path | str | None = None) -> str:
     """Deterministic SHA-256 tree hash of every `data/**/*.parquet` file.
 
@@ -99,19 +142,103 @@ def compute_data_sha256(data_dir_path: Path | str | None = None) -> str:
         `data/g4_raw/`, which is a gitignored build cache populated by
         `scripts/fetch_strata_nuclear.py`)
     """
-    root = Path(data_dir_path) if data_dir_path else data_dir()
     h = hashlib.sha256()
-    for path in sorted(root.rglob("*.parquet")):
-        rel_parts = path.relative_to(root).parts
-        if rel_parts and rel_parts[0] in _HASH_EXCLUDE_DIRS:
-            continue
-        rel = path.relative_to(root).as_posix().encode("utf-8")
-        fh = hashlib.sha256()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda f=f: f.read(1 << 20), b""):
-                fh.update(chunk)
-        h.update(rel + b"\0" + fh.hexdigest().encode("ascii") + b"\n")
+    for rel, digest, _size in iter_file_digests(data_dir_path, parquet_only=True):
+        h.update(rel.encode("utf-8") + b"\0" + digest.encode("ascii") + b"\n")
     return h.hexdigest()
+
+
+def build_release_manifest(
+    data_dir_path: Path | str | None = None,
+    *,
+    tag: str,
+    tarball_sha256: str | None = None,
+) -> dict:
+    """Build the signed content manifest for a data release (#296).
+
+    A signature over the tarball proves the *archive bytes* are ours. That stops
+    being verifiable the moment anything legitimately rewrites the archive —
+    which is routine on the way into an isolated network: Content Disarm &
+    Reconstruction gateways (OPSWAT MetaDefender, Deep CDR) open a `.tar.zst`,
+    scan each entry and repack it. The nuclear data arrives intact; the
+    signature does not survive. Per exoma-ch/hyrr#614 that is roughly a fifth of
+    realistic deployments, and they are the sites with the strictest
+    verification requirements.
+
+    A manifest of per-file digests, signed with the same offline key, survives
+    anything that preserves file *contents* while changing archive *framing*.
+    It also makes a partial transfer verifiable: a consumer who moved only
+    `tendl-2023-iso/` across a data diode can check what they have, instead of
+    being told to carry all 785 MB because only the whole archive is signed.
+    This is Debian's `Release`/`InRelease` model.
+
+    Both controls stay. The archive signature is cheaper and stronger when the
+    bytes survive; the manifest is what remains when they do not.
+
+    The `data_version` / `tag` fields are not decoration — they bind the
+    manifest to a release. Without them a genuine manifest for release A
+    verifies happily against release B's extracted files, and every digest that
+    happens to be unchanged between the two agrees. That is the same replay gap
+    the tarball signature closes via its signed trusted comment.
+    """
+    root = Path(data_dir_path) if data_dir_path else data_dir()
+    files = {rel: {"sha256": digest, "size": size} for rel, digest, size in iter_file_digests(root, parquet_only=False)}
+    manifest = {
+        "manifest_version": 1,
+        "data_version": data_version(root),
+        "tag": tag,
+        "data_sha256": compute_data_sha256(root),
+        "file_count": len(files),
+        "files": files,
+    }
+    if tarball_sha256:
+        # Lets a consumer on the intact-bytes path confirm the two routes
+        # describe the same release, rather than treating them as unrelated.
+        manifest["tarball_sha256"] = tarball_sha256
+    return manifest
+
+
+def dump_release_manifest(manifest: dict) -> str:
+    """Serialise a manifest deterministically.
+
+    Sorted keys, no incidental whitespace, trailing newline. Two builds of the
+    same tree must produce byte-identical output or diffing releases becomes
+    noise — and, more practically, a signature over a non-deterministic
+    serialisation is unreproducible by anyone trying to audit it.
+    """
+    return json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+
+
+def verify_against_manifest(
+    manifest: dict,
+    data_dir_path: Path | str | None = None,
+) -> list[str]:
+    """Check an extracted tree against a manifest. Returns a list of problems.
+
+    Reports missing files, digest mismatches and unexpected extra files
+    separately, because they mean different things: a missing file may be a
+    deliberate partial transfer, while a mismatch is corruption or tampering.
+    Callers decide which are fatal — a subset transfer legitimately has
+    missing entries.
+    """
+    root = Path(data_dir_path) if data_dir_path else data_dir()
+    expected: dict[str, dict] = manifest["files"]
+    problems: list[str] = []
+    seen: set[str] = set()
+
+    for rel, digest, size in iter_file_digests(root, parquet_only=False):
+        seen.add(rel)
+        want = expected.get(rel)
+        if want is None:
+            problems.append(f"EXTRA    {rel} (not in manifest)")
+        elif want["sha256"] != digest:
+            problems.append(f"MODIFIED {rel}\n           expected {want['sha256']}\n           actual   {digest}")
+        elif want["size"] != size:
+            problems.append(f"SIZE     {rel} expected {want['size']} bytes, got {size}")
+
+    for rel in sorted(set(expected) - seen):
+        problems.append(f"MISSING  {rel}")
+    return problems
 
 
 def data_sha256(data_dir_path: Path | str | None = None) -> str:
