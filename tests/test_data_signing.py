@@ -906,3 +906,181 @@ def test_hash_exclude_dirs_is_the_single_source_of_the_exclusion() -> None:
             f"_HASH_EXCLUDE_DIRS contains {excluded!r} but the tar step does not exclude it; "
             "the tarball would carry files the manifest cannot vouch for"
         )
+
+
+# -- Manifest mode, exercised rather than grepped ---------------------------
+#
+# The string-matching tests above prove the script *mentions* the right things.
+# They did not catch that `sha256sum -c` verifies only one direction, so a file
+# planted in the extracted tree passed with "OK all N files match". These run
+# the verifier.
+
+
+@pytest.fixture()
+def signed_tree(tmp_path: Path) -> dict:
+    """An extracted tree plus a manifest signed with a throwaway key."""
+    import json
+
+    pubdir = tmp_path / "docs" / "security"
+    pubdir.mkdir(parents=True)
+    pubkey = pubdir / "data-signing-key.pub"
+    seckey = tmp_path / "k.key"
+    subprocess.run(
+        ["minisign", "-G", "-f", "-p", str(pubkey), "-s", str(seckey)],
+        input="pw\npw\n",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    tree = tmp_path / "tree"
+    (tree / "sub").mkdir(parents=True)
+    (tree / "a.parquet").write_bytes(b"alpha")
+    (tree / "sub" / "b.parquet").write_bytes(b"beta")
+    (tree / "catalog.json").write_text('{"data_version":"2026.8.3"}')
+
+    import hashlib
+
+    files = {}
+    for p in sorted(tree.rglob("*")):
+        if p.is_file():
+            data = p.read_bytes()
+            files[p.relative_to(tree).as_posix()] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+    manifest = tmp_path / "m.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "data_version": "2026.8.3",
+                "tag": "data-2026.8.3",
+                "file_count": len(files),
+                "files": files,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    msha = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    subprocess.run(
+        [
+            "minisign",
+            "-S",
+            "-s",
+            str(seckey),
+            "-m",
+            str(manifest),
+            "-t",
+            f"nucl-parquet manifest 2026.8.3 tag=data-2026.8.3 sha256={msha}",
+        ],
+        input="pw\n",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return {"tree": tree, "manifest": manifest, "pubkey": pubkey}
+
+
+def _verify_tree(st: dict, *, version: str = "2026.8.3", extra: list[str] | None = None):
+    return subprocess.run(
+        [
+            str(_VERIFY_SCRIPT),
+            "--extracted",
+            str(st["tree"]),
+            "--manifest",
+            str(st["manifest"]),
+            "--version",
+            version,
+            "--pubkey",
+            str(st["pubkey"]),
+            *(extra or []),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+    )
+
+
+@_needs_minisign
+def test_manifest_mode_accepts_an_intact_tree(signed_tree: dict) -> None:
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "files match the signed manifest" in proc.stdout
+
+
+@_needs_minisign
+def test_manifest_mode_rejects_a_planted_file(signed_tree: dict) -> None:
+    """A file on disk that the manifest does not list must fail.
+
+    `sha256sum -c` checks only that every *listed* file matches; it ignores
+    extras entirely. The threat model for this feature is a gateway or mirror
+    that can write into the extracted tree, and a consumer that then globs
+    `data/**/*.parquet` — so a tree blessed as OK while carrying unlisted bytes
+    defeats the whole control. This shipped and was caught in review.
+    """
+    (signed_tree["tree"] / "rogue.parquet").write_bytes(b"ROGUE")
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0, "a planted file was accepted — the manifest vouched for bytes it never saw"
+    assert "NOT in the signed manifest" in proc.stderr
+
+
+@_needs_minisign
+def test_manifest_mode_allows_extras_only_when_asked(signed_tree: dict) -> None:
+    """The escape hatch exists for extracting into a shared directory."""
+    (signed_tree["tree"] / "rogue.parquet").write_bytes(b"ROGUE")
+    proc = _verify_tree(signed_tree, extra=["--allow-extra"])
+    assert proc.returncode == 0
+    assert "accepted via --allow-extra" in proc.stdout, "an accepted extra must still be reported"
+
+
+@_needs_minisign
+def test_manifest_mode_rejects_a_modified_file(signed_tree: dict) -> None:
+    (signed_tree["tree"] / "sub" / "b.parquet").write_bytes(b"EVIL")
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0
+    assert "do not match the signed manifest" in proc.stderr
+
+
+@_needs_minisign
+def test_partial_transfer_needs_the_flag(signed_tree: dict) -> None:
+    """A missing file is an error unless the consumer says the transfer was partial.
+
+    Otherwise "I only carried one library" and "a file was removed in transit"
+    are the same result.
+    """
+    (signed_tree["tree"] / "sub" / "b.parquet").unlink()
+    assert _verify_tree(signed_tree).returncode != 0
+    ok = _verify_tree(signed_tree, extra=["--partial"])
+    assert ok.returncode == 0, f"{ok.stdout}\n{ok.stderr}"
+    assert "files present" in ok.stdout
+
+
+@_needs_minisign
+def test_manifest_mode_detects_replay_onto_another_release(signed_tree: dict) -> None:
+    """A validly signed manifest for a different release must not be accepted."""
+    proc = _verify_tree(signed_tree, version="2026.9.9")
+    assert proc.returncode != 0
+    assert "REPLAY DETECTED" in proc.stderr or "declares data_version" in proc.stderr
+
+
+@_needs_minisign
+def test_manifest_mode_refuses_an_unsigned_manifest(signed_tree: dict) -> None:
+    """Deleting the signature must not degrade to trusting the manifest."""
+    Path(str(signed_tree["manifest"]) + ".minisig").unlink()
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0
+    assert "signature not found" in proc.stderr or "VERIFICATION FAILED" in proc.stderr
+
+
+@_needs_minisign
+def test_manifest_mode_rejects_a_foreign_key(signed_tree: dict, tmp_path: Path) -> None:
+    other = tmp_path / "other.pub"
+    subprocess.run(
+        ["minisign", "-G", "-W", "-f", "-p", str(other), "-s", str(tmp_path / "o.key")],
+        capture_output=True,
+        check=True,
+    )
+    signed_tree["pubkey"] = other
+    proc = _verify_tree(signed_tree)
+    assert proc.returncode != 0
+    assert "MANIFEST SIGNATURE VERIFICATION FAILED" in proc.stderr

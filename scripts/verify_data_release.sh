@@ -44,6 +44,7 @@ ALLOW_UNSIGNED=0
 EXTRACTED=""
 LOCAL_MANIFEST=""
 PARTIAL=0
+ALLOW_EXTRA=0
 FIRST_MANIFEST_VERSION="2026.8.3"
 
 VERSION=""
@@ -76,6 +77,7 @@ while [ $# -gt 0 ]; do
     --extracted)       EXTRACTED="$2"; shift 2 ;;
     --manifest)        LOCAL_MANIFEST="$2"; shift 2 ;;
     --partial)         PARTIAL=1; shift ;;
+    --allow-extra)     ALLOW_EXTRA=1; shift ;;
     -h|--help)         sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
     -*)                die "unknown flag: $1" ;;
     *)                 VERSION="$1"; shift ;;
@@ -198,13 +200,40 @@ This manifest was not signed by the nuclear-data key. Do not use it."
   TOTAL=$(wc -l < "${MWORK}/SHA256SUMS")
   echo "Checking $(printf '%d' "${TOTAL}") files against the signed manifest ..."
 
-  CHECK_ARGS=(--quiet)
+  CHECK_ARGS=()
   # A partial transfer legitimately lacks files; a full one must not.
   [ "${PARTIAL}" -eq 1 ] && CHECK_ARGS+=(--ignore-missing)
 
-  if ( cd "${EXTRACTED}" && sha256sum -c "${CHECK_ARGS[@]}" "${MWORK}/SHA256SUMS" ); then
+  # Run once and keep the output: a second pass over 6600 files just to count
+  # the OK lines doubles the work on exactly the machine least likely to have
+  # cycles to spare.
+  CHECK_RC=0
+  ( cd "${EXTRACTED}" && sha256sum -c "${CHECK_ARGS[@]}" "${MWORK}/SHA256SUMS" ) > "${MWORK}/check.out" 2>&1 || CHECK_RC=$?
+
+  # `sha256sum -c` answers one direction only: every listed file is present and
+  # matches. It says nothing about files on disk that the manifest does NOT
+  # list, and silently ignores them. That is the injection path this whole
+  # feature exists to close — the threat model is a gateway or mirror that can
+  # write into the extracted tree, and a consumer that then globs
+  # `data/**/*.parquet` would load planted bytes from a tree just declared OK.
+  ( cd "${EXTRACTED}" && find . -type f ! -name '*.minisig' ! -name '*.manifest.json' \
+      | sed 's|^\./||' | LC_ALL=C sort ) > "${MWORK}/on_disk.txt"
+  jq -r '.files | keys[]' "${MANIFEST}" | LC_ALL=C sort > "${MWORK}/in_manifest.txt"
+  EXTRA_COUNT=$(comm -23 "${MWORK}/on_disk.txt" "${MWORK}/in_manifest.txt" | wc -l)
+
+  if [ "${EXTRA_COUNT}" -gt 0 ] && [ "${ALLOW_EXTRA}" -eq 0 ]; then
+    echo "error: ${EXTRA_COUNT} file(s) present on disk are NOT in the signed manifest:" >&2
+    comm -23 "${MWORK}/on_disk.txt" "${MWORK}/in_manifest.txt" | head -20 >&2
+    die "The manifest cannot vouch for these bytes. A tree that verifies while
+carrying unlisted files is exactly the gap a signed manifest is supposed to
+close: anything globbing this directory would load them.
+If you deliberately extracted into a directory holding other files, re-run with
+--allow-extra."
+  fi
+
+  if [ "${CHECK_RC}" -eq 0 ]; then
     if [ "${PARTIAL}" -eq 1 ]; then
-      PRESENT=$( cd "${EXTRACTED}" && sha256sum -c --ignore-missing "${MWORK}/SHA256SUMS" 2>/dev/null | grep -c ': OK$' || true )
+      PRESENT=$(grep -c ': OK$' "${MWORK}/check.out" || true)
       echo
       echo "OK  ${PRESENT}/${TOTAL} files present, all matching the signed manifest  (${TAG})"
       echo "    partial transfer: files absent locally were not checked"
@@ -212,14 +241,16 @@ This manifest was not signed by the nuclear-data key. Do not use it."
       echo
       echo "OK  all ${TOTAL} files match the signed manifest  (${TAG})"
     fi
+    [ "${EXTRA_COUNT}" -gt 0 ] && echo "    warning: ${EXTRA_COUNT} unlisted file(s) present, accepted via --allow-extra"
     echo "    signed by: $(grep '^untrusted comment:' "${PUBKEY_FILE}" | sed 's/^untrusted comment: //')"
     echo "    trusted comment: ${MTRUSTED}"
     exit 0
   fi
 
+  grep -v ': OK$' "${MWORK}/check.out" | head -20 >&2
   die "One or more files do not match the signed manifest.
-Re-run without --quiet for the list. A mismatch after a legitimate repack means
-the contents were altered, not merely the archive framing."
+A mismatch after a legitimate repack means the contents were altered, not merely
+the archive framing."
 fi
 
 WORKDIR=""

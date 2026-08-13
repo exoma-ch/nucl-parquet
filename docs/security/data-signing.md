@@ -111,8 +111,17 @@ remains when they do not.
 
 ```bash
 just verify-extracted /path/to/extracted 2026.8.3
-just verify-extracted /path/to/extracted 2026.8.3 --partial   # subset transfer
+just verify-extracted /path/to/extracted 2026.8.3 --partial       # subset transfer
+just verify-extracted /path/to/extracted 2026.8.3 --allow-extra   # shared directory
 ```
+
+The check runs in **both directions**. Every file the manifest lists must be
+present and match, *and* every file on disk must be listed. The second half is
+not redundant: `sha256sum -c` alone ignores files it was not told about, so a
+tree carrying a planted `rogue.parquet` would verify clean while anything
+globbing that directory loaded unsigned bytes. `--allow-extra` is the deliberate
+opt-out for extracting into a directory that already holds other files, and it
+still reports what it accepted.
 
 Standalone, with `minisign`, `jq` and `sha256sum`:
 
