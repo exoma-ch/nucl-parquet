@@ -29,8 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
 
@@ -43,8 +43,8 @@ jobs:
       run:
         working-directory: clients/py/nucl-parquet-mcp
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -58,7 +58,7 @@ jobs:
       run:
         working-directory: clients/rs/nucl-parquet
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo publish
         env:
@@ -72,7 +72,7 @@ jobs:
       run:
         working-directory: clients/rs/nucl-parquet-mcp
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo publish
         env:
@@ -90,8 +90,8 @@ jobs:
       run:
         working-directory: clients/ts/nucl-parquet
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -117,8 +117,8 @@ jobs:
       run:
         working-directory: clients/ts/nucl-parquet-mcp
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org

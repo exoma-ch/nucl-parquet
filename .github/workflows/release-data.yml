@@ -30,12 +30,12 @@ jobs:
     name: Build & upload data tarball
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install zstd + minisign
         run: sudo apt-get update && sudo apt-get install -y zstd minisign
       - name: Checkout tag (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
       - name: Build tarball
@@ -78,7 +78,7 @@ jobs:
           echo "ASSET_PATH=nucl-parquet-data-${CALVER}.tar.zst" >> "$GITHUB_ENV"
           echo "CALVER=${CALVER}" >> "$GITHUB_ENV"
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
 
       # Build the content manifest (#296).
       #
@@ -269,7 +269,7 @@ jobs:
           echo "Signed ${MANIFEST_PATH} (sha256=${MANIFEST_SHA})"
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
@@ -304,10 +304,10 @@ jobs:
     # indistinguishable from "mirror is current". Skipped says that; green lies.
     if: ${{ github.repository == 'exoma-ch/nucl-parquet' && vars.HF_MIRROR_ENABLED == 'true' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref_name }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - name: Sync shards + dataset card
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
