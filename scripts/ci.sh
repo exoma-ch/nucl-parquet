@@ -53,6 +53,9 @@ uv sync --dev
 # guard) — must run in CI so a data re-release can't ship an inconsistent hash.
 # `-m "not data and not network"` also runs the pure builder/thinning unit tests
 # while skipping the ones that need the full data tree or network.
+# test_release_config: gates the cross-crate version invariant that broke #281 —
+# nucl-parquet-mcp declares its sibling's version for crates.io, and nothing
+# enforced that the two move together.
 # test_stsv: gates the Swiss StSV Annex 3 ingest (#294) — upper-bound handling,
 # the H-3 chemical-form collision, footnote provenance, and the HTTP-200-HTML
 # trap in the Fedlex fetch.
@@ -62,6 +65,7 @@ uv sync --dev
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
   tests/test_data_signing.py \
   tests/test_stsv.py \
+  tests/test_release_config.py \
   -m "not data and not network" -v
 ok "python tests passed"
 endgroup
