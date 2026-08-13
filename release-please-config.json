@@ -3,7 +3,9 @@
   "separate-pull-requests": false,
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
-  "plugins": ["sentence-case"],
+  "plugins": [
+    "sentence-case"
+  ],
   "packages": {
     ".": {
       "release-type": "python",
@@ -38,7 +40,14 @@
       "include-component-in-tag": true,
       "tag-separator": "-",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true
+      "bump-patch-for-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "../nucl-parquet-mcp/Cargo.toml",
+          "jsonpath": "$.dependencies.nucl-parquet.version"
+        }
+      ]
     },
     "clients/rs/nucl-parquet-mcp": {
       "release-type": "rust",
@@ -78,12 +87,33 @@
     }
   },
   "changelog-sections": [
-    {"type": "feat", "section": "Features"},
-    {"type": "fix", "section": "Bug Fixes"},
-    {"type": "perf", "section": "Performance"},
-    {"type": "deps", "section": "Dependencies"},
-    {"type": "refactor", "section": "Refactoring"},
-    {"type": "docs", "section": "Documentation"},
-    {"type": "chore", "hidden": true}
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "deps",
+      "section": "Dependencies"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "chore",
+      "hidden": true
+    }
   ]
 }
