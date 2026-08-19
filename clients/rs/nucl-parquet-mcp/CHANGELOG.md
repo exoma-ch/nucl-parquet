@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.14.1...nucl-parquet-mcp-rs-v0.14.2) (2026-08-19)
+
+
+### Features
+
+* **rs:** Cargo workspace, publish-race fix, and unblock the TS majors ([#311](https://github.com/exoma-ch/nucl-parquet/issues/311)) ([5799222](https://github.com/exoma-ch/nucl-parquet/commit/5799222ce3466e711029a7c14eb39b31264145b8))
+
+
+### Bug Fixes
+
+* **release:** Drop the cargo-workspace plugin — it breaks every release run ([#318](https://github.com/exoma-ch/nucl-parquet/issues/318)) ([f9773db](https://github.com/exoma-ch/nucl-parquet/commit/f9773db2fbd3673febe53be7079997d586841f4b))
+
 ## [0.14.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.14.0...nucl-parquet-mcp-rs-v0.14.1) (2026-08-13)
 
 
