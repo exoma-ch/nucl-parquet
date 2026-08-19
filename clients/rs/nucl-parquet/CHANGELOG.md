@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.16.0...nucl-parquet-rs-v0.16.1) (2026-08-19)
+
+
+### Features
+
+* **rs:** Cargo workspace, publish-race fix, and unblock the TS majors ([#311](https://github.com/exoma-ch/nucl-parquet/issues/311)) ([5799222](https://github.com/exoma-ch/nucl-parquet/commit/5799222ce3466e711029a7c14eb39b31264145b8))
+
 ## [0.16.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.15.0...nucl-parquet-rs-v0.16.0) (2026-08-13)
 
 

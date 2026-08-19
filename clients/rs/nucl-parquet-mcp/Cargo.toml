@@ -1,6 +1,6 @@
 [package]
 name = "nucl-parquet-mcp"
-version = "0.14.1"
+version = "0.14.2"
 edition = "2021"
 description = "MCP server for nuclear data — wraps local Parquet via nucl-parquet crate"
 license = "MIT"
