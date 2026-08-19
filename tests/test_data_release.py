@@ -230,3 +230,45 @@ def test_data_version_monotonic_vs_main() -> None:
     assert _tup(current_version) >= _tup(base_version), (
         f"data_version regression: {current_version!r} < {base_version!r} on {base}. CalVer must move forward."
     )
+
+
+# -- Layer 1.f: the catalog describes what actually ships --------------------
+
+
+def test_declared_projectiles_match_the_files_on_disk() -> None:
+    """Every projectile a library claims must have at least one file.
+
+    `iaea-medical` declared `["p", "d", "h", "a"]` and shipped only p and d
+    (#310). A consumer enumerating the catalog to build a UI or a coverage
+    matrix gets two entries that resolve to nothing — and finds out at query
+    time, not at load time.
+
+    This is the catalog's whole job. It is the single source of truth for what
+    exists, so a claim it cannot back is worse than an omission: an omission is
+    visibly incomplete, a false claim looks authoritative.
+
+    Checked in both directions — an undeclared projectile shipping files is the
+    same defect seen from the other side.
+    """
+    import collections
+    import glob
+    import os
+
+    catalog = json.loads(_CATALOG.read_text())
+    problems = []
+    for name, lib in sorted(catalog["libraries"].items()):
+        claimed, path = lib.get("projectiles"), lib.get("path")
+        if not claimed or not path:
+            continue
+        on_disk = collections.Counter(
+            os.path.basename(f).split("_")[0] for f in glob.glob(str(_DATA_DIR / path) + "*.parquet")
+        )
+        if not on_disk:  # library not present in this checkout
+            continue
+        missing = [p for p in claimed if on_disk.get(p, 0) == 0]
+        undeclared = [p for p in on_disk if p not in claimed]
+        if missing:
+            problems.append(f"{name}: claims {missing} but ships no such files")
+        if undeclared:
+            problems.append(f"{name}: ships {undeclared} but does not declare them")
+    assert not problems, "catalog.json disagrees with the data tree:\n  " + "\n  ".join(problems)

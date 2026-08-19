@@ -964,7 +964,7 @@ dependencies = [
 
 [[package]]
 name = "nucl-parquet"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "approx",
  "arrow",
@@ -980,7 +980,7 @@ dependencies = [
 
 [[package]]
 name = "nucl-parquet-mcp"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "nucl-parquet",
  "serde",

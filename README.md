@@ -172,7 +172,7 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n | IAEA |
 | [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | ar40, c12, ca40, fe56, he4, ne20, ni58, o16, p, pb208, si28, xe132 |  |
 | [HI-XS Production (Geant4 INCL++/ABLA07)](https://geant4.org/) | c12, o16, ne20, si28, ar40, fe56 |  |
-| [IAEA-Medical](https://www-nds.iaea.org/medical/) | p, d, ³He, α | IAEA |
+| [IAEA-Medical](https://www-nds.iaea.org/medical/) | p, d |  |
 | [IAEA-PD-2019](https://www-nds.iaea.org/photonuclear/) | γ | IAEA |
 | [IRDFF-II](https://www-nds.iaea.org/IRDFF/) | n | IAEA |
 | [JEFF-4.0](https://www.oecd-nea.org/dbdata/jeff/) | n, p | NEA |
