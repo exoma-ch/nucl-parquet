@@ -166,7 +166,30 @@ def test_mcp_publish_waits_for_its_dependency() -> None:
     assert idx_wait < idx_pub, "the wait must precede the publish"
 
 
-def test_cargo_workspace_plugin_is_enabled() -> None:
-    """release-please maintains the sibling pin only with this plugin on."""
+def test_cargo_workspace_plugin_is_not_enabled() -> None:
+    """The plugin cannot be used here: it assumes the repo root is the workspace.
+
+    Enabling it looked right — it is the tool built for exactly this invariant —
+    but it resolves the workspace manifest at the repository root, and this
+    workspace is nested at `clients/rs/`:
+
+        running plugin: CargoWorkspace
+        Fetching Cargo.toml from branch main
+        release-please failed: Failed to find file: Cargo.toml
+
+    As with the `extra-files` attempt before it, the failure is not local to the
+    rust packages — it aborts the entire release-please run, so no package
+    releases until the config is fixed. Two different attempts to automate this
+    invariant have now taken out release automation for the whole repo, which is
+    worth more than the manual edit they were trying to remove.
+
+    The sibling pin therefore stays a documented one-line edit at release time,
+    caught by `test_mcp_pins_the_sibling_version_it_is_built_against`. The
+    workspace itself is still worth having — one lockfile, `--all-targets`
+    linting, shared dependency versions — none of which depended on the plugin.
+    """
     cfg = json.loads((ROOT / "release-please-config.json").read_text())
-    assert "cargo-workspace" in cfg["plugins"], "without this the sibling pin goes back to being maintained by hand"
+    assert "cargo-workspace" not in cfg["plugins"], (
+        "the cargo-workspace plugin resolves Cargo.toml at the repo root and this "
+        "workspace is at clients/rs/ — enabling it aborts every release-please run"
+    )
