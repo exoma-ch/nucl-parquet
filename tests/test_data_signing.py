@@ -1084,3 +1084,25 @@ def test_manifest_mode_rejects_a_foreign_key(signed_tree: dict, tmp_path: Path) 
     proc = _verify_tree(signed_tree)
     assert proc.returncode != 0
     assert "MANIFEST SIGNATURE VERIFICATION FAILED" in proc.stderr
+
+
+def test_data_release_is_gated_on_the_test_suite() -> None:
+    """The tarball must not publish before `verify` passes (#291).
+
+    This job ran concurrently with `verify` until data-2026.8.2 published —
+    signed — while the suite was still in progress. It passed, but by luck.
+
+    Signing is what makes the gap matter: a digest says "these are the bytes",
+    a signature says "these bytes came from the nuclear-data team". That second
+    claim is much weaker if the team's own suite never gated them, and an
+    unverified *signed* release is worse than an unverified unsigned one,
+    because downstream now has a reason to trust it.
+    """
+    wf = yaml.safe_load(_WORKFLOW.read_text())
+    needs = wf["jobs"]["data-asset"].get("needs") or []
+    assert "verify" in needs, (
+        "data-asset must declare `needs: [verify]`. Without it the release job "
+        "races the test suite and can publish signed bytes whose tests never passed."
+    )
+    # The mirror already gated on both; keep it that way.
+    assert set(wf["jobs"]["huggingface-mirror"]["needs"]) >= {"verify", "data-asset"}
