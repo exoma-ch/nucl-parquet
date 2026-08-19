@@ -11,17 +11,13 @@ name = "nucl-parquet-mcp"
 path = "src/main.rs"
 
 [dependencies]
-# version is required for `cargo publish` (crates.io rejects path-only deps);
-# path is used for local builds; `version` is required for crates.io, which
-# refuses a path dependency without one. The two must therefore move together.
-#
-# This is maintained BY HAND. release-please cannot do it: `extra-files` paths
-# are package-relative and reject `..`, so it cannot reach a sibling — and a bad
-# path aborts the entire release-please run, not just this package. The durable
-# fix is a cargo workspace plus the `cargo-workspace` plugin.
-#
-# tests/test_release_config.py fails if this drifts from the sibling's version.
+# `version` is required for crates.io, which refuses a path dependency without
+# one; `path` is what local builds use. release-please's `cargo-workspace`
+# plugin keeps this in step with the sibling's version now that both are members
+# of a real workspace (#307). tests/test_release_config.py still gates it, so a
+# plugin that silently stops working is visible rather than discovered at
+# release time.
 nucl-parquet = { path = "../nucl-parquet", version = "0.16.0" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { workspace = true }
 tokio = { version = "1", features = ["full"] }

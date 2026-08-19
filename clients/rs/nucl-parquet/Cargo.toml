@@ -14,11 +14,11 @@ fetch = ["dep:reqwest", "dep:tar", "dep:zstd", "reqwest/rustls-tls"]
 fetch-native-tls = ["fetch", "reqwest/native-tls"]
 
 [dependencies]
-parquet = { version = "59", default-features = false, features = ["arrow", "zstd"] }
-arrow = { version = "59", default-features = false, features = ["ffi"] }
-serde_json = "1"
+parquet = { workspace = true }
+arrow = { workspace = true }
+serde_json = { workspace = true }
 bytes = "1"
-thiserror = "2"
+thiserror = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking"], optional = true }
 tar = { version = "0.4", optional = true }
 zstd = { version = "0.13", optional = true }

@@ -72,11 +72,11 @@ endgroup
 
 # ---------------------------------------------------------------------------
 group "rust (fmt + clippy + test)"
-for crate in nucl-parquet nucl-parquet-mcp; do
-  cargo fmt --manifest-path "clients/rs/$crate/Cargo.toml" --check
-  cargo clippy --manifest-path "clients/rs/$crate/Cargo.toml" -- -D warnings
-done
-cargo test --manifest-path clients/rs/nucl-parquet/Cargo.toml
+# One workspace (#307) — a single lockfile and one resolution, so the two
+# crates cannot disagree about a shared dependency's version.
+cargo fmt --manifest-path clients/rs/Cargo.toml --all --check
+cargo clippy --manifest-path clients/rs/Cargo.toml --workspace --all-targets -- -D warnings
+cargo test --manifest-path clients/rs/Cargo.toml --workspace
 ok "rust clean"
 endgroup
 
