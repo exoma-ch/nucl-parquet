@@ -1,7 +1,8 @@
 target/
 
-# Path-depends on the sibling nucl-parquet crate, so a committed lockfile goes
-# stale on every nucl-parquet release and trips the pre-commit clippy hook,
-# blocking release PRs. cargo regenerates it at build/publish; the publish job
-# uses plain `cargo publish` (no --locked).
-Cargo.lock
+# Cargo.lock was ignored here because this crate path-depends on its sibling:
+# a committed lockfile went stale on every nucl-parquet release and tripped the
+# pre-commit hook. The workspace removes that failure mode — there is now one
+# lockfile at clients/rs/Cargo.lock covering both crates, so it moves with them
+# instead of lagging one behind. It is tracked, which is what a published binary
+# wants for reproducible builds.

@@ -392,9 +392,13 @@ mod tests {
     /// Build a canonical-shape xs table in memory, so the null-residual path is
     /// covered without needing the data tree.
     ///
-    /// `rows` is `(target_A, residual_Z, residual_A, energy_MeV, xs_mb)` with
-    /// `None` residuals meaning "this channel names no product".
-    fn synthetic_xs(rows: &[(Option<i32>, Option<i32>, Option<i32>, f64, f64)]) -> Vec<u8> {
+    /// `(target_A, residual_Z, residual_A, energy_MeV, xs_mb)`. `None`
+    /// residuals mean "this channel names no product" — a null, not a
+    /// zero, because Z=0 is a real value (representation principle 3).
+    type SyntheticRow = (Option<i32>, Option<i32>, Option<i32>, f64, f64);
+
+    /// Build an in-memory parquet from `rows`.
+    fn synthetic_xs(rows: &[SyntheticRow]) -> Vec<u8> {
         use arrow::array::{Float64Array, Int32Array, StringArray};
         use arrow::datatypes::{DataType, Field, Schema};
         use arrow::record_batch::RecordBatch;

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.14.0...nucl-parquet-mcp-rs-v0.14.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **release:** Revert the extra-files rule — it breaks release-please entirely ([#307](https://github.com/exoma-ch/nucl-parquet/issues/307)) ([33c50b3](https://github.com/exoma-ch/nucl-parquet/commit/33c50b313cc379d05fbed10ef7edebcbdd526f85))
+
 ## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.13.4...nucl-parquet-mcp-rs-v0.14.0) (2026-06-23)
 
 
