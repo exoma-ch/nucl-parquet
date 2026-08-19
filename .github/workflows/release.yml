@@ -74,6 +74,42 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+
+      # Wait for the sibling crate to be on crates.io before publishing (#309).
+      #
+      # release-please tags every component in the same instant, and this
+      # workflow is tag-triggered, so the two rust publishes run as independent
+      # concurrent runs with no ordering between them — `needs:` orders jobs
+      # within a run, not runs with different triggers.
+      #
+      # `cargo publish` resolves this crate's `nucl-parquet` dependency against
+      # the *registry*, not the path, so the dependency must already be indexed.
+      # Whichever run gets there first wins, and roughly half the time that is
+      # this one, which then fails with:
+      #
+      #   failed to select a version for the requirement `nucl-parquet = "^0.16.0"`
+      #
+      # A re-run fixes it, which is exactly why it would keep being read as flake.
+      - name: Wait for nucl-parquet to be published
+        run: |
+          set -euo pipefail
+          NEED=$(grep -oP 'version = "\K[^"]+' <<< "$(grep '^nucl-parquet = ' Cargo.toml)")
+          [ -n "${NEED}" ] || { echo "::error::could not read the required nucl-parquet version"; exit 1; }
+          echo "waiting for nucl-parquet ${NEED} on crates.io"
+          for attempt in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'User-Agent: nucl-parquet-release (+https://github.com/exoma-ch/nucl-parquet)' \
+              "https://crates.io/api/v1/crates/nucl-parquet/${NEED}" 2>/dev/null || echo 000)
+            if [ "${code}" = "200" ]; then
+              echo "nucl-parquet ${NEED} is available (attempt ${attempt})"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::nucl-parquet ${NEED} did not appear on crates.io within 10 minutes." \
+               "If its own publish job failed, fix that first — this crate cannot publish without it."
+          exit 1
+
       - run: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.15.0...nucl-parquet-rs-v0.16.0) (2026-08-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **schema:** cross-section tables gain identity columns and use NULL rather than 0 for "no residual"; `exfor_entry` → `source_entry`; `data/exfor/` is rebuilt from a different source with different content, and `data/exfor-channels/` is new. Queries relying on `residual_Z=0`, or on one projectile per file, must be updated — a reaction is only fully specified by projectile + target + residual.
+
+### Features
+
+* **schema:** Canonical cross-section schema, transport channels, EXFOR from exfor_master ([#280](https://github.com/exoma-ch/nucl-parquet/issues/280)) ([8c8e414](https://github.com/exoma-ch/nucl-parquet/commit/8c8e414f644f1ca4fc822aa1c9d9e15785886477))
+
+
+### Bug Fixes
+
+* **exfor:** Fission product yields are production rows, not MT=18 ([#282](https://github.com/exoma-ch/nucl-parquet/issues/282)) ([3880b5a](https://github.com/exoma-ch/nucl-parquet/commit/3880b5a21809ec04c05af145c2bfac16977f8919))
+
 ## [0.15.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.14.0...nucl-parquet-rs-v0.15.0) (2026-06-23)
 
 

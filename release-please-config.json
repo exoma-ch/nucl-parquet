@@ -3,7 +3,10 @@
   "separate-pull-requests": false,
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
-  "plugins": ["sentence-case"],
+  "plugins": [
+    "sentence-case",
+    "cargo-workspace"
+  ],
   "packages": {
     ".": {
       "release-type": "python",
@@ -78,12 +81,33 @@
     }
   },
   "changelog-sections": [
-    {"type": "feat", "section": "Features"},
-    {"type": "fix", "section": "Bug Fixes"},
-    {"type": "perf", "section": "Performance"},
-    {"type": "deps", "section": "Dependencies"},
-    {"type": "refactor", "section": "Refactoring"},
-    {"type": "docs", "section": "Documentation"},
-    {"type": "chore", "hidden": true}
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "deps",
+      "section": "Dependencies"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "chore",
+      "hidden": true
+    }
   ]
 }
