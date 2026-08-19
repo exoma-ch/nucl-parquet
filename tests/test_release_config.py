@@ -19,11 +19,11 @@ That is a red release PR nobody can merge, discovered only after the bot has
 already opened it — and the failure names cargo resolution rather than the
 config that caused it.
 
-The config now carries an `extra-files` rule so release-please updates the
-constraint alongside the version. That rule cannot be unit-tested — release
-tooling is only exercised by running the bot — so this test is the detector:
-if the path is wrong and the rule silently no-ops, the release PR fails *here*,
-with a message that says what to fix.
+`clients/rs` is now a real cargo workspace, so release-please's
+`cargo-workspace` plugin maintains the constraint. That plugin cannot be
+unit-tested — release tooling is only exercised by running the bot — so these
+tests are the detector: if it silently stops working, the release PR fails
+*here*, naming both versions, rather than as a cargo resolution error.
 """
 
 from __future__ import annotations
@@ -102,3 +102,71 @@ def test_every_published_crate_has_a_release_please_entry() -> None:
     published = set(re.findall(r"clients/rs/([a-z-]+)", (ROOT / ".github" / "workflows" / "release.yml").read_text()))
     for crate in published:
         assert f"clients/rs/{crate}" in cfg["packages"], f"{crate} is published but has no release-please entry"
+
+
+# -- The workspace (#307, #309) ---------------------------------------------
+
+
+def test_rust_clients_are_one_cargo_workspace() -> None:
+    """Both crates must be members of a real workspace.
+
+    Two crates in sibling directories are not a workspace, and the difference
+    is not cosmetic: release-please's `cargo-workspace` plugin only maintains
+    intra-workspace dependency versions for actual members. Before this, the
+    sibling pin was maintained by a comment.
+    """
+    ws = tomllib.loads((_RS / "Cargo.toml").read_text())
+    assert set(ws["workspace"]["members"]) == {"nucl-parquet", "nucl-parquet-mcp"}
+
+
+def test_one_lockfile_for_the_workspace() -> None:
+    """A workspace resolves once, so there is exactly one tracked lockfile.
+
+    Previously `nucl-parquet/Cargo.lock` was committed and the mcp one was
+    gitignored — one published binary had a reproducible dependency set and the
+    other did not.
+    """
+    assert (_RS / "Cargo.lock").exists(), "the workspace must have a lockfile"
+    for crate in ("nucl-parquet", "nucl-parquet-mcp"):
+        assert not (_RS / crate / "Cargo.lock").exists(), f"{crate} still has its own lockfile"
+
+
+def test_shared_arrow_parquet_versions_are_inherited() -> None:
+    """arrow and parquet ship from one upstream workspace on a lockstep version.
+
+    Declaring them per-crate makes a mismatch representable, and a mismatch is
+    always a bug. Inheriting makes it unrepresentable and gives Dependabot one
+    line to bump instead of two.
+    """
+    ws = tomllib.loads((_RS / "Cargo.toml").read_text())["workspace"]["dependencies"]
+    assert ws["arrow"]["version"] == ws["parquet"]["version"]
+    core = tomllib.loads((_RS / "nucl-parquet" / "Cargo.toml").read_text())
+    for dep in ("arrow", "parquet"):
+        assert core["dependencies"][dep].get("workspace") is True, f"{dep} should inherit from the workspace"
+
+
+def test_mcp_publish_waits_for_its_dependency() -> None:
+    """The dependent crate must not race its dependency onto crates.io (#309).
+
+    Both rust publishes are tag-triggered and release-please tags everything at
+    once, so they run concurrently with no ordering. `cargo publish` resolves
+    the sibling against the registry, so publishing first fails — about half the
+    time, self-healing on re-run, which is how it reads as flake.
+    """
+    import yaml
+
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "release.yml").read_text())
+    job = wf["jobs"]["cargo-mcp"]
+    names = [s.get("name", "") for s in job["steps"]]
+    assert any("Wait for nucl-parquet" in n for n in names), "the mcp publish must wait for its dependency"
+    wait = next(s for s in job["steps"] if "Wait for nucl-parquet" in s.get("name", ""))
+    assert "crates.io/api/v1/crates/nucl-parquet/" in wait["run"], "it must poll the registry, not just sleep"
+    idx_wait = names.index(next(n for n in names if "Wait for nucl-parquet" in n))
+    idx_pub = next(i for i, s in enumerate(job["steps"]) if "cargo publish" in str(s.get("run", "")))
+    assert idx_wait < idx_pub, "the wait must precede the publish"
+
+
+def test_cargo_workspace_plugin_is_enabled() -> None:
+    """release-please maintains the sibling pin only with this plugin on."""
+    cfg = json.loads((ROOT / "release-please-config.json").read_text())
+    assert "cargo-workspace" in cfg["plugins"], "without this the sibling pin goes back to being maintained by hand"

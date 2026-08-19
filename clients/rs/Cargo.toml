@@ -1,0 +1,40 @@
+# Cargo workspace for the Rust clients (#307, #309).
+#
+# These were two independent crates that happened to sit in sibling directories,
+# and that cost two separate defects in one release:
+#
+#   * nucl-parquet-mcp declares its sibling's version for crates.io, which
+#     refuses a path dependency without one. Nothing kept the two in sync —
+#     release-please bumped the crate and left the constraint, and the release
+#     PR could not resolve. `extra-files` cannot express the fix: paths are
+#     package-relative and reject `..`, and a bad path aborts the entire
+#     release-please run rather than failing locally (#307).
+#
+#   * The two publish jobs are tag-triggered, so they ran concurrently and the
+#     dependent crate reached `cargo publish` before its dependency existed on
+#     crates.io (#309).
+#
+# A real workspace fixes the first structurally: release-please's
+# `cargo-workspace` plugin maintains intra-workspace dependency versions, which
+# it can only do for members of an actual workspace.
+#
+# Versions stay INDEPENDENT (no `version.workspace = true`). The two crates
+# release on their own cadences — 0.16.0 and 0.14.1 today — and forcing them to
+# a shared version would mean publishing a new mcp release every time the core
+# crate changed, which is a bigger change than the problem warrants.
+[workspace]
+resolver = "2"
+members = [
+  "nucl-parquet",
+  "nucl-parquet-mcp",
+]
+
+# Shared where sharing is genuinely true. `arrow` and `parquet` are published
+# from one upstream workspace on a lockstep version, so a mismatch between the
+# members is always a bug — inheriting them makes that unrepresentable, and
+# means Dependabot's grouped bump touches one line instead of two.
+[workspace.dependencies]
+arrow = { version = "59", default-features = false, features = ["ffi"] }
+parquet = { version = "59", default-features = false, features = ["arrow", "zstd"] }
+serde_json = "1"
+thiserror = "2"
