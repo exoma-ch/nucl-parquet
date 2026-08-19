@@ -33,6 +33,8 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parent.parent
 _RS = ROOT / "clients" / "rs"
 
@@ -42,24 +44,69 @@ def _crate_version(crate: str) -> str:
     return data["package"]["version"]
 
 
-def test_mcp_pins_the_sibling_version_it_is_built_against() -> None:
-    """The declared dependency version must equal the sibling's actual version.
+def _caret_compatible(declared: str, actual: str) -> bool:
+    """Does cargo's default (caret) requirement `declared` admit `actual`?
 
-    Fails on any release PR where release-please bumped one and not the other,
-    with a clearer diagnosis than cargo's resolution error.
+    For 0.x, caret pins the *minor*: `^0.15.0` admits 0.15.9 but not 0.16.0.
+    From 1.0 it pins the major. This is the rule that decides whether a release
+    PR can resolve, so it is the rule the test should encode.
+    """
+    d = [int(x) for x in declared.split(".")]
+    a = [int(x) for x in actual.split(".")]
+    if a < d:
+        return False
+    return (d[0], a[0]) == (0, 0) and d[1] == a[1] if d[0] == 0 else d[0] == a[0]
+
+
+@pytest.mark.parametrize(
+    ("declared", "actual", "admits"),
+    [
+        # The #281 failure: a 0.x minor bump is breaking, so the old pin cannot resolve.
+        ("0.15.0", "0.16.0", False),
+        # A patch bump of the core crate must NOT require a manual edit.
+        ("0.16.0", "0.16.1", True),
+        ("0.16.0", "0.16.0", True),
+        # Declaring a version newer than what exists is unresolvable.
+        ("0.16.2", "0.16.1", False),
+        # From 1.0 caret pins the major instead of the minor.
+        ("1.2.0", "1.5.0", True),
+        ("1.2.0", "2.0.0", False),
+    ],
+)
+def test_caret_rule_matches_cargo(declared: str, actual: str, admits: bool) -> None:
+    """The helper must encode cargo's rule, not an approximation of it.
+
+    Getting this wrong in either direction is costly: too strict blocks valid
+    patch releases, too loose lets an unresolvable release PR through to a
+    confusing cargo error.
+    """
+    assert _caret_compatible(declared, actual) is admits
+
+
+def test_mcp_pins_a_version_cargo_can_resolve() -> None:
+    """The declared dependency must admit the sibling's actual version.
+
+    This is the check that #281 needed: release-please bumped nucl-parquet
+    0.15.0 -> 0.16.0 and left the constraint at 0.15.0, so cargo could not
+    resolve and the release PR was unmergeable.
+
+    Deliberately semver-compatibility rather than string equality. Exact
+    equality is a stronger claim than cargo requires, and it would fail every
+    *patch* release of the core crate — 0.16.1 against a `0.16.0` pin resolves
+    perfectly well. An earlier version of this test asserted equality and blocked
+    exactly that, which is a test inventing a constraint rather than gating one.
     """
     actual = _crate_version("nucl-parquet")
     declared = tomllib.loads((_RS / "nucl-parquet-mcp" / "Cargo.toml").read_text())["dependencies"]["nucl-parquet"][
         "version"
     ]
-    assert declared == actual, (
-        f"clients/rs/nucl-parquet-mcp declares nucl-parquet = {declared!r}, but "
-        f"clients/rs/nucl-parquet is version {actual!r}.\n\n"
-        "cargo cannot resolve this (a 0.x bump is a breaking change), so the build "
-        "fails with 'failed to select a version'. If you are looking at a "
-        "release-please PR, the `extra-files` rule in release-please-config.json "
-        "did not apply — check its `path`, which is resolved relative to the "
-        "package directory."
+    assert _caret_compatible(declared, actual), (
+        f"clients/rs/nucl-parquet-mcp declares nucl-parquet = {declared!r}, which does "
+        f"not admit the sibling's actual version {actual!r}.\n\n"
+        "cargo resolves the caret requirement against the registry, so this fails as "
+        "'failed to select a version'. On a release-please PR, edit the constraint in "
+        "clients/rs/nucl-parquet-mcp/Cargo.toml — the documented one-line step, since "
+        "neither extra-files nor the cargo-workspace plugin can do it here (#307, #318)."
     )
 
 
