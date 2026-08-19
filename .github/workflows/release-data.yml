@@ -29,6 +29,23 @@ jobs:
   data-asset:
     name: Build & upload data tarball
     runs-on: ubuntu-latest
+    # Do not publish bytes the test suite has not passed (#291).
+    #
+    # This job used to run concurrently with `verify`, and it was not
+    # theoretical: data-2026.8.2 published — signed — while `Verify clients`
+    # was still in_progress. It passed, but by luck rather than by pipeline.
+    #
+    # Signing is what makes the gap matter. A digest says "these are the bytes";
+    # a signature says "these bytes came from the nuclear-data team", and that
+    # is a much weaker claim if the team's own suite never gated them. An
+    # unverified signed release is worse than an unverified unsigned one,
+    # because downstream now has a reason to trust it.
+    #
+    # The cost is real and deliberate: a flaky or infrastructure-broken CI run
+    # now blocks a data release. That is the right trade for an artefact we
+    # cryptographically vouch for — a red suite should stop a release, and if
+    # the suite is too flaky to gate on, that is the defect to fix.
+    needs: [verify]
     steps:
       - uses: actions/checkout@v7
       - name: Install zstd + minisign
