@@ -47,3 +47,11 @@ docs/theranostics/*
 *.sec
 .direnv/
 .claude/
+
+# Build/tool output that lands outside the client directories. Both of these
+# were committed by accident during the workspace conversion: the cargo
+# workspace moved `target/` up to clients/rs/, outside the per-crate ignores,
+# and a stray `npx vitest` at the repo root created a node_modules here. The
+# per-directory .gitignore files did not cover either location.
+node_modules/
+clients/rs/target/
