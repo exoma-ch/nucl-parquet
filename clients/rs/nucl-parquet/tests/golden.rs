@@ -117,6 +117,10 @@ struct CoincRow {
     pair_intensity: Value,
 }
 
+// The parameters mirror the golden fixture's columns one-for-one. Bundling
+// them into a struct would add a type that exists only to satisfy the lint,
+// and would drift from the fixture it is supposed to mirror.
+#[allow(clippy::too_many_arguments)]
 fn coinc_to_json(
     z: u32,
     a: u32,
@@ -240,7 +244,6 @@ fn golden_y86_kshell_xray_gamma() {
             emission1_rad_type: Some("xray".into()),
             emission2_rad_type: Some("gamma".into()),
             min_intensity: 1e-5,
-            ..Default::default()
         },
     );
     let golden = load_fixture("y86_kshell_xray_gamma");
@@ -265,7 +268,6 @@ fn golden_co60_gamma_gamma() {
             emission1_rad_type: Some("gamma".into()),
             emission2_rad_type: Some("gamma".into()),
             min_intensity: 0.5,
-            ..Default::default()
         },
     );
     let golden = load_fixture("co60_gamma_gamma");

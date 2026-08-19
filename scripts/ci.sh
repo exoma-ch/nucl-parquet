@@ -53,6 +53,9 @@ uv sync --dev
 # guard) — must run in CI so a data re-release can't ship an inconsistent hash.
 # `-m "not data and not network"` also runs the pure builder/thinning unit tests
 # while skipping the ones that need the full data tree or network.
+# test_release_config: gates the cross-crate version invariant that broke #281 —
+# nucl-parquet-mcp declares its sibling's version for crates.io, and nothing
+# enforced that the two move together.
 # test_stsv: gates the Swiss StSV Annex 3 ingest (#294) — upper-bound handling,
 # the H-3 chemical-form collision, footnote provenance, and the HTTP-200-HTML
 # trap in the Fedlex fetch.
@@ -62,17 +65,18 @@ uv sync --dev
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
   tests/test_data_signing.py \
   tests/test_stsv.py \
+  tests/test_release_config.py \
   -m "not data and not network" -v
 ok "python tests passed"
 endgroup
 
 # ---------------------------------------------------------------------------
 group "rust (fmt + clippy + test)"
-for crate in nucl-parquet nucl-parquet-mcp; do
-  cargo fmt --manifest-path "clients/rs/$crate/Cargo.toml" --check
-  cargo clippy --manifest-path "clients/rs/$crate/Cargo.toml" -- -D warnings
-done
-cargo test --manifest-path clients/rs/nucl-parquet/Cargo.toml
+# One workspace (#307) — a single lockfile and one resolution, so the two
+# crates cannot disagree about a shared dependency's version.
+cargo fmt --manifest-path clients/rs/Cargo.toml --all --check
+cargo clippy --manifest-path clients/rs/Cargo.toml --workspace --all-targets -- -D warnings
+cargo test --manifest-path clients/rs/Cargo.toml --workspace
 ok "rust clean"
 endgroup
 

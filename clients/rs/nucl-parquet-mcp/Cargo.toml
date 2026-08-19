@@ -1,6 +1,6 @@
 [package]
 name = "nucl-parquet-mcp"
-version = "0.14.0"
+version = "0.14.1"
 edition = "2021"
 description = "MCP server for nuclear data — wraps local Parquet via nucl-parquet crate"
 license = "MIT"
@@ -11,9 +11,13 @@ name = "nucl-parquet-mcp"
 path = "src/main.rs"
 
 [dependencies]
-# version is required for `cargo publish` (crates.io rejects path-only deps);
-# path is used for local builds. Keep in sync with the nucl-parquet crate version.
-nucl-parquet = { path = "../nucl-parquet", version = "0.15.0" }
+# `version` is required for crates.io, which refuses a path dependency without
+# one; `path` is what local builds use. release-please's `cargo-workspace`
+# plugin keeps this in step with the sibling's version now that both are members
+# of a real workspace (#307). tests/test_release_config.py still gates it, so a
+# plugin that silently stops working is visible rather than discovered at
+# release time.
+nucl-parquet = { path = "../nucl-parquet", version = "0.16.0" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { workspace = true }
 tokio = { version = "1", features = ["full"] }

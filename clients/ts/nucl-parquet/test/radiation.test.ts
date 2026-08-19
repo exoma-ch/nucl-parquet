@@ -4,7 +4,9 @@ import { RadiationDb } from "../src/radiation.js";
 
 const META_DIR = join(import.meta.dirname, "../../../../data/meta");
 
-describe("RadiationDb (#175 acceptance)", () => {
+// Options go in the SECOND argument. The three-argument form
+// `describe(name, fn, options)` was deprecated in Vitest 3 and removed in 4.
+describe("RadiationDb (#175 acceptance)", { timeout: 60_000 }, () => {
   it("Ni-60 emissions include the 1173 + 1333 keV γ (Co-60 β⁻ daughter convention)", async () => {
     const db = await RadiationDb.open(META_DIR);
     const lines = await db.emissions(28, 60, "");
@@ -27,4 +29,4 @@ describe("RadiationDb (#175 acceptance)", () => {
       `identifyGamma(1173.2) must include Ni-60 (got ${candidates.length} candidates)`,
     ).toBe(true);
   });
-}, /* longer timeout for the eager γ index build */ { timeout: 60_000 });
+}); // 60s: the eager γ index build dominates this suite
