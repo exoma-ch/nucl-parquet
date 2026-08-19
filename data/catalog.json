@@ -151,13 +151,11 @@
     },
     "iaea-medical": {
       "name": "IAEA-Medical",
-      "description": "Medical isotope production cross-sections (IAEA)",
+      "description": "Charged-particle cross sections for medical radioisotope production. Ships p and d only: the IAEA medical-isotope database publishes no 3He- or alpha-induced data for the covered targets, so the earlier h/a claim described an intent rather than the shipped files (#310).",
       "source_url": "https://www-nds.iaea.org/medical/",
       "projectiles": [
         "p",
-        "d",
-        "h",
-        "a"
+        "d"
       ],
       "data_type": "cross_sections",
       "version": "latest",
