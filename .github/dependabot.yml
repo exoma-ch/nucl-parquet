@@ -100,8 +100,15 @@ updates:
     schedule:
       interval: weekly
     groups:
-      actions:
-        patterns:
-          - "*"
+      # Minor/patch only. An earlier version grouped every action with
+      # `patterns: ["*"]` and no update-types filter, so six *major* bumps
+      # arrived as a single PR — including release-please-action and
+      # action-gh-release, which gate the release path and are exercised by no
+      # pull-request CI. Majors now come one at a time so each can be reviewed
+      # against the workflow it actually affects.
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
     commit-message:
       prefix: "chore(ci)"
