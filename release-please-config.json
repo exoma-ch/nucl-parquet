@@ -4,8 +4,7 @@
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "plugins": [
-    "sentence-case",
-    "cargo-workspace"
+    "sentence-case"
   ],
   "packages": {
     ".": {
