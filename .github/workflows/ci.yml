@@ -18,7 +18,7 @@ jobs:
     name: prek hooks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@main
       - run: nix flake check --no-update-lock-file
       - run: nix develop --command ./scripts/ci.sh

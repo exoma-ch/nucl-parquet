@@ -30,12 +30,12 @@ jobs:
     name: Build & upload data tarball
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install zstd + minisign
         run: sudo apt-get update && sudo apt-get install -y zstd minisign
       - name: Checkout tag (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
       - name: Build tarball
@@ -304,7 +304,7 @@ jobs:
     # indistinguishable from "mirror is current". Skipped says that; green lies.
     if: ${{ github.repository == 'exoma-ch/nucl-parquet' && vars.HF_MIRROR_ENABLED == 'true' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref_name }}
       - uses: astral-sh/setup-uv@v5
