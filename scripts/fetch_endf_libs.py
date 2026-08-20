@@ -381,8 +381,21 @@ def parse_endf_file(
     """Parse an ENDF-6 format text file and extract cross-section data.
 
     Returns list of row dicts with keys matching the Parquet schema.
+
+    Discrete-level partials (e.g. MT=600-649 for (n,p), 800-849 for (n,α)) all
+    map to the same residual (Z-1,A) or (Z-2,A-3). When the evaluation *also*
+    ships the summed MT (103, 107, ...), the summed MT already carries the full
+    channel; when it does not (FENDL Fe-56 ships only MT=600-649), the partials
+    must be summed by us. Earlier revisions deduplicated by
+    (target_A, residual, energy) after appending every MT, which silently kept
+    exactly one MT's contribution per (residual, energy) — a summed row where the
+    library was helpful, a single-level partial where it was not (Fe-56(n,p)
+    read 0.1 mb instead of 114 mb; #326). We now accumulate per residual on the
+    union energy grid via linear interpolation and sum the MT contributions
+    before emitting rows.
     """
     import endf
+    import numpy as np
 
     proj_z, proj_a = PROJECTILE_ZA[projectile]
 
@@ -394,44 +407,84 @@ def parse_endf_file(
 
     rows: list[dict] = []
 
-    # Extract MF=3 (cross-section) data
+    # Extract MF=3 (cross-section) data, accumulating per residual so that
+    # discrete-level partial MTs sharing one residual (e.g. MT=600-649 → (Z-1,A))
+    # are summed on the union grid rather than mutually clobbered by dedup.
+    #
+    # Key policy: prefer the summed MT (103, 107, …) when present, and skip the
+    # partials it sums. Otherwise sum the partials. This mirrors the redundant-MT
+    # handling in build_neutron_njoy.py — never double-count a channel that the
+    # evaluator has already summed for us.
+    _SUMMED_TO_PARTIAL_RANGE: dict[int, range] = {
+        103: range(600, 650),  # (n,p) — summed by MT=103, partials MT=600–649
+        104: range(650, 700),  # (n,d)
+        105: range(700, 750),  # (n,t)
+        106: range(750, 800),  # (n,³He)
+        107: range(800, 850),  # (n,α)
+        16: range(875, 892),  # (n,2n) — summed by MT=16, partials MT=875–891
+    }
+    mf3_mts = {mt for (mf, mt) in material.section_data if mf == 3}
+    skip_partials: set[int] = set()
+    for summed_mt, partial_range in _SUMMED_TO_PARTIAL_RANGE.items():
+        if summed_mt in mf3_mts:
+            skip_partials.update(mt for mt in partial_range if mt in mf3_mts)
+
+    # (residual_Z, residual_A) -> list[(energies_ev: np.ndarray, xs_barns: np.ndarray)]
+    by_residual: dict[tuple[int, int], list[tuple[np.ndarray, np.ndarray]]] = {}
+
     for (mf, mt), section in material.section_data.items():
         if mf != 3:
+            continue
+        if mt in skip_partials:
             continue
 
         residual = mt_to_residual(mt, target_z, target_a, proj_z, proj_a)
         if residual is None:
             continue
 
-        res_z, res_a = residual
-
         try:
-            # section for MF=3 is a dict with 'sigma' tabulated function
             tab = section.get("sigma")
             if tab is None:
                 continue
-
-            # endf.Tabulated1D has x (energy in eV) and y (cross-section in barns)
-            energies_ev = tab.x
-            xs_barns = tab.y
-
-            for e_ev, xs_b in zip(energies_ev, xs_barns):
-                # xs_b > 1e30 b catches TALYS overflow sentinels (~1.99e35 b ≈ FLT_MAX/1e3)
-                if xs_b <= 0 or xs_b > 1e30:
-                    continue
-                rows.append(
-                    {
-                        "target_A": target_a,
-                        "residual_Z": res_z,
-                        "residual_A": res_a,
-                        "state": "",  # MF=3 doesn't distinguish isomers
-                        "energy_MeV": e_ev * 1e-6,
-                        "xs_mb": xs_b * 1e3,
-                    }
-                )
+            energies_ev = np.asarray(tab.x, dtype=float)
+            xs_barns = np.asarray(tab.y, dtype=float)
         except (AttributeError, TypeError, KeyError) as e:
             logger.debug("  Skipping MF=%d MT=%d: %s", mf, mt, e)
             continue
+
+        # Drop TALYS overflow sentinels (~1.99e35 b) and non-positive values.
+        good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= 1e30)
+        if not good.any():
+            continue
+        by_residual.setdefault(residual, []).append((energies_ev[good], xs_barns[good]))
+
+    for (res_z, res_a), contribs in by_residual.items():
+        # Union energy grid across every MT contributing to this residual, so
+        # partials sampled on different grids all appear in the sum.
+        if len(contribs) == 1:
+            e_union, xs_total = contribs[0]
+        else:
+            e_union = np.unique(np.concatenate([e for e, _ in contribs]))
+            xs_total = np.zeros_like(e_union)
+            for e, s in contribs:
+                # Linear interp is the ENDF-default (INT=2). Outside a partial's
+                # threshold-to-max range it contributes 0.
+                xs_total += np.interp(e_union, e, s, left=0.0, right=0.0)
+            positive = xs_total > 0
+            e_union = e_union[positive]
+            xs_total = xs_total[positive]
+
+        for e_ev, xs_b in zip(e_union, xs_total):
+            rows.append(
+                {
+                    "target_A": target_a,
+                    "residual_Z": res_z,
+                    "residual_A": res_a,
+                    "state": "",  # MF=3 doesn't distinguish isomers
+                    "energy_MeV": float(e_ev) * 1e-6,
+                    "xs_mb": float(xs_b) * 1e3,
+                }
+            )
 
     # Extract MF=10 (isomeric production cross-sections)
     for (mf, mt), section in material.section_data.items():
@@ -611,10 +664,12 @@ def fetch_library(
                 "xs_mb": pl.Float64,
             },
         )
-        # Deduplicate and sort
-        df = df.unique(
-            subset=["target_A", "residual_Z", "residual_A", "state", "energy_MeV"],
-        ).sort("target_A", "residual_Z", "residual_A", "energy_MeV")
+        # parse_endf_file has already summed partial MTs per residual on the
+        # union energy grid, and MF=10 subsections use (residual_Z, residual_A,
+        # state) that never collide with an MF=3 row for the same target. A
+        # bare unique(subset=…) here would silently drop MT-partials that share
+        # a residual (Fe-56(n,p) collapsed to 0.1 mb; #326) — sort only.
+        df = df.sort("target_A", "residual_Z", "residual_A", "energy_MeV")
 
         out_path = xs_dir / f"{sublib_code}_{elem}.parquet"
         df.write_parquet(out_path, compression=COMPRESSION)
