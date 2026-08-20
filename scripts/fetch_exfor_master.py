@@ -578,6 +578,13 @@ def _emit_rows(
             stats["bad_energy_unit"] += 1
             continue
         energy = e_raw * e_scale
+        # A negative incident energy is nonphysical, and three of them reached
+        # the published data (#330) — Au-197 at -1.1e-07 MeV, Cd at -2.2e-08.
+        # The cross-section below has always been guarded; the energy never was,
+        # so a sign error in a transcribed EXFOR entry passed straight through
+        # into a column every interpolation routine trusts.
+        if energy < 0:
+            continue
 
         # --- cross-section
         xs_raw = parse_number(rec[xs_idx])
