@@ -368,8 +368,10 @@ def mt_to_residual(
 # ENDF-6 file parsing
 # ---------------------------------------------------------------------------
 
-# Filename pattern: n_029-Cu-63_2925.zip or similar
-FILENAME_RE = re.compile(r"[a-z]+_(\d{3})-([A-Za-z]+)-(\d+)_(\d+)\.zip")
+# Filename pattern: n_029-Cu-63_2925.zip (most libraries pad Z to 3 digits) or
+# n_79-Au-197_7925.zip (IRDFF-II leaves it 2). Accept either — otherwise IRDFF-II
+# silently ingests zero files.
+FILENAME_RE = re.compile(r"[a-z]+_(\d{2,3})-([A-Za-z]+)-(\d+)_(\d+)\.zip")
 
 
 def parse_endf_file(
