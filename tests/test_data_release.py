@@ -277,12 +277,6 @@ def test_declared_projectiles_match_the_files_on_disk() -> None:
 # -- Layer 1.g: physical sanity on the published data ------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="3 negative-energy rows are still in the published exfor-channels data (#330). "
-    "The builder guard is fixed; the data needs a re-ingest. strict=True so this "
-    "fails loudly as an unexpected pass once the data is rebuilt.",
-)
 def test_no_negative_energies_anywhere() -> None:
     """An incident energy below zero is nonphysical.
 
@@ -291,8 +285,9 @@ def test_no_negative_energies_anywhere() -> None:
     error in a transcribed EXFOR entry passed straight into a column that every
     interpolation routine trusts without checking.
 
-    Cheap to assert, and it fails loudly at the one place that sees all
-    libraries at once.
+    Fixed in the 2026.8.3 re-ingest — the guard removed exactly those three
+    rows and nothing else (exfor-channels 4,162,404 -> 4,162,401). The gate
+    stays so a future sign error cannot ship.
     """
     import duckdb
 
@@ -319,18 +314,16 @@ def test_no_negative_energies_anywhere() -> None:
     assert not offenders, f"rows with negative energy_MeV: {offenders} — see #330"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="7 neutron libraries ship MT=2 elastic mislabelled as (n,g) (#287, #326-328). "
-    "The parser guard landed in PR #260 but the parquets were never rebuilt. "
-    "strict=True so this fails as an unexpected pass once the re-ingest lands.",
-)
 def test_thermal_au197_capture_is_physically_plausible() -> None:
     """Au-197(n,γ) at thermal is 98.7 b — the reference dosimetry standard.
 
     Any library carrying a point there should be within a factor of a few.
-    `cendl-3.2` reports **1.0002e-14 mb**, off by ~19 orders of magnitude
-    (#328).
+
+    This gate was written against a real failure: `cendl-3.2` reported
+    **1.0002e-14 mb**, off by ~19 orders of magnitude, because MT=2 elastic was
+    mislabelled as (n,γ) and CENDL's real capture tabulation does not reach
+    thermal at all (#328, #287). The 2026.8.3 re-ingest fixed it; the gate stays
+    so it cannot come back.
 
     Deliberately a magnitude band rather than an equality-to-zero check. The
     first version of this test asserted `xs_mb = 0`, found nothing, and passed

@@ -368,10 +368,39 @@ def mt_to_residual(
 # ENDF-6 file parsing
 # ---------------------------------------------------------------------------
 
-# Filename pattern: n_029-Cu-63_2925.zip (most libraries pad Z to 3 digits) or
-# n_79-Au-197_7925.zip (IRDFF-II leaves it 2). Accept either — otherwise IRDFF-II
-# silently ingests zero files.
-FILENAME_RE = re.compile(r"[a-z]+_(\d{2,3})-([A-Za-z]+)-(\d+)_(\d+)\.zip")
+# ENDF filenames are not one pattern — the mirrors disagree, and every
+# disagreement so far has failed *silently*: an unmatched name is skipped with a
+# warning and the run still exits 0. Three separate shapes have been observed,
+# and each was found only by reading the log of a run that reported success:
+#
+#   n_029-Cu-63_2925.zip      Z zero-padded to 3   (most libraries)
+#   n_79-Au-197_7925.zip      Z to 2               (IRDFF-II)
+#   n_3-Li-6_0325.zip         Z to 1               (IRDFF-II, Z < 10)
+#   n_9640_96-Cm-245.zip      MAT first, then Z    (BROND-3.1 — this one
+#                                                   produced 0 elements,
+#                                                   0 rows, exit code 0)
+#   n_095-Am-242M_9547.zip    isomeric state suffix on A (JEFF/JENDL/TENDL)
+#
+# Two alternatives rather than one increasingly baroque pattern, and an
+# explicit isomer group so metastable targets stop being discarded.
+_FN_ZFIRST = re.compile(r"[a-z]+_(\d{1,3})-([A-Za-z]+)-(\d+)([A-Za-z]\d?)?_(\d+)\.zip")
+_FN_MATFIRST = re.compile(r"[a-z]+_(\d+)_(\d{1,3})-([A-Za-z]+)-(\d+)([A-Za-z]\d?)?\.zip")
+
+
+def parse_endf_filename(filename: str) -> tuple[int, int, str] | None:
+    """Return (target_Z, target_A, isomer) or None if unrecognised.
+
+    `isomer` is '' for a ground-state target, else the lowercased suffix
+    ('m', 'm1', 'n'). Callers must treat None as an error worth surfacing —
+    silently skipping is how BROND-3.1 ingested nothing while reporting success.
+    """
+    m = _FN_ZFIRST.match(filename)
+    if m:
+        return int(m.group(1)), int(m.group(3)), (m.group(4) or "").lower()
+    m = _FN_MATFIRST.match(filename)
+    if m:
+        return int(m.group(2)), int(m.group(4)), (m.group(5) or "").lower()
+    return None
 
 
 def parse_endf_file(
@@ -570,13 +599,12 @@ def download_and_parse(
     url = f"{IAEA_MIRROR}/{lib.iaea_path}/{sublib_dir}/{filename}"
 
     # Parse target Z, A from filename
-    m = FILENAME_RE.match(filename)
-    if not m:
+    parsed = parse_endf_filename(filename)
+    if parsed is None:
         logger.warning("Cannot parse filename: %s", filename)
         return []
 
-    target_z = int(m.group(1))
-    target_a = int(m.group(3))
+    target_z, target_a, _isomer = parsed
 
     try:
         resp = session.get(url, timeout=60)
@@ -634,11 +662,11 @@ def fetch_library(
         if not rows:
             continue
 
-        m = FILENAME_RE.match(fname)
-        if not m:
+        parsed = parse_endf_filename(fname)
+        if parsed is None:
             continue
 
-        target_z = int(m.group(1))
+        target_z = parsed[0]
         elem = _ELEMENT_SYMBOLS.get(target_z, f"Z{target_z}")
         element_rows.setdefault(elem, []).extend(rows)
         total_files += 1
@@ -675,6 +703,19 @@ def fetch_library(
 
         out_path = xs_dir / f"{sublib_code}_{elem}.parquet"
         df.write_parquet(out_path, compression=COMPRESSION)
+
+    # A library that ingests nothing must not report success. BROND-3.1 did
+    # exactly that — every filename used a shape the parser did not recognise,
+    # each was skipped with a warning, and the run finished with 0 elements and
+    # exit code 0. Had that output been copied over data/, the library would
+    # have been silently deleted rather than rebuilt. Checked before the
+    # manifest is written, so no artefact claiming success survives.
+    if not element_rows:
+        raise RuntimeError(
+            f"{lib_key}/{sublib_code} produced 0 elements from {total_files} source files. "
+            "Every file was skipped — check the 'Cannot parse filename' warnings above. "
+            "Refusing to report success on an empty ingest."
+        )
 
     # Write manifest
     manifest = {

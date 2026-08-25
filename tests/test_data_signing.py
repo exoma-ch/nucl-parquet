@@ -784,11 +784,18 @@ def test_manifest_binds_itself_to_a_release() -> None:
     agrees — so a consumer doing a partial check may never notice. This is the
     same gap the tarball signature closes via its signed trusted comment.
     """
-    from nucl_parquet import build_release_manifest, data_sha256
+    from nucl_parquet import build_release_manifest, data_sha256, data_version
 
-    m = build_release_manifest(_REPO_ROOT / "data", tag="data-2026.8.2", tarball_sha256="ab" * 32)
-    assert m["tag"] == "data-2026.8.2"
-    assert m["data_version"] == "2026.8.2"
+    # Derive the version rather than hardcoding it. A literal here breaks on
+    # every data release for a reason that has nothing to do with what this
+    # test is checking — it fails on 2026.8.3 while the binding it actually
+    # gates is still perfectly correct.
+    version = data_version(_REPO_ROOT / "data")
+    tag = f"data-{version}"
+
+    m = build_release_manifest(_REPO_ROOT / "data", tag=tag, tarball_sha256="ab" * 32)
+    assert m["tag"] == tag
+    assert m["data_version"] == version
     assert m["tarball_sha256"] == "ab" * 32
     # Cross-links the two controls so a consumer can confirm they describe one release.
     assert m["data_sha256"] == data_sha256(_REPO_ROOT / "data")
