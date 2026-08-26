@@ -192,9 +192,17 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | target_A | Int32 | Target mass number |
 | residual_Z | Int32 | Product atomic number |
 | residual_A | Int32 | Product mass number |
-| state | Utf8 | Isomer state: `""`, `"g"`, `"m"` |
+| state | Utf8 | Isomer state: `""` (total), `"g"` (ground), `"m"`/`"m2"` (isomers) — see below |
 | energy_MeV | Float64 | Projectile energy in MeV |
 | xs_mb | Float64 | Cross-section in millibarn |
+
+> **`state` is not a partition — `""` is a sum *over* `"g"`/`"m"`, not a peer of
+> them.** ENDF gives the channel total in MF=3 and the ground/metastable split in
+> MF=10, so both land as rows: IRDFF-II's Al-27(n,2n) is one 177 mb `""` row *and*
+> a 114 mb `"g"` + 65 mb `"m"` pair. `GROUP BY residual_Z, residual_A` with
+> `SUM(xs_mb)` therefore double-counts. Filter `state = ''` for totals, or
+> `state <> ''` for the split. Match isomers with `state LIKE 'm%'` — EXFOR also
+> uses `"m1"` for `"m"`, and a bare `"l"`.
 
 **EXFOR experimental** (`exfor/*.parquet`):
 
@@ -205,7 +213,7 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | target_A | Int32 | Target mass number (0 = natural) |
 | residual_Z | Int32 | Product atomic number |
 | residual_A | Int32 | Product mass number |
-| state | Utf8 | Isomer state |
+| state | Utf8 | Isomer state — same vocabulary and same `""`-is-a-sum caveat as above |
 | energy_MeV | Float64 | Projectile energy in MeV |
 | energy_err_MeV | Float64 | Energy uncertainty (nullable) |
 | xs_mb | Float64 | Cross-section in millibarn |
