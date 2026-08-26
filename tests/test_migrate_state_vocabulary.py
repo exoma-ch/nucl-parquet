@@ -258,7 +258,8 @@ def test_verify_flags_a_leftover_state_column(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _nuclides(directory: Path, rows: list[tuple[int, int, str, float]]) -> Path:
+def _nuclides(directory: Path, rows: list[tuple]) -> Path:
+    """rows: (Z, A, state, level_keV[, floating_level_flag])."""
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "nuclides.parquet"
     pl.DataFrame(
@@ -267,6 +268,7 @@ def _nuclides(directory: Path, rows: list[tuple[int, int, str, float]]) -> Path:
             "A": pl.Series([r[1] for r in rows], dtype=pl.Int32),
             "state": pl.Series([r[2] for r in rows], dtype=pl.Utf8),
             "level_keV": [r[3] for r in rows],
+            "floating_level_flag": [r[4] if len(r) > 4 else "-" for r in rows],
         }
     ).write_parquet(path)
     return path
@@ -406,3 +408,40 @@ def test_spectrum_xs_is_not_treated_as_nuclide_keyed(tmp_path):
 
     assert pl.read_parquet(directory / "spectrum_xs.parquet")["state"].to_list() == [""]
     assert pl.read_parquet(directory / "decay.parquet")["state"].to_list() == [GROUND]
+
+
+def test_a_floating_level_isomer_does_not_null_ground_band_gammas(tmp_path):
+    """#386's real cause, and a live defect in the migration until it was found.
+
+    ENSDF's floating-level notation ('+X') means the excitation is relative to a
+    reference it could not pin down, so `level_keV` is a *placeholder* 0.0. All
+    175 such rows in nuclides.parquet carry a flag and none is genuinely at
+    0 keV. Comparing a gamma's emitting level against that 0.0 pairs every
+    ordinary ground-band gamma with a phantom isomer, which is what made 13,080
+    plain ground-band rows look unattributable.
+    """
+    _nuclides(
+        tmp_path / "meta" / "ensdf",
+        [(47, 96, "", 0.0, "-"), (47, 96, "m", 0.0, "+X")],
+    )
+    path = _radiation(tmp_path, [(47, 96, "", 0.0), (47, 96, "", 743.2)])
+
+    m.migrate_nuclide_keyed(tmp_path, "meta/ensdf/radiation", dry_run=False)
+
+    assert pl.read_parquet(path)["state"].to_list() == [GROUND, GROUND], (
+        "a placeholder 0.0 keV excitation was matched as if it were an energy"
+    )
+
+
+def test_a_real_isomer_energy_still_nulls_the_coincidence(tmp_path):
+    """The counterpart, so the fix above cannot be 'passed' by disabling the
+    ambiguity check entirely. Tc-99m at a measured 142.68 keV still applies."""
+    _nuclides(
+        tmp_path / "meta" / "ensdf",
+        [(43, 99, "", 0.0, "-"), (43, 99, "m", 142.68, "-")],
+    )
+    path = _radiation(tmp_path, [(43, 99, "", 0.0), (43, 99, "", 142.68)])
+
+    m.migrate_nuclide_keyed(tmp_path, "meta/ensdf/radiation", dry_run=False)
+
+    assert pl.read_parquet(path)["state"].to_list() == [GROUND, None]

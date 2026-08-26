@@ -328,12 +328,13 @@ NUCLIDES_SCHEMA = {
     #              ground, and G4ENSDFSTATE does not list those nuclides'
     #              ground states. Four carry ENSDF's `+X` floating flag, so
     #              their excitation is relative to an unknown offset.
-    #   radiation  13,106 rows across 45 nuclides whose `state` was `''`
-    #              ("the ground-band decay chain") but whose emitting level
-    #              coincides with a catalogued isomer of the same nuclide.
-    #              Ground-band cascade gamma or isomer decay cannot be told
-    #              apart from an energy coincidence, so neither is claimed.
-    #              Resolving them needs ENSDF's own band assignment (#386).
+    #   radiation  26 rows across 13 nuclides whose `state` was `''` ("the
+    #              ground-band decay chain") but whose emitting level coincides
+    #              with a catalogued isomer at a *measured* energy. Ground-band
+    #              cascade gamma or isomer decay cannot be told apart from an
+    #              energy coincidence, so neither is claimed. Resolving them
+    #              needs ENSDF's band attribution, which nothing here ships
+    #              (#386).
     #
     # Those rows do not join, deliberately. A row that does not come back is
     # visible; a row that comes back wrong is not.
