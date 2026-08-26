@@ -33,16 +33,22 @@ from nucl_parquet.state_vocabulary import (  # noqa: E402
     JOINABLE_STATES,
     LEGACY_UNSPECIFIED,
     MAX_ISOMER,
+    MEASURED_TARGET_STATES,
+    NUCLIDE_STATES,
     PENDING_MIGRATION,
     PENDING_RENAME_TABLES,
     STATES,
     SUM,
     TABLE_STATES,
+    TABLE_TARGET_STATES,
+    TARGET_STATES,
     UNRESOLVED,
     allowed_states,
+    allowed_target_states,
     is_valid_state,
     isomer_state,
     parse_x4_state,
+    target_state_for_natural_element,
 )
 
 pytestmark = pytest.mark.filterwarnings("ignore")
@@ -276,3 +282,125 @@ def test_a_pending_entry_excuses_only_the_empty_string(monkeypatch):
 def test_an_undeclared_table_raises():
     with pytest.raises(KeyError, match="no entry in TABLE_STATES"):
         allowed_states("some-new-library/xs")
+
+
+# ---------------------------------------------------------------------------
+# The target's state (#353)
+# ---------------------------------------------------------------------------
+#
+# `target_state` names which isomeric state of the *target* a row is about. It
+# does not exist in the shipped parquets yet — the builder writes it and the
+# ENDF re-ingest fills it — so the checks that scan data are written to become
+# meaningful the moment it lands, and the checks that matter today are on the
+# vocabulary and the builder.
+
+
+def _tables_with_target_state() -> dict[str, list[Path]]:
+    """Every shipped table carrying a `target_state` column -> its shards."""
+    tables: dict[str, list[Path]] = {}
+    for path in sorted(DATA.rglob("*.parquet")):
+        try:
+            columns = pl.read_parquet_schema(path)
+        except Exception:
+            continue
+        if "target_state" in columns:
+            tables.setdefault(str(path.parent.relative_to(DATA)).replace("\\", "/"), []).append(path)
+    return tables
+
+
+def test_target_state_uses_the_same_vocabulary_as_state():
+    """One definition, per #380 — not a second spelling for the target side.
+
+    Br-80m is one nuclide. Which side of the reaction it appears on cannot
+    change how this repository spells it, or the two columns stop being
+    comparable and `meta/ensdf/nuclides.parquet` stops joining against one of
+    them.
+    """
+    assert TARGET_STATES <= STATES
+    assert MEASURED_TARGET_STATES <= STATES
+    for value in TARGET_STATES | MEASURED_TARGET_STATES:
+        assert is_valid_state(value)
+
+
+def test_a_target_is_never_summed_over_its_states():
+    """`'sum'` is not a legal `target_state`, in any table.
+
+    Two target states are two evaluations in two files — that is the whole of
+    #353. Nothing computes a target-summed cross-section, so a `'sum'` here
+    would assert an aggregate that does not exist, and would re-create the merge
+    as a *value* immediately after the column was added to end it.
+    """
+    assert SUM not in TARGET_STATES
+    assert SUM not in MEASURED_TARGET_STATES
+    for table, allowed in TABLE_TARGET_STATES.items():
+        assert SUM not in allowed, f"{table} would allow a target summed over its own states"
+
+
+def test_only_measured_tables_may_leave_the_target_isomer_unresolved():
+    """`'l'` is a measurement's admission, not something ENDF can say.
+
+    An evaluation is *of* a specific nuclide; it always knows which. A
+    measurement can irradiate a mixed isomeric target and be unable to resolve
+    it, which is a real datum and distinct from NULL.
+    """
+    assert UNRESOLVED in MEASURED_TARGET_STATES
+    assert UNRESOLVED not in TARGET_STATES
+    assert UNRESOLVED in allowed_target_states("exfor")
+    assert UNRESOLVED not in allowed_target_states("tendl-2025/xs")
+
+
+def test_a_natural_element_target_has_no_state():
+    """`target_A = 0` is a mixture of isotopes, so its `target_state` is NULL.
+
+    Not `'sum'`: that word already means "over the isomeric states of one
+    nuclide", and a natural element is an aggregate over *isotopes*. Reusing it
+    would rebuild the #357 one-name-two-meanings collision on the target side.
+
+    Not `'g'`: natural chlorine is not "chlorine in its ground state", and the
+    claim would join — attaching a nuclide half-life to an elemental mixture.
+    """
+    assert target_state_for_natural_element() is None
+    assert is_valid_state(target_state_for_natural_element())
+
+
+def test_nuclide_identity_tables_have_no_target_at_all():
+    """`meta/ensdf/*` rows are nuclides, not reactions, so they declare nothing.
+
+    Asserted so that deriving TABLE_TARGET_STATES from TABLE_STATES cannot
+    quietly hand a target vocabulary to a table that has no target.
+    """
+    for table, states in TABLE_STATES.items():
+        if states is NUCLIDE_STATES:
+            assert table not in TABLE_TARGET_STATES, f"{table} has no target to have a state"
+
+
+def test_every_table_with_a_target_state_column_declares_its_vocabulary():
+    """Same gate as `state`: an undeclared vocabulary is how a second one arrives.
+
+    Vacuous until the re-ingest lands the column, and deliberately written now so
+    that it is not something to remember afterwards.
+    """
+    undeclared = sorted(set(_tables_with_target_state()) - set(TABLE_TARGET_STATES))
+    assert not undeclared, (
+        f"tables with a `target_state` column and no TABLE_TARGET_STATES entry: {undeclared}\n"
+        "Declare what its target states mean before shipping it."
+    )
+
+
+def test_no_shipped_target_state_is_outside_its_table_vocabulary():
+    """Every value present must be one the table declared. Vacuous until #353's rebuild."""
+    problems: list[str] = []
+    for table, shards in sorted(_tables_with_target_state().items()):
+        allowed = allowed_target_states(table)
+        seen: set[str | None] = set()
+        for shard in shards:
+            seen.update(pl.read_parquet(shard, columns=["target_state"])["target_state"].unique().to_list())
+        bad = {v for v in seen if v is not None} - allowed
+        if bad:
+            problems.append(f"{table}: {sorted(bad)} not in {sorted(allowed)}")
+    assert not problems, "target_state values outside their table's vocabulary:\n  " + "\n  ".join(problems)
+
+
+def test_an_undeclared_table_raises_for_target_state():
+    with pytest.raises(KeyError, match="no entry in TABLE_TARGET_STATES"):
+        allowed_target_states("some/new/table")

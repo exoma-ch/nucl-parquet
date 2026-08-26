@@ -44,7 +44,12 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
 from nucl_parquet.builder_stamp import write_builder_stamp  # noqa: E402
-from nucl_parquet.state_vocabulary import SUM  # noqa: E402
+from nucl_parquet.state_vocabulary import (  # noqa: E402
+    ENDF_TARGET_MARKERS,
+    SUM,
+    isomer_state,
+    target_state_for_natural_element,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -662,6 +667,81 @@ def lfs_to_state(lfs: int, product_lfs_levels: set[int]) -> str:
     return "m" if rank == 1 else f"m{rank}"
 
 
+class TargetStateConflict(RuntimeError):
+    """The filename and the evaluation disagree about the target's isomeric state.
+
+    One of the two is wrong about which nuclide this file is, and there is no
+    safe way to pick. Raised rather than preferred, per #353 — a silent
+    preference here writes a metastable evaluation under a ground-state key,
+    which is the exact defect the column was added to end.
+    """
+
+
+def target_state_from_material(
+    material,  # noqa: ANN001 — endf.Material
+    marker: str,
+    target_a: int,
+    filename: str,
+) -> str | None:
+    """Resolve `target_state` for one evaluation, and check the two sources agree.
+
+    `LISO` from MF=1/451 is authoritative: it is the *isomeric state number* of
+    the target, stated by the evaluation itself, so LISO=1 is the first isomer
+    with no decoding required.
+
+    The filename marker is used only to detect disagreement, never as the rank.
+    That inverts #353's suggestion of cross-checking `LIS`, which is a different
+    field — `LIS` counts excited *levels*, `LISO` counts *isomeric states*, and
+    they routinely differ. The issue's own example shows it: `n_035-Br-80M`
+    carries `LIS=2` while being the *first* isomer, so an equality check against
+    the marker's rank would have failed on a correct file.
+
+    Using LISO for the rank also means an unrecognised marker costs nothing:
+    `'n'` appears in some mirror listings and this repository does not know what
+    it means, so it is not in `ENDF_TARGET_MARKERS` and is not guessed at — LISO
+    already said the answer.
+
+    Returns NULL for a natural-element target: an isotopic mixture has no
+    isomeric state (see `state_vocabulary.target_state_for_natural_element`).
+    """
+    if target_a == 0:
+        return target_state_for_natural_element()
+
+    info = material.section_data.get((1, 451), {})
+    liso = info.get("LISO")
+
+    marker_rank = ENDF_TARGET_MARKERS.get(marker)
+
+    if liso is None:
+        # No MF=1/451 to consult. Fall back to the marker, and refuse an
+        # unrecognised one rather than filing it under the ground state — which
+        # is what discarding the marker entirely used to do, for every file.
+        if marker_rank is None:
+            raise TargetStateConflict(
+                f"{filename}: isomer marker {marker!r} is not one this repository can "
+                f"spell ({sorted(ENDF_TARGET_MARKERS)}), and the evaluation has no "
+                "MF=1/451 LISO to resolve it. Refusing to guess the target's state."
+            )
+        return isomer_state(marker_rank)
+
+    liso = int(liso)
+    if marker_rank is not None and marker_rank != liso:
+        raise TargetStateConflict(
+            f"{filename}: the filename says isomer rank {marker_rank} (marker {marker!r}) "
+            f"but MF=1/451 says LISO={liso}. One of them is wrong about which nuclide "
+            "this evaluation is; refusing to pick."
+        )
+    if marker_rank is None and liso == 0:
+        # An unknown marker on a file the evaluation calls ground state. The
+        # marker means *something*, and 'ground state with a suffix' is not a
+        # combination we can explain, so it is not one to write.
+        raise TargetStateConflict(
+            f"{filename}: isomer marker {marker!r} is unrecognised, but MF=1/451 says "
+            "LISO=0 (ground state). The marker contradicts the evaluation."
+        )
+    return isomer_state(liso)
+
+
 def parse_mf10_rows(
     material,  # noqa: ANN001 — endf.Material, imported lazily by the caller
     target_a: int,
@@ -764,6 +844,7 @@ def parse_endf_file(
     target_z: int,
     target_a: int,
     projectile: str,
+    marker: str = "",
 ) -> ParsedFile:
     """Parse an ENDF-6 format text file and extract cross-section data.
 
@@ -915,6 +996,13 @@ def parse_endf_file(
     rows.extend(mf10_rows)
     rows.extend(channel_rows)
 
+    # Stamped once here rather than in each of the three row builders: it is a
+    # property of the *file*, identical for every row in it, and three copies of
+    # that is three places for them to disagree (#353).
+    target_state = target_state_from_material(material, marker, target_a, f"Z={target_z} A={target_a}")
+    for row in rows:
+        row["target_state"] = target_state
+
     return ParsedFile(
         rows=rows,
         channel_rows=len(channel_rows),
@@ -995,7 +1083,7 @@ def download_and_parse(
         logger.warning("Cannot parse filename: %s", filename)
         return ParsedFile(rows=[])
 
-    target_z, target_a, _isomer = parsed
+    target_z, target_a, marker = parsed
 
     try:
         resp = session.get(url, timeout=60)
@@ -1015,7 +1103,7 @@ def download_and_parse(
         logger.warning("Bad zip %s: %s", filename, e)
         return ParsedFile(rows=[])
 
-    return parse_endf_file(endf_text, target_z, target_a, sublib_code)
+    return parse_endf_file(endf_text, target_z, target_a, sublib_code, marker)
 
 
 def fetch_library(
@@ -1247,6 +1335,10 @@ def fetch_library(
             rows,
             schema={
                 "target_A": pl.Int32,
+                # Per-file, stamped by parse_endf_file. Declared here so a shard
+                # whose evaluations are all ground-state still gets a Utf8
+                # column rather than an inferred Null one (#353).
+                "target_state": pl.Utf8,
                 "kind": pl.Utf8,
                 "MT": pl.Int32,
                 "residual_Z": pl.Int32,
@@ -1281,7 +1373,10 @@ def fetch_library(
         # under different keys, which is what they are. A bare unique(subset=…)
         # here would silently drop MT-partials that share a residual (Fe-56(n,p)
         # collapsed to 0.1 mb; #326) — sort only.
-        df = df.sort("target_A", "kind", "MT", "residual_Z", "residual_A", "state", "energy_MeV")
+        # target_state sorts beside target_A: the two together name the target
+        # nuclide, and leaving it out makes the row order of a shard holding both
+        # Br-80 and Br-80m depend on dict iteration (#353).
+        df = df.sort("target_A", "target_state", "kind", "MT", "residual_Z", "residual_A", "state", "energy_MeV")
 
         out_path = xs_dir / f"{stem}.parquet"
         df.write_parquet(out_path, compression=COMPRESSION)
