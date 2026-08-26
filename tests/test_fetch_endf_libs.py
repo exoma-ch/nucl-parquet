@@ -1139,9 +1139,9 @@ def test_manifest_distinguishes_not_represented_from_not_measured(monkeypatch, t
     m.fetch_library("jeff-4.0", "p", tmp_path, session=None)
 
     manifest = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())
-    assert manifest["signed_sections_dropped"] == {"2": 1}
-    assert "not represented" in manifest["charged_particle_elastic"]
-    assert "MF=6 LAW=5" in manifest["charged_particle_elastic"]
+    assert manifest["ingest"]["p"]["signed_sections_dropped"] == {"2": 1}
+    assert "not represented" in manifest["ingest"]["p"]["charged_particle_elastic"]
+    assert "MF=6 LAW=5" in manifest["ingest"]["p"]["charged_particle_elastic"]
 
 
 def test_a_library_with_nothing_signed_says_nothing(monkeypatch, tmp_path):
@@ -1151,8 +1151,8 @@ def test_a_library_with_nothing_signed_says_nothing(monkeypatch, tmp_path):
     m.fetch_library("irdff-2", "n", tmp_path, session=None)
 
     manifest = json.loads((tmp_path / "irdff-2" / "manifest.json").read_text())
-    assert manifest["signed_sections_dropped"] == {}
-    assert manifest["charged_particle_elastic"] is None
+    assert manifest["ingest"]["n"]["signed_sections_dropped"] == {}
+    assert manifest["ingest"]["n"]["charged_particle_elastic"] is None
 
 
 def test_the_rule_is_on_the_data_not_on_mt_2():
@@ -1362,6 +1362,8 @@ def test_target_state_values_are_in_the_vocabulary():
     for marker in ("", "m", "m2"):
         value = _mod().parse_endf_file(synthetic_material(), 13, 27, "n", marker).rows[0]["target_state"]
         assert value in TARGET_STATES, f"marker {marker!r} produced {value!r}, outside {sorted(TARGET_STATES)}"
+
+
 def test_a_second_sublibrary_adds_to_the_manifest_instead_of_replacing_it(monkeypatch, tmp_path):
     """Two `--sublibrary` runs must leave a manifest describing both.
 

@@ -43,21 +43,13 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
-<<<<<<< HEAD
-from nucl_parquet.builder_stamp import write_builder_stamp  # noqa: E402
+from nucl_parquet.builder_stamp import RETIRED_MANIFEST_KEYS, write_builder_stamp  # noqa: E402
 from nucl_parquet.state_vocabulary import (  # noqa: E402
     ENDF_TARGET_MARKERS,
     SUM,
     isomer_state,
     target_state_for_natural_element,
 )
-||||||| parent of 75b7154e (fix(provenance): per-sublibrary ingest records, and what produced the five unbuilt libraries)
-from nucl_parquet.builder_stamp import write_builder_stamp  # noqa: E402
-from nucl_parquet.state_vocabulary import SUM  # noqa: E402
-=======
-from nucl_parquet.builder_stamp import RETIRED_MANIFEST_KEYS, write_builder_stamp  # noqa: E402
-from nucl_parquet.state_vocabulary import SUM  # noqa: E402
->>>>>>> 75b7154e (fix(provenance): per-sublibrary ingest records, and what produced the five unbuilt libraries)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1448,6 +1440,19 @@ def fetch_library(
     # from what is actually on disk and is the authority; these exist so a
     # manifest is coherent between the ingest and that regeneration, instead of
     # describing one projectile until someone remembers the second command.
+    # A record written by an older or interrupted run may not carry every key
+    # this sums. Say which sublibrary is malformed rather than raising a bare
+    # KeyError from inside a generator — the failure is in one record and the
+    # message should name it — and refuse rather than defaulting to zero, which
+    # would quietly under-report the library's totals.
+    for sub, rec in manifest["ingest"].items():
+        missing = sorted({"files", "total_rows", "elements"} - set(rec))
+        if missing:
+            raise RuntimeError(
+                f"{lib_key}: manifest ingest record for sublibrary {sub!r} is missing {missing}. "
+                f"Re-run the ingest for that sublibrary, or delete the record — totals summed over a "
+                "partial record would silently under-report the library."
+            )
     manifest["files"] = sum(rec["files"] for rec in manifest["ingest"].values())
     manifest["total_rows"] = sum(rec["total_rows"] for rec in manifest["ingest"].values())
     manifest["projectiles"] = sorted(manifest["ingest"])

@@ -213,7 +213,8 @@ def test_a_null_builder_records_what_actually_produced_the_library() -> None:
 
 def _looks_like_a_citation(item: str) -> bool:
     """A 7+ hex-digit sha, or a path with a recognisable source extension."""
-    return bool(re.search(r"\b[0-9a-f]{7,40}\b", item) or re.search(r"[\w/.-]+\.(?:py|json|md|toml)\b", item))
+    sha = re.compile(r"\b(?=[0-9a-f]{7,40}\b)[0-9a-f]*[a-f][0-9a-f]*\b")
+    return bool(sha.search(item) or re.search(r"[\w/.-]+\.(?:py|json|md|toml)\b", item))
 
 
 def test_a_rebuild_command_that_would_downgrade_the_schema_chains_the_migration() -> None:

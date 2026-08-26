@@ -105,6 +105,12 @@ RETIRED_MANIFEST_KEYS: frozenset[str] = frozenset(
         "channel_rows",
         "null_residual_rows",
         "states",
+        # Added flat by #377/#379 while #369 was in flight — the same shape, one
+        # more time. Both are facts about one --sublibrary run: which MTs that
+        # run dropped for carrying signed points, and whether that leaves
+        # charged-particle elastic unrepresented for that projectile.
+        "signed_sections_dropped",
+        "charged_particle_elastic",
     }
 )
 

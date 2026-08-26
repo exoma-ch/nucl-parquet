@@ -214,7 +214,10 @@
           "b48a293b 'data: add JENDL-AD-2017, JENDL-DEU-2020, and IAEA-PD-2019 libraries' — 167 files: catalog.json, 3 manifest.json, the rest parquet. No .py, .sh or notebook in the commit.",
           "Absent from scripts/fetch_endf_libs.py::LIBRARIES and from every other builder under scripts/ and nucl_parquet/."
         ],
-        "rebuild_path": "Plausibly a LibraryDef(iaea_path='JENDL-AD-2017', sublibraries={'n': 'n', 'p': 'p'}) in scripts/fetch_endf_libs.py — both sublibraries are shapes the ingest already handles. UNVERIFIED: nothing in the repo confirms the IAEA NDS mirror serves it at that path, and source_url points at JAEA rather than the mirror. Probe before relying on it.",
+        "rebuild_path": "Plausibly a LibraryDef(iaea_path='JENDL-AD-2017', sublibraries={'n': 'n', 'p': 'p'}) in scripts/fetch_endf_libs.py — both sublibraries are shapes the ingest already handles.",
+        "unverified": [
+          "The IAEA NDS mirror serves this library at download-endf/JENDL-AD-2017/{n,p}/. Guessed from the naming convention; source_url points at JAEA, not the mirror. Probe before relying on it."
+        ],
         "issue": 346
       },
       "path": "jendl-ad-2017/xs/"
@@ -236,7 +239,10 @@
           "b48a293b — same commit as jendl-ad-2017 and iaea-pd-2019; no .py in the diff.",
           "Absent from scripts/fetch_endf_libs.py::LIBRARIES."
         ],
-        "rebuild_path": "Plausibly a LibraryDef(iaea_path='JENDL-DEU-2020', sublibraries={'d': 'd'}); the deuteron sublibrary is already handled for endfb-8.1, jendl-5 and tendl-2025. UNVERIFIED: the mirror path is a guess, not a checked fact.",
+        "rebuild_path": "Plausibly a LibraryDef(iaea_path='JENDL-DEU-2020', sublibraries={'d': 'd'}); the deuteron sublibrary is already handled for endfb-8.1, jendl-5 and tendl-2025.",
+        "unverified": [
+          "The IAEA NDS mirror serves this library at download-endf/JENDL-DEU-2020/d/. Guessed from the naming convention; source_url points at JAEA, not the mirror."
+        ],
         "issue": 346
       },
       "path": "jendl-deu-2020/xs/"
@@ -259,6 +265,9 @@
           "Absent from scripts/fetch_endf_libs.py::LIBRARIES."
         ],
         "rebuild_path": "Harder than the two JENDL libraries: this is photonuclear data (projectile 'g'), and scripts/fetch_endf_libs.py::PROJECTILE_ZA deliberately restricts fetchable sublibraries to n/p/d/t/h/a. A LibraryDef alone is not enough — 'g' needs admitting as a sublibrary first. UNVERIFIED mirror path.",
+        "unverified": [
+          "The IAEA NDS mirror serves this library at download-endf/IAEA-PD-2019/g/. Guessed from the naming convention."
+        ],
         "issue": 346
       },
       "path": "iaea-pd-2019/xs/"

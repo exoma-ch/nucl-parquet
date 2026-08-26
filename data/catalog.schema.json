@@ -111,6 +111,13 @@
                 "type": "string",
                 "description": "What it would take to bring this in-repo, and what is unverified about that."
               },
+              "unverified": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Claims in `rebuild_path` that were reasoned to, not checked — each stated so it can be settled by one probe. A structured field rather than an UNVERIFIED marker in the prose, because a marker in prose is a convention the next author drops."
+              },
               "issue": {
                 "type": "integer",
                 "description": "The issue tracking the recovery."
