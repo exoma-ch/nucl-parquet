@@ -46,7 +46,19 @@ CANONICAL_XS_SCHEMA = {
     "MT": "Int32",  # null for production sums
     "residual_Z": "Int32",  # null when the channel names no residual
     "residual_A": "Int32",
-    "state": "Utf8",  # residual isomeric state: '' g m m1 m2
+    # Residual isomeric state: '' (unspecified) | 'g' (explicitly ground) |
+    # 'm', 'm2', 'm3' (isomers, ascending excitation — the spelling
+    # meta/ensdf/nuclides.parquet uses, so these join). EXFOR additionally ships
+    # 'm1' as a synonym for 'm' and a bare 'l', and hi-xs-prod leaves it null —
+    # so match with `state LIKE 'm%'`, not `state = 'm'`.
+    #
+    # '' is a SUM OVER the states 'g'/'m' enumerate, not a peer of them. ENDF
+    # gives the channel total in MF=3 and the ground/metastable split in MF=10,
+    # and both become rows: Al-27(n,2n) is one 177 mb '' row *and* a 114 mb 'g'
+    # + 65 mb 'm' pair. So `GROUP BY residual_Z, residual_A` with `SUM(xs_mb)`
+    # double-counts. Filter `state = ''` for totals or `state <> ''` for the
+    # split — never sum across the two (#340).
+    "state": "Utf8",
     # --- the datum
     "energy_MeV": "Float64",
     "xs_mb": "Float64",
