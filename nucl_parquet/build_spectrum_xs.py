@@ -124,6 +124,18 @@ def build(data_dir: Path | None = None) -> None:
 
             df = pl.read_parquet(pq_path)
 
+            # Spectrum-averaging is per production channel. Since #347 these
+            # tables also carry `kind='channel'` rows, and every one that names
+            # no residual — MT=1, 2, 4, 18, 19, 20, 21, 38 — shares the group key
+            # (target_A, NULL, NULL, ''), because polars treats null as a
+            # distinct-but-equal key. Without this filter the total, elastic,
+            # inelastic and fission curves are interleaved, sorted by energy and
+            # integrated as though they were one reaction, and the result is
+            # written out as a row naming no residual — wrong, and invisible to
+            # any downstream query that filters on residual.
+            if "kind" in df.columns:
+                df = df.filter(pl.col("kind") == "production")
+
             reaction_cols = ["target_A", "residual_Z", "residual_A", "state"]
             for group_keys, group_df in df.group_by(reaction_cols):
                 target_A, residual_Z, residual_A, state = group_keys

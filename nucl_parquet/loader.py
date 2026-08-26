@@ -256,6 +256,17 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
 
     # --- Special views that need logic beyond simple registration ---
 
+    # endf_mt: what each MT means, and which MTs are sums of which. Reference
+    # data keyed by MT, not a column repeated on every row — see
+    # `nucl_parquet/endf_mt.py`. Built from the in-package table rather than a
+    # parquet, so it is queryable from a plain checkout with no data download:
+    #
+    #   SELECT * FROM xs JOIN endf_mt USING (MT) WHERE NOT endf_mt.redundant
+    #
+    # Without it, a table carrying both MT=1 (total) and MT=2 (elastic) makes
+    # `SUM(xs_mb)` silently double-count, with nothing in the row saying so.
+    _register_endf_mt(db)
+
     # ground_states: when nuclides.parquet exists, override the file-based
     # ground_states view with a filtered view of nuclides (state='').
     nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
@@ -269,6 +280,34 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         db.execute("CREATE VIEW fluorescence AS SELECT * FROM atomic_relaxation WHERE transition_type = 'radiative'")
 
     return db
+
+
+def _register_endf_mt(db: duckdb.DuckDBPyConnection) -> None:
+    """Register the `endf_mt` reference view from the in-package MT table.
+
+    A VALUES list rather than a parquet: forty rows of ENDF-102 vocabulary are
+    code, not data, and shipping them as a file would mean a data release every
+    time a reaction name is corrected.
+    """
+    from .endf_mt import mt_table
+
+    rows = mt_table()
+    if not rows:  # pragma: no cover - the table is a literal
+        return
+    values = ",".join(
+        "({}, '{}', {}, {}, {})".format(
+            r["MT"],
+            r["name"].replace("'", "''"),
+            "TRUE" if r["redundant"] else "FALSE",
+            "[" + ",".join(str(m) for m in r["sums_over"]) + "]",
+            "TRUE" if r["particle_production"] else "FALSE",
+        )
+        for r in rows
+    )
+    db.execute(
+        "CREATE OR REPLACE VIEW endf_mt AS "
+        "SELECT * FROM (VALUES " + values + ") AS t(MT, name, redundant, sums_over, particle_production)"
+    )
 
 
 def _register_parquet(

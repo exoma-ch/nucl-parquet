@@ -128,11 +128,26 @@ NA24_B = [(5.0e6, 0.010), (1.4e7, 0.030)]
 # overflow sentinel and a zero that must both be dropped.
 MG27 = [(1.0e7, 0.010), (2.0e7, 1.99e35), (3.0e7, 0.0), (4.0e7, 0.020)]
 
+# The four channels #347 is about. None of them names a single product, so
+# `mt_to_residual` returns None for all four and every one used to be dropped:
+# MT=1 total, MT=2 elastic, MT=4 inelastic, MT=18 fission. MT=102 capture is
+# here as the control — it does name a residual, and always survived.
+TOTAL = [(1.0e5, 5.000), (1.0e6, 4.000), (1.4e7, 3.000)]
+ELASTIC = [(1.0e5, 3.000), (1.0e6, 2.500), (1.4e7, 1.500)]
+INELASTIC = [(1.0e6, 0.500), (1.4e7, 0.400)]
+FISSION = [(1.0e5, 1.200), (1.0e6, 1.100), (1.4e7, 2.079)]
+CAPTURE = [(1.0e5, 0.300), (1.0e6, 0.020), (1.4e7, 0.001)]
+
 
 def synthetic_material() -> str:
     za = 13027.0
     parts = [
         "".ljust(66) + "TPID\n",
+        mf3_section(za, 1, TOTAL),
+        mf3_section(za, 2, ELASTIC),
+        mf3_section(za, 4, INELASTIC),
+        mf3_section(za, 18, FISSION),
+        mf3_section(za, 102, CAPTURE),
         mf3_section(za, 16, AL26_TOTAL),
         mf10_section(za, 16, [(13026, 0, AL26_G), (13026, 1, AL26_M)]),
         mf10_section(za, 5, [(11024, 0, NA24_A)]),
@@ -160,12 +175,19 @@ def parsed():
     return _mod().parse_endf_file(synthetic_material(), 13, 27, "n")
 
 
-def _rows(parsed, z, a, state):
+def _rows(parsed, z, a, state, kind="production"):
+    """Production rows for one (residual, state). `kind` matters since #347:
+    the same residual now also appears on per-MT `channel` rows."""
     return sorted(
         (r["energy_MeV"], r["xs_mb"])
         for r in parsed.rows
-        if (r["residual_Z"], r["residual_A"], r["state"]) == (z, a, state)
+        if (r["residual_Z"], r["residual_A"], r["state"], r["kind"]) == (z, a, state, kind)
     )
+
+
+def _channel(parsed, mt):
+    """(energy, xs) for one MF=3 MT's `channel` rows."""
+    return sorted((r["energy_MeV"], r["xs_mb"]) for r in parsed.rows if r["kind"] == "channel" and r["MT"] == mt)
 
 
 # ---------------------------------------------------------------------------
@@ -257,10 +279,13 @@ def test_mf10_produces_isomeric_rows(parsed):
 def test_counters_report_both_file_types(parsed):
     """The guards run on these numbers, so they must reflect the source, not
     just what happened to survive."""
-    assert parsed.mf3_sections == 1  # the synthetic material carries MF=3 MT=16
-    assert parsed.mf3_rows == 3
+    # MF=3 MT = 1, 2, 4, 16, 18, 102
+    assert parsed.mf3_sections == 6
+    # Production rows come only from the MTs that name a residual: MT=16 -> Al-26
+    # and MT=102 -> Al-28. The other four are channel rows only.
+    assert parsed.mf3_rows == len(AL26_TOTAL) + len(CAPTURE)
     assert parsed.mf10_sections == 4
-    assert parsed.mf3_rows + parsed.mf10_rows == len(parsed.rows)
+    assert parsed.mf3_rows + parsed.mf10_rows + parsed.channel_rows == len(parsed.rows)
 
 
 def test_mf10_ground_and_metastable_carry_their_own_cross_sections(parsed):
@@ -306,13 +331,91 @@ def test_overflow_sentinels_and_zeros_are_dropped(parsed):
 
 
 def test_every_row_matches_the_parquet_schema(parsed):
-    expected = {"target_A", "residual_Z", "residual_A", "state", "energy_MeV", "xs_mb"}
+    expected = {"target_A", "kind", "MT", "residual_Z", "residual_A", "state", "energy_MeV", "xs_mb"}
     assert parsed.rows
     for row in parsed.rows:
         assert set(row) == expected
         assert row["target_A"] == 27
         assert row["state"] in ("", "g", "m", "m2", "m3")
         assert row["xs_mb"] > 0
+
+
+# ---------------------------------------------------------------------------
+# #347 — MT and null residuals
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("mt", "curve", "name"),
+    [(1, TOTAL, "total"), (2, ELASTIC, "elastic"), (4, INELASTIC, "inelastic"), (18, FISSION, "fission")],
+)
+def test_channels_that_name_no_residual_are_emitted_not_dropped(parsed, mt, curve, name):
+    """The #347 regression, one channel at a time.
+
+    `mt_to_residual` correctly returns None for these — they genuinely name no
+    single product. The caller then treated None as "skip", so 17.3M evaluated
+    rows carried zero fission, total, elastic or inelastic, and U-235(n,f) — the
+    most-cited number in neutron physics — could not be queried at all.
+    """
+    rows = _channel(parsed, mt)
+    assert rows, f"MT={mt} ({name}) produced no rows — #347 is back"
+    assert [xs for _e, xs in rows] == pytest.approx([xs * 1e3 for _e, xs in curve])
+    assert [e for e, _xs in rows] == pytest.approx([e * 1e-6 for e, _xs in curve])
+
+
+@pytest.mark.parametrize("mt", [1, 2, 4, 18])
+def test_those_channels_carry_a_null_residual_not_a_sentinel(parsed, mt):
+    """Null, not 0/0. `residual_Z = residual_A = 0` collides with a real Z=0
+    product and is what made (n,tot), (n,el) and (n,f) indistinguishable."""
+    rows = [r for r in parsed.rows if r["kind"] == "channel" and r["MT"] == mt]
+    assert rows
+    for r in rows:
+        assert r["residual_Z"] is None, f"MT={mt} residual_Z={r['residual_Z']!r}, expected None"
+        assert r["residual_A"] is None
+
+
+def test_capture_still_names_its_residual(parsed):
+    """The control: MT=102 does fix a product, so it must keep naming one.
+    A fix that nulled every residual would pass the tests above and be wrong."""
+    rows = [r for r in parsed.rows if r["kind"] == "channel" and r["MT"] == 102]
+    assert rows
+    for r in rows:
+        assert (r["residual_Z"], r["residual_A"]) == (13, 28)  # Al-27 + n
+
+
+def test_kind_tells_channels_and_production_sums_apart(parsed):
+    """`kind` is the marker that stops a union double-counting: a production row
+    is our sum over every channel reaching a residual, a channel row is one MT.
+    Adding them together is wrong, so the distinction has to be queryable."""
+    assert {r["kind"] for r in parsed.rows} == {"channel", "production"}
+    for r in parsed.rows:
+        if r["kind"] == "channel":
+            assert r["MT"] is not None, "channel row without an MT"
+        else:
+            assert r["MT"] is None, f"production row carrying MT={r['MT']}"
+
+
+def test_production_rows_are_unchanged_by_the_channel_addition(parsed):
+    """#347 adds rows; it must not alter the ones already shipped. Al-26 is
+    still the MF=3 MT=16 sum and the MF=10 g/m split, exactly as in #340."""
+    assert [xs for _e, xs in _rows(parsed, 13, 26, "")] == pytest.approx([80.0, 140.0, 110.0])
+    assert [xs for _e, xs in _rows(parsed, 13, 26, "g")] == pytest.approx([60.0, 100.0, 80.0])
+    assert [xs for _e, xs in _rows(parsed, 13, 26, "m")] == pytest.approx([20.0, 40.0, 30.0])
+
+
+def test_channel_and_production_rows_coexist_for_one_residual(parsed):
+    """Al-26 is reachable as both: MT=16's own channel row and the production
+    sum over every MT reaching (13,26). Same numbers here because MT=16 is the
+    only contributor — but they are different claims and different rows."""
+    assert _channel(parsed, 16)
+    assert _rows(parsed, 13, 26, "")
+    assert _channel(parsed, 16) == _rows(parsed, 13, 26, "")
+
+
+def test_counters_report_the_channel_rows(parsed):
+    assert parsed.channel_rows == len([r for r in parsed.rows if r["kind"] == "channel"])
+    assert parsed.null_residual_rows == len(TOTAL) + len(ELASTIC) + len(INELASTIC) + len(FISSION)
+    assert parsed.null_residual_rows > 0
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +461,8 @@ def _stub_library(monkeypatch, parsed_files: dict):
 # Al-27(n,p)Mg-27 as MF=3 would file it, and an MF=10 metastable row.
 _MF3_ROW = {
     "target_A": 27,
+    "kind": "production",
+    "MT": None,
     "residual_Z": 12,
     "residual_A": 27,
     "state": "",
@@ -365,6 +470,8 @@ _MF3_ROW = {
     "xs_mb": 80.0,
 }
 _MF10_ROW = {**_MF3_ROW, "residual_Z": 13, "residual_A": 26, "state": "m", "xs_mb": 40.0}
+# A null-residual channel row: MT=18 fission names no single product (#347).
+_CHANNEL_ROW = {**_MF3_ROW, "kind": "channel", "MT": 18, "residual_Z": None, "residual_A": None}
 
 
 def test_guard_fires_when_mf10_sections_yield_no_rows(monkeypatch, tmp_path):
@@ -415,11 +522,13 @@ def test_guard_is_quiet_when_the_library_genuinely_has_no_mf10(monkeypatch, tmp_
         monkeypatch,
         {
             "n_013-Al-27_1325.zip": _mod().ParsedFile(
-                rows=[_MF3_ROW],
+                rows=[_MF3_ROW, _CHANNEL_ROW],
                 mf3_sections=12,
                 mf3_rows=1,
                 mf10_sections=0,
                 mf10_rows=0,
+                channel_rows=1,
+                null_residual_rows=1,
             )
         },
     )
@@ -427,7 +536,8 @@ def test_guard_is_quiet_when_the_library_genuinely_has_no_mf10(monkeypatch, tmp_
     manifest = json.loads((tmp_path / "cendl-3.2" / "manifest.json").read_text())
     assert manifest["mf10_sections"] == 0
     assert manifest["mf3_rows"] == 1
-    assert manifest["states"] == {"": 1}
+    assert manifest["states"] == {"": 2}  # the production row and the channel row
+    assert manifest["null_residual_rows"] == 1
 
 
 def test_empty_ingest_guard_raises_rather_than_returning(monkeypatch, tmp_path):
@@ -465,3 +575,181 @@ def test_written_parquet_carries_the_states(monkeypatch, tmp_path):
     assert set(df["state"].unique()) == {"", "g", "m", "m2"}
     al26m = df.filter((pl.col("residual_Z") == 13) & (pl.col("residual_A") == 26) & (pl.col("state") == "m"))
     assert al26m["xs_mb"].max() == pytest.approx(40.0)
+
+
+# ---------------------------------------------------------------------------
+# #359 — the ingest writes CANONICAL_XS_SCHEMA, not the legacy 6 columns
+# ---------------------------------------------------------------------------
+
+
+def test_written_file_is_exactly_the_canonical_schema(monkeypatch, tmp_path):
+    """A fresh ingest must be canonical on the way out.
+
+    This script wrote the 6-column legacy form and relied on
+    `migrate_xs_schema.py` being run afterwards, so the documented maintenance
+    operation — re-ingest a library — silently dropped twelve of eighteen
+    columns and put identity back in the file path (#359). Nothing chained the
+    two steps and no test noticed.
+    """
+    import polars as pl
+
+    from nucl_parquet._schemas import CANONICAL_XS_SCHEMA
+
+    rows = _mod().parse_endf_file(synthetic_material(), 13, 27, "n")
+    m = _stub_library(monkeypatch, {"n_013-Al-27_1325.zip": rows})
+    m.fetch_library("irdff-2", "n", tmp_path, session=None)
+
+    df = pl.read_parquet(tmp_path / "irdff-2" / "xs" / "n_Al.parquet")
+    assert df.columns == list(CANONICAL_XS_SCHEMA), "fresh ingest is not canonical"
+    for col, dtype in CANONICAL_XS_SCHEMA.items():
+        assert df.schema[col] == getattr(pl, dtype), f"{col}: {df.schema[col]} != {dtype}"
+
+
+def test_identity_lives_in_the_row_not_the_path(monkeypatch, tmp_path):
+    """Principle 5. `library`, `projectile`, `proj_Z/A` and `target_Z` used to be
+    recoverable only by regexing `data/<library>/xs/<proj>_<El>.parquet`."""
+    import polars as pl
+
+    rows = _mod().parse_endf_file(synthetic_material(), 13, 27, "n")
+    m = _stub_library(monkeypatch, {"n_013-Al-27_1325.zip": rows})
+    m.fetch_library("irdff-2", "n", tmp_path, session=None)
+
+    df = pl.read_parquet(tmp_path / "irdff-2" / "xs" / "n_Al.parquet")
+    assert df["library"].unique().to_list() == ["irdff-2"]
+    assert df["projectile"].unique().to_list() == ["n"]
+    assert df["proj_Z"].unique().to_list() == [0]
+    assert df["proj_A"].unique().to_list() == [1]
+    assert df["target_Z"].unique().to_list() == [13]
+    assert df["MT"].null_count() < df.height, "MT is all-null — the #347 state"
+
+
+def test_migration_finds_nothing_to_do_on_a_fresh_ingest(monkeypatch, tmp_path):
+    """A migration that still has work after its cause is fixed is a signal.
+
+    `migrate_file` reports `already-canonical` for any file carrying `library`,
+    so this asserts the ingest and the migration agree on the target shape.
+    """
+    import migrate_xs_schema
+
+    rows = _mod().parse_endf_file(synthetic_material(), 13, 27, "n")
+    m = _stub_library(monkeypatch, {"n_013-Al-27_1325.zip": rows})
+    m.fetch_library("irdff-2", "n", tmp_path, session=None)
+
+    path = tmp_path / "irdff-2" / "xs" / "n_Al.parquet"
+    n, status = migrate_xs_schema.migrate_file(path, "irdff-2", "production", dry_run=True)
+    assert status == "already-canonical", f"migration still wants to rewrite a fresh ingest: {status}"
+    assert n > 0
+
+
+def test_guard_fires_when_no_channel_rows_are_emitted(monkeypatch, tmp_path):
+    """#347's signature: production rows keep flowing from the transmutation
+    channels, so neither the empty-ingest guard nor #340's MF=10 guard sees that
+    total/elastic/inelastic/fission have gone missing again."""
+    m = _stub_library(
+        monkeypatch,
+        {
+            "n_013-Al-27_1325.zip": _mod().ParsedFile(
+                rows=[_MF3_ROW],
+                mf3_sections=12,
+                mf3_rows=1,
+                channel_rows=0,
+                null_residual_rows=0,
+            )
+        },
+    )
+    with pytest.raises(RuntimeError, match="channel"):
+        m.fetch_library("irdff-2", "n", tmp_path, session=None)
+
+
+# ---------------------------------------------------------------------------
+# The endf_mt reference view — how a consumer avoids double-counting
+# ---------------------------------------------------------------------------
+
+
+def test_endf_mt_marks_the_redundant_totals():
+    from nucl_parquet.endf_mt import REDUNDANT_MT, mt_name
+
+    assert 2 in REDUNDANT_MT[1] and 3 in REDUNDANT_MT[1]  # total = elastic + nonelastic
+    assert REDUNDANT_MT[18] == (19, 20, 21, 38)
+    assert mt_name(18) == "(z,fission)"
+    assert mt_name(601) == "(z,p) level 1"
+    assert mt_name(649) == "(z,p) continuum"
+
+
+def test_exclusive_mts_drops_only_actual_double_counts():
+    """MT=103 is redundant *only* when its MT=600-649 partials also ship.
+    An evaluation carrying MT=103 alone must keep it — that was #326's bug from
+    the other side, where dropping a summed MT lost the whole channel."""
+    from nucl_parquet.endf_mt import exclusive_mts
+
+    assert exclusive_mts({103}) == {103}
+    assert exclusive_mts({103, 600, 601}) == {600, 601}
+    assert exclusive_mts({1, 2, 3}) == {2, 3}
+    assert 205 not in exclusive_mts({2, 205}), "particle production is not a reaction channel"
+
+
+def test_endf_mt_view_is_queryable_from_a_plain_checkout():
+    """Reference data as a view, not a column repeated on 17M rows, and not a
+    parquet that would need a data release to correct a reaction name."""
+    import nucl_parquet.loader as loader
+
+    db = loader.connect()
+    row = db.sql("SELECT name, redundant, sums_over FROM endf_mt WHERE MT = 1").fetchone()
+    assert row[0] == "(n,total)"
+    assert row[1] is True
+    assert sorted(row[2]) == [2, 3]
+    n = db.sql("SELECT count(*) FROM endf_mt WHERE redundant").fetchone()[0]
+    assert n >= 10
+
+
+# ---------------------------------------------------------------------------
+# End to end against the real mirror. Network-marked, so CI skips it; run with
+#   nix develop -c uv run pytest tests/test_fetch_endf_libs.py -m network
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.network
+def test_real_u235_evaluation_reproduces_the_thermal_anchors(tmp_path):
+    """Ingest IRDFF-II's U-235 evaluation and check the two textbook numbers.
+
+    This is the anchor `tests/test_data_release.py` cannot yet make of the
+    evaluated libraries, because those are only rebuilt after this lands. Run
+    against the builder instead, it is provable today: IRDFF-II ships U-235 as
+    pointwise data from 1e-11 MeV up, so thermal is in MF=3 and needs no
+    resonance reconstruction.
+
+    ENDF/B-VIII.1 and JEFF-4.0 would *not* work here — their MF=3 MT=18 is
+    identically zero below 2250 eV because the whole thermal cross-section lives
+    in MF=2 resonance parameters, which this script does not reconstruct.
+    """
+    import numpy as np
+    import requests
+
+    m = _mod()
+    session = requests.Session()
+    session.headers["User-Agent"] = "nucl-parquet/0.1 (test)"
+    parsed = m.download_and_parse(m.LIBRARIES["irdff-2"], "n", "n_92-U-235_9228.zip", session)
+    assert parsed.rows, "download or parse failed"
+
+    def sigma_at(mt, energy_MeV):
+        pts = sorted(
+            (r["energy_MeV"], r["xs_mb"])
+            for r in parsed.rows
+            if r["kind"] == "channel" and r["MT"] == mt and r["xs_mb"] > 0
+        )
+        assert pts, f"MT={mt} produced no channel rows"
+        e = np.array([p[0] for p in pts])
+        s = np.array([p[1] for p in pts])
+        return float(np.exp(np.interp(np.log(energy_MeV), np.log(e), np.log(s))))
+
+    fission_thermal = sigma_at(18, 2.53e-8)
+    total_thermal = sigma_at(1, 2.53e-8)
+    fission_14mev = sigma_at(18, 14.0)
+
+    assert 555_000 < fission_thermal < 615_000, f"U-235(n,f) thermal = {fission_thermal:,.0f} mb, expected ~585,000"
+    assert 665_000 < total_thermal < 735_000, f"U-235 total thermal = {total_thermal:,.0f} mb, expected ~700,000"
+    assert 1_900 < fission_14mev < 2_300, f"U-235(n,f) at 14 MeV = {fission_14mev:,.0f} mb, expected ~2,079"
+
+    # And the whole point: these rows name no residual.
+    for mt in (1, 18):
+        assert all(r["residual_Z"] is None for r in parsed.rows if r["kind"] == "channel" and r["MT"] == mt)

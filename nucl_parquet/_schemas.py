@@ -36,6 +36,15 @@ CANONICAL_XS_SCHEMA = {
     "library": "Utf8",
     # 'production' — summed over every channel reaching this residual (MT null)
     # 'channel'    — one ENDF reaction channel (MT set; residual may be null)
+    #
+    # These are two different quantities over the same data, and an evaluation
+    # ships both, so `SUM(xs_mb)` without a `kind` filter double-counts. Pick
+    # one: `kind='production'` to ask "what makes Fe-55", `kind='channel'` to
+    # ask "what does MT=102 do". Within channels, ENDF's own redundancy still
+    # applies — MT=1 contains MT=2 — and `endf_mt.redundant` says which:
+    #
+    #   SELECT * FROM xs JOIN endf_mt USING (MT)
+    #   WHERE kind='channel' AND NOT endf_mt.redundant
     "kind": "Utf8",
     # --- reaction identity
     "projectile": "Utf8",  # n p d t h a g, or a heavy ion such as 'ar40'
@@ -43,8 +52,15 @@ CANONICAL_XS_SCHEMA = {
     "proj_A": "Int32",
     "target_Z": "Int32",
     "target_A": "Int32",  # 0 = natural element (ENDF convention)
-    "MT": "Int32",  # null for production sums
-    "residual_Z": "Int32",  # null when the channel names no residual
+    # ENDF's channel identity, and the primitive: MT -> residual is derivable,
+    # residual -> MT is not. Null on production rows, which are a sum over
+    # several MTs and so name none.
+    "MT": "Int32",
+    # Null — never 0/0 — when the channel names no single product. Total,
+    # elastic, inelastic and fission all do; `WHERE residual_Z IS NULL` is how
+    # you ask for them, and a 0/0 sentinel made them indistinguishable from each
+    # other and from a real Z=0 product.
+    "residual_Z": "Int32",
     "residual_A": "Int32",
     # Residual isomeric state: '' (unspecified) | 'g' (explicitly ground) |
     # 'm', 'm2', 'm3' (isomers, ascending excitation — the spelling
