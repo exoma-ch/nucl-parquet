@@ -146,7 +146,7 @@ MEASURED_XS_STATES: frozenset[str] = frozenset({GROUND, UNRESOLVED, *ISOMERS})
 #:   * `radiation` carries 13,106 rows whose `state` was `''` ("the ground-band
 #:     decay chain") but whose emitting level coincides with a catalogued isomer
 #:     of the same nuclide. Whether those are ground-band cascade gammas or
-#:     isomer decays cannot be settled from an energy coincidence.
+#:     isomer decays cannot be settled from an energy coincidence (#386).
 #:
 #: `'g'` is a positive claim about which nuclear state a row belongs to.
 #: Asserting it over a row measured as ambiguous is inventing a claim — the

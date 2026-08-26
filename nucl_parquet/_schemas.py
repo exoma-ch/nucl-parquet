@@ -282,6 +282,7 @@ NUCLIDES_SCHEMA = {
     #              coincides with a catalogued isomer of the same nuclide.
     #              Ground-band cascade gamma or isomer decay cannot be told
     #              apart from an energy coincidence, so neither is claimed.
+    #              Resolving them needs ENSDF's own band assignment (#386).
     #
     # Those rows do not join, deliberately. A row that does not come back is
     # visible; a row that comes back wrong is not.

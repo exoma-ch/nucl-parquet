@@ -206,8 +206,8 @@ def migrate_nuclide_keyed(data_dir: Path, table: str, *, dry_run: bool) -> tuple
     right — except for 13,106 rows across 45 nuclides whose emitting level
     coincides with a catalogued isomer of the same nuclide. Whether those are
     ground-band cascade gammas or isomer decays cannot be settled from an energy
-    coincidence, so they become NULL. See the follow-up issue in the module
-    docstring; resolving them needs ENSDF's own band assignment.
+    coincidence, so they become NULL (#386); resolving them needs ENSDF's own
+    band assignment, not a better energy tolerance.
     """
     paths = shards(data_dir, table)
     if not paths:

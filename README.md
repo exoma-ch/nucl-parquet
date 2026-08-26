@@ -219,14 +219,23 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 > `""` is retired from the cross-section tables, where it meant "summed over
 > states" (ENDF) or "not stated" (EXFOR) with nothing to tell those apart.
 >
-> **The join does not work yet, and knowing why matters.** `nuclides` still
-> spells the ground state `""` rather than `"g"`, so today the join misses every
-> real ground-state row *and* matches the `"sum"` rows instead — wrong in both
-> directions at once. Normalising it is a separate pass: 3,148 of its 3,161 `""`
-> rows sit at `level_keV = 0.0` and are plainly the ground state, but 13 sit
-> between 124.5 and 2166.1 keV with no isomer flag, and calling those `"g"` would
-> assert something nobody checked. Until then, join `nuclides` on `(Z, A)` and
-> filter `state` yourself.
+> **The join works once the catalogue migration is run.** `nuclides` still
+> spells the ground state `""` on disk, so *today* the join misses every real
+> ground-state row. The fix is written and tested — `scripts/migrate_state_vocabulary.py
+> --table meta/ensdf` — and lands with the next data release, because rewriting
+> the parquets is one.
+>
+> What it does, and why it is not a rename: 3,148 of the 3,161 `""` rows sit at
+> `level_keV = 0.0` and become `"g"`. The other 13 are *excited levels* that
+> inherited the ground-state label because `G4ENSDFSTATE` does not list those
+> nuclides' ground states at all — four of them carry ENSDF's `+X` floating
+> flag, so their excitation is relative to an unknown offset. Those become NULL.
+> Calling a 2166 keV level "the ground state" would be a plausible value under
+> an identity nobody checked.
+>
+> Until the migration runs, join `nuclides` on `(Z, A)` and filter `state`
+> yourself. The `ground_states` view already matches both spellings, so it needs
+> no change either side of it.
 >
 > The vocabulary itself lives in `nucl_parquet/state_vocabulary.py`, which every
 > builder imports, and `tests/test_state_vocabulary.py` enforces it per table.
@@ -333,7 +342,7 @@ Sourced from the [strata project's HuggingFace dataset](https://huggingface.co/d
 | View | Source | What's in it |
 |---|---|---|
 | `nuclides` | `meta/ensdf/nuclides.parquet` | All known states (ground + isomers) with half-life, J^π, decay modes, AME2020 mass excess, IUPAC composition |
-| `ground_states` | `nuclides WHERE state = ''` | Compatibility view (becomes `state = 'g'` when the nuclide-identity tables are normalised) |
+| `ground_states` | `nuclides WHERE state IN ('g','')` | Compatibility view; matches both spellings across the #378 migration |
 | `decay` / `decay_detailed` | `meta/decay{,_detailed}.parquet` | Decay branches per `(Z, A, state)`. `decay_detailed` adds `parent_ex_kev`, `daughter_ex_kev`, `q_value_kev`, `forbiddenness`, and **per-shell EC fractions** (`KshellEC`/`LshellEC`/`MshellEC`/`NshellEC`) |
 | `radiation` | `meta/ensdf/radiation/{Symbol}.parquet` | Per-element gamma + X-ray + Auger lines, unioned by `rad_type` discriminator |
 | `coincidences` | `meta/ensdf/coincidences/{Symbol}.parquet` | Gamma cascade pairs (~600k pairs, 104 element files) |
