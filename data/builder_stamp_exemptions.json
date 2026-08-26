@@ -110,7 +110,7 @@
     "tendl-2023-iso": {
       "reason": "external-builder",
       "issue": 346,
-      "note": "Imported by a root-level build.py --import-xs (deleted in e84ba665) and later patched by scripts/backfill_xs_nuclides.py (also deleted). Neither is in the tree."
+      "note": "Imported by a root-level build.py --import-xs (deleted in e84ba665). The bulk of the library still comes from that import, so there is nothing in the tree to stamp it against. scripts/backfill_xs_nuclides.py is back (#335) but only patches seven target nuclides into an already-imported tree; a stamp naming it would claim provenance over 8.08 M rows it did not produce, which is worse than no stamp. The entry clears when #346 gives the library a real in-repo builder."
     },
     "tendl-2025": {
       "reason": "unstamped",

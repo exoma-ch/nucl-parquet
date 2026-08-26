@@ -484,6 +484,31 @@ def test_mts_with_no_single_residual_stay_none(mt, why):
     assert mt not in MT_EMITTED_PARTICLES, f"MT={mt} ({why}) must not be tabulated"
 
 
+def test_mt_50_transmutes_for_a_charged_projectile_and_not_for_a_neutron():
+    """The neutron level band starts at 50, and that is safe *because* of the
+    residual==target guard rather than in spite of it (#335).
+
+    MT=50 is (z,n₀), the transition leaving the residual in its ground state.
+    For an incident neutron that is elastic scattering under another name — the
+    residual is the target — so it must yield no production row, and widening
+    the band from 51 to 50 is a no-op for every neutron library.
+
+    For an incident charged particle it is a genuine transmutation and the
+    dominant (p,n) channel at threshold. ⁹Be(p,n₀)⁹B and ⁷Li(p,n₀)⁷Be are the
+    two that matter here: with the band starting at 51 both were dropped, which
+    is what made natural beryllium a dead proton target (hyrr#668).
+    """
+    # Neutron: n₀ off Fe-56 leaves Fe-56.
+    assert mt_to_residual(50, 26, 56, 0, 1) is None
+    # Proton: (p,n₀) is a real product, and it is the isobar one Z up.
+    assert mt_to_residual(50, 4, 9, 1, 1) == (5, 9), "⁹Be(p,n₀) must produce B-9"
+    assert mt_to_residual(50, 3, 7, 1, 1) == (4, 7), "⁷Li(p,n₀) must produce Be-7"
+    # And MT=50 is inside the band rather than an entry of its own, so the two
+    # spellings cannot drift apart.
+    assert 50 not in MT_EMITTED_PARTICLES
+    assert any(lo <= 50 <= hi for lo, hi in LEVEL_RANGES), "MT=50 is not covered by any level range"
+
+
 @pytest.mark.parametrize("mt", [4, 51, 91])
 def test_inelastic_names_a_particle_but_not_a_new_nuclide(mt):
     """Inelastic scattering is tabulated — one neutron leaves — but the residual
