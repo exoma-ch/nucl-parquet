@@ -250,3 +250,181 @@ def test_a_real_listing_still_comes_back():
         "n_013-Al-27_1325.zip",
         "n_026-Fe-56_2631.zip",
     ]
+
+
+# ---------------------------------------------------------------------------
+# The parser must be able to read what the registry says it will fetch (#372)
+# ---------------------------------------------------------------------------
+#
+# `parse_endf_filename` came in with #334, which re-ingested seven libraries with
+# `--sublibrary n` only. No `he3_`/`he4_` filename was ever fed to it, and both
+# its regexes began `[a-z]+_`, which cannot match a projectile code containing a
+# digit. Every file in five shipped sublibraries — endfb-8.1 h/a, jendl-5 a,
+# tendl-2025 h/a, 242 shards — returned None, so a rebuild aborted on the
+# empty-ingest guard and could not regenerate any of them.
+#
+# The registry already knows the codes. Nothing checked that the parser can read
+# what they serve, so these do.
+
+#: The naming conventions observed on the IAEA mirror, as
+#: (suffix-after-the-prefix, expected (Z, A, isomer)). The prefix is supplied
+#: per sublibrary — it is the sublibrary's *directory* name, which is what the
+#: mirror uses to prefix every file in it.
+_FILENAME_CONVENTIONS: tuple[tuple[str, tuple[int, int, str]], ...] = (
+    # Z zero-padded to 3 — most libraries.
+    ("029-Cu-63_2925.zip", (29, 63, "")),
+    # Z to 2, and to 1 for Z < 10 — IRDFF-II.
+    ("79-Au-197_7925.zip", (79, 197, "")),
+    ("3-Li-6_0325.zip", (3, 6, "")),
+    # Element symbol UPPERCASE — ENDF/B-VIII.1's he3/he4 files, and nothing else.
+    ("002-HE-4_0228.zip", (2, 4, "")),
+    # Isomeric state suffix on A — JEFF/JENDL/TENDL.
+    ("095-Am-242M_9547.zip", (95, 242, "m")),
+    # MAT first, then Z, unpadded — BROND-3.1, and the he4 files.
+    ("9640_96-Cm-245.zip", (96, 245, "")),
+    ("1325_13-Al-27.zip", (13, 27, "")),
+)
+
+
+def _sublibrary_prefixes() -> list[tuple[str, str, str]]:
+    """(library key, sublibrary code, mirror directory) for everything declared."""
+    return [
+        (key, code, directory)
+        for key, lib in sorted(LIBRARIES.items())
+        for code, directory in sorted(lib.sublibraries.items())
+    ]
+
+
+def test_every_declared_sublibrary_can_have_its_filenames_parsed():
+    """The gate that would have caught #372.
+
+    For every (library, sublibrary) the registry declares, a filename in each
+    convention the mirror uses must parse. `he3`/`he4` are the cases that
+    mattered: `[a-z]+_` matched neither, so the parser was blind to two of the
+    six projectile codes the registry has always declared.
+    """
+    from fetch_endf_libs import parse_endf_filename
+
+    entries = _sublibrary_prefixes()
+    assert entries, "the registry declares no sublibraries at all"
+
+    failures: list[str] = []
+    checked = 0
+    for key, code, directory in entries:
+        for suffix, expected in _FILENAME_CONVENTIONS:
+            filename = f"{directory}_{suffix}"
+            checked += 1
+            got = parse_endf_filename(filename)
+            if got != expected:
+                failures.append(f"{key}/{code}: parse_endf_filename({filename!r}) -> {got!r}, expected {expected!r}")
+
+    assert not failures, "the ingest cannot read filenames it will be served:\n  " + "\n  ".join(failures)
+    # Positive assertion: a loop that matched nothing would pass silently.
+    assert checked == len(entries) * len(_FILENAME_CONVENTIONS)
+    assert checked >= 100, f"only {checked} (library, sublibrary, convention) combinations checked"
+
+
+def test_the_digit_bearing_projectile_codes_are_actually_exercised():
+    """`he3` and `he4` are the whole point — assert they are in the sweep above,
+    so a registry edit that dropped them could not quietly narrow this test."""
+    directories = {directory for _key, _code, directory in _sublibrary_prefixes()}
+    assert {"he3", "he4"} <= directories, f"he3/he4 missing from the registry: {sorted(directories)}"
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        # The three real he3/he4 shapes named in #372, verbatim.
+        ("he4_002-HE-4_0228.zip", (2, 4, "")),
+        ("he3_002-He-3_0225.zip", (2, 3, "")),
+        ("he4_003-Li-6_0325.zip", (3, 6, "")),
+        ("he4_1325_13-Al-27.zip", (13, 27, "")),
+        # ENDF/B-VIII.1 is the only mirror that uppercases the element symbol,
+        # so it gets its own case rather than riding on the sweep.
+        ("he4_002-HE-4_0228.zip", (2, 4, "")),
+        ("he3_002-HE-3_0225.zip", (2, 3, "")),
+    ],
+)
+def test_helium_filenames_parse(filename, expected):
+    from fetch_endf_libs import parse_endf_filename
+
+    assert parse_endf_filename(filename) == expected
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        # A MAT number where the projectile code belongs. `[a-z0-9]+_` — the
+        # other candidate prefix — reads this as Z=29, A=63 and attributes the
+        # file to copper. `[a-z]+\d*_` requires the shape a projectile code has.
+        "9640_029-Cu-63_2925.zip",
+        "42_029-Cu-63_2925.zip",
+        "0_029-Cu-63_2925.zip",
+        # No prefix at all.
+        "029-Cu-63_2925.zip",
+        "_029-Cu-63_2925.zip",
+        "readme.txt",
+    ],
+)
+def test_names_that_are_not_evaluations_are_rejected(filename):
+    """Returning None reaches the empty-ingest guard, which is loud. Inventing
+    an attribution for a malformed name is the quiet failure this file keeps
+    being bitten by."""
+    from fetch_endf_libs import parse_endf_filename
+
+    assert parse_endf_filename(filename) is None
+
+
+def test_all_sublibs_skips_the_sublibraries_the_repo_does_not_ship(monkeypatch, tmp_path):
+    """`--library <x> --all-sublibs` is a sweep too (#372).
+
+    #360 wired the skip into `--sublibrary <x> --all` only, so the two paths
+    disagreed about what is in scope — and every `rebuild_command` in
+    catalog.json uses the per-library form, so a rebuild drove the one path
+    without the skip and attempted iaea-medical/a, which `UNSHIPPED_SUBLIBRARIES`
+    records as never ingested.
+    """
+    import fetch_endf_libs as m
+
+    fetched: list[tuple[str, str]] = []
+    monkeypatch.setattr(m, "fetch_library", lambda key, sub, out, session: fetched.append((key, sub)))
+    argv = ["fetch_endf_libs.py", "--library", "iaea-medical", "--all-sublibs", "--output", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", argv)
+    m.main()
+
+    assert fetched, "the sweep fetched nothing at all"
+    assert ("iaea-medical", "a") not in fetched, "--all-sublibs ingested an unshipped sublibrary"
+    assert ("iaea-medical", "h") not in fetched, "--all-sublibs ingested an unshipped sublibrary"
+    assert ("iaea-medical", "p") in fetched, "--all-sublibs skipped a sublibrary it should have fetched"
+    assert ("iaea-medical", "d") in fetched
+
+
+def test_all_sublibs_and_all_agree_on_scope(monkeypatch, tmp_path):
+    """The two sweep spellings must select the same (library, sublibrary) set.
+
+    Stated as an invariant rather than a list, so a future skip rule added to
+    one path cannot drift from the other the way #360's did.
+    """
+    import fetch_endf_libs as m
+
+    def run(argv: list[str]) -> set[tuple[str, str]]:
+        fetched: set[tuple[str, str]] = set()
+        monkeypatch.setattr(m, "fetch_library", lambda key, sub, out, session: fetched.add((key, sub)))
+        monkeypatch.setattr(sys, "argv", ["fetch_endf_libs.py", *argv, "--output", str(tmp_path)])
+        m.main()
+        return fetched
+
+    per_library: set[tuple[str, str]] = set()
+    for key in LIBRARIES:
+        per_library |= run(["--library", key, "--all-sublibs"])
+
+    everything: set[tuple[str, str]] = set()
+    for code in sorted({c for lib in LIBRARIES.values() for c in lib.sublibraries}):
+        everything |= run(["--all", "--sublibrary", code])
+
+    assert per_library == everything, (
+        "--all-sublibs and --all disagree about scope:\n"
+        f"  only --all-sublibs: {sorted(per_library - everything)}\n"
+        f"  only --all:         {sorted(everything - per_library)}"
+    )
+    assert per_library, "both sweeps selected nothing"
