@@ -108,6 +108,14 @@ A `!` after the scope (or a `BREAKING CHANGE:` footer) signals a major bump. In 
 
 Data lives outside the per-package code semver, on its own CalVer tag namespace. Conventional-commit scopes for data work (`feat(data)`, etc.) do not trigger any code-package bump.
 
+Before that edit, check the provenance links a consumer will follow:
+
+```console
+$ nix develop -c uv run python scripts/check_source_urls.py
+```
+
+`source_url` is read by no code — the ingest pulls from the IAEA mirror — so nothing exercises those URLs and they rot silently. Seven of twenty were dead when this check was first written (#337), including one whose host had stopped resolving entirely. Deliberately not in CI: it needs the network, and a check that fails on a train is not a check. Exit status is non-zero only for genuinely dead links; redirects and untrusted certificate chains are reported and tolerated.
+
 Releasing data is one edit: bump `data/catalog.json::data_version` to the next `YYYY.MM.MICRO` and merge to `main`. Do not push a tag by hand. `.github/workflows/auto-tag-data.yml` pushes `data-<version>` with the release-bot App token on merge, and that tag push fires `.github/workflows/release-data.yml`, which re-validates tag-vs-catalog and publishes the signed tarball, manifest and signatures.
 
 If a version is tagged but has no release — the #344 failure — re-run **Auto-tag data release** from the Actions tab; it reconciles the catalog against what is actually published and re-triggers the release. The equivalent by hand is:

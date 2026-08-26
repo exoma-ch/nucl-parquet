@@ -9,7 +9,7 @@
     "tendl-2023-iso": {
       "name": "TENDL-2023 + Aug 2024 isomeric correction",
       "description": "TENDL-2023 neutron sublibrary with August 2024 patch restoring isomeric production in MF-10 (ground/metastable state splitting for ~15k products). No neutron sublibrary. Use alongside tendl-2025 for isomeric ratios not available in the newer release.",
-      "source_url": "https://tendl.web.psi.ch/tendl_2023/tendl2023.html",
+      "source_url": "https://tendl.imperial.ac.uk/tendl_2023/tendl2023.html",
       "projectiles": [
         "p",
         "d",
@@ -28,7 +28,8 @@
           "build.py::import_xs at e84ba665^, lines 200-239: `shutil.copy2(f, xs_dir / f.name)` over a source directory of finished parquets. It copies and counts; it does not read ENDF.",
           "e84ba665 'feat: restructure as Python package for PyPI (#1)' deleted build.py.",
           "Renamed tendl-2024 -> tendl-2023-iso inside e8510563, a commit titled 'feat(rs-client): ParquetStore ... (#210)' that says nothing about a rename — which is why tracing this library by commit subject finds nothing.",
-          "catalog.json::note records that this is not an official TENDL release but TENDL-2023 charged-particle data with the Aug-2024 isomeric correction applied, so a plain TENDL-2023 refetch would not reproduce it."
+          "catalog.json::note records that this is not an official TENDL release but TENDL-2023 charged-particle data with the Aug-2024 isomeric correction applied, so a plain TENDL-2023 refetch would not reproduce it.",
+          "The PSI host the library was built from, tendl.web.psi.ch, no longer resolves (NXDOMAIN, confirmed 2026-08-26); the project's pages are served from tendl.imperial.ac.uk now. The original per-nuclide inputs are therefore not retrievable from the source that produced this library — the IAEA NDS tapes are, but they are a different starting point (#337)."
         ],
         "rebuild_path": "No in-repo path today, and not a simple LIBRARIES entry: the shipped data carries an upstream patch that a plain refetch would not reproduce. scripts/backfill_xs_nuclides.py on the open PR #339 repairs one dropout class for 7-8 light nuclides; it is a targeted patch, not a rebuild, and the other targets still have no producer here.",
         "issue": 346
@@ -40,7 +41,7 @@
     "endfb-8.1": {
       "name": "ENDF/B-VIII.1",
       "description": "US Evaluated Nuclear Data File (NNDC/BNL) — charged-particle sublibraries (p/d/t/h/a). Neutron was retired (#263): rather than reconstruct the resonance region ourselves, neutron ships as endfb-8.0 (authoritative NJOY-processed pointwise data). Query neutron via the xs view or the endfb_8_0 library.",
-      "source_url": "https://www.nndc.bnl.gov/endf-b8.1/",
+      "source_url": "https://www.nndc.bnl.gov/endf-library/",
       "projectiles": [
         "p",
         "d",
@@ -115,7 +116,7 @@
     "tendl-2025": {
       "name": "TENDL-2025",
       "description": "TALYS Evaluated Nuclear Data Library 2025 (PSI)",
-      "source_url": "https://tendl.web.psi.ch/",
+      "source_url": "https://tendl.imperial.ac.uk/tendl_2025/tendl2025.html",
       "projectiles": [
         "n",
         "p",
@@ -199,7 +200,7 @@
     "jendl-ad-2017": {
       "name": "JENDL/AD-2017",
       "description": "Activation/Dosimetry Library (JAEA)",
-      "source_url": "https://wwwndc.jaea.go.jp/jendl/jad/jad.html",
+      "source_url": "https://wwwndc.jaea.go.jp/ftpnd/jendl/jendl-ad-2017.html",
       "projectiles": [
         "n",
         "p"
@@ -225,7 +226,7 @@
     "jendl-deu-2020": {
       "name": "JENDL-DEU-2020",
       "description": "Dedicated deuteron-induced reaction library (JAEA)",
-      "source_url": "https://wwwndc.jaea.go.jp/jendl/deu/deu.html",
+      "source_url": "https://wwwndc.jaea.go.jp/ftpnd/jendl/jendl-deu-2020.html",
       "projectiles": [
         "d"
       ],
@@ -339,7 +340,7 @@
     "hi-xs": {
       "name": "HI-XS (Tripathi 1997)",
       "description": "Heavy-ion total reaction cross-sections computed with the Tripathi (1997) semi-empirical parameterization.  Covers all projectile/target combinations Z=1-92.",
-      "source_url": "https://doi.org/10.1016/S0168-583X(96)00331-X",
+      "source_url": "https://doi.org/10.1016/0168-583X(96)00331-X",
       "projectiles": [
         "ar40",
         "c12",

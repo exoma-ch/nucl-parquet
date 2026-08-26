@@ -166,21 +166,21 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | [CENDL-3.2](http://www.nuclear.csdb.cn/) | n | CIAE |
 | [ENDF/B-VIII.0 neutron (NJOY-processed)](https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC) | n |  |
 | [ENDF/B-VIII.0 neutron transport channels](https://github.com/openmc-data-storage/ENDF-B-VIII.0-NNDC) | n |  |
-| [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-b8.1/) | p, d, t, ³He, α |  |
+| [ENDF/B-VIII.1](https://www.nndc.bnl.gov/endf-library/) | p, d, t, ³He, α |  |
 | [EXFOR (reaction channels)](https://github.com/IAEA-NDS/exfor_master) | n, p, d, t, ³He, α |  |
 | [EXFOR (residual production)](https://github.com/IAEA-NDS/exfor_master) | n, p, d, t, ³He, α |  |
 | [FENDL-3.2](https://www-nds.iaea.org/fendl/) | n |  |
-| [HI-XS (Tripathi 1997)](https://doi.org/10.1016/S0168-583X(96)00331-X) | ar40, c12, ca40, fe56, he4, ne20, ni58, o16, p, pb208, si28, xe132 |  |
+| [HI-XS (Tripathi 1997)](https://doi.org/10.1016/0168-583X(96)00331-X) | ar40, c12, ca40, fe56, he4, ne20, ni58, o16, p, pb208, si28, xe132 |  |
 | [HI-XS Production (Geant4 INCL++/ABLA07)](https://geant4.org/) | c12, o16, ne20, si28, ar40, fe56 |  |
 | [IAEA-Medical](https://www-nds.iaea.org/medical/) | p, d |  |
 | [IAEA-PD-2019](https://www-nds.iaea.org/photonuclear/) | γ | IAEA |
 | [IRDFF-II](https://www-nds.iaea.org/IRDFF/) | n | IAEA |
 | [JEFF-4.0](https://www.oecd-nea.org/dbdata/jeff/) | n, p | NEA |
 | [JENDL-5](https://wwwndc.jaea.go.jp/jendl/j5/j5.html) | n, p, d, α | JAEA |
-| [JENDL-DEU-2020](https://wwwndc.jaea.go.jp/jendl/deu/deu.html) | d | JAEA |
-| [JENDL/AD-2017](https://wwwndc.jaea.go.jp/jendl/jad/jad.html) | n, p | JAEA |
-| [TENDL-2023 + Aug 2024 isomeric correction](https://tendl.web.psi.ch/tendl_2023/tendl2023.html) | p, d, t, ³He, α |  |
-| [TENDL-2025](https://tendl.web.psi.ch/) | n, p, d, t, ³He, α | PSI |
+| [JENDL-DEU-2020](https://wwwndc.jaea.go.jp/ftpnd/jendl/jendl-deu-2020.html) | d | JAEA |
+| [JENDL/AD-2017](https://wwwndc.jaea.go.jp/ftpnd/jendl/jendl-ad-2017.html) | n, p | JAEA |
+| [TENDL-2023 + Aug 2024 isomeric correction](https://tendl.imperial.ac.uk/tendl_2023/tendl2023.html) | p, d, t, ³He, α |  |
+| [TENDL-2025](https://tendl.imperial.ac.uk/tendl_2025/tendl2025.html) | n, p, d, t, ³He, α | PSI |
 <!-- /AUTO:libraries -->
 
 ## Parquet schemas
