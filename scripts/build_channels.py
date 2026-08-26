@@ -67,10 +67,13 @@ from _paths import DATA_DIR  # noqa: E402
 from build_neutron_njoy import (  # noqa: E402
     COMPRESSION,
     TEMPERATURE,
+    LostNuclides,
+    NuclideLedger,
     _ensure_native_libs,
     fetch_h5,
     list_nuclides,
     parse_nuclide_stem,
+    stem_skip_reason,
     thin_pointwise,
 )
 from fetch_endf_libs import mt_to_residual  # noqa: E402
@@ -231,7 +234,8 @@ def build(
     nuclides: list[str] | None,
     tol: float,
     cache_dir: Path | None = None,
-) -> None:
+    allow_missing: bool = False,
+) -> NuclideLedger:
     import requests
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -246,26 +250,40 @@ def build(
         logger.info("Found %d nuclide files", len(stems))
 
     by_element: dict[str, list[dict]] = {}
-    skipped = 0
+    ledger = NuclideLedger()
     for n, stem in enumerate(stems, 1):
         parsed = parse_nuclide_stem(stem)
         if parsed is None:
-            logger.info("skip (metastable/unknown): %s", stem)
-            skipped += 1
+            reason = stem_skip_reason(stem)
+            if reason == "metastable":
+                ledger.skip(stem, "metastable target — no n_<Sym> shard slot")
+            else:
+                # Not a skip. The inventory offered a nuclide this build cannot
+                # name, which means the symbol table or the upstream convention
+                # has moved and an element is about to go missing quietly (#329).
+                ledger.fail(stem, f"stem not understood ({reason}); _SYMBOL_TO_Z or _NUC_RE is behind the inventory")
             continue
         z, a, sym = parsed
         try:
             blob = fetch_h5(session, stem, cache_dir=cache_dir)
             rows = extract_channels(blob, stem, z, a, tol)
-        except Exception as e:  # one bad nuclide must not sink the build
-            logger.warning("  %s failed: %s", stem, e)
-            skipped += 1
+        except Exception as e:  # noqa: BLE001 — accounted by name, then refused below
+            ledger.fail(stem, e)
             continue
         if not rows:
-            skipped += 1
+            # Used to be a bare `skipped += 1` with no log line at all, which is
+            # how a nuclide could leave without appearing anywhere (#329).
+            ledger.nothing(stem)
             continue
         by_element.setdefault(sym, []).extend(rows)
+        ledger.ok(stem)
         logger.info("  [%d/%d] %s: %d rows", n, len(stems), stem, len(rows))
+
+    # Before anything is written, and before the builder stamp claims this run
+    # produced a complete library. "One bad nuclide must not sink the build" is
+    # what shipped endfb-8.0/channels without plutonium for eighteen months
+    # (#329): the failure was transient, the tolerance was permanent.
+    ledger.check(LIBRARY, allow_missing)
 
     total_rows = 0
     for sym, rows in sorted(by_element.items()):
@@ -278,13 +296,14 @@ def build(
     stamp_path = manifest_path_for(out_dir, LIBRARY)
     write_builder_stamp(stamp_path, Path(__file__), files_written=len(by_element))
     logger.info(
-        "Done: %d elements, %d rows, %d skipped -> %s (stamped %s)",
+        "Done: %d elements, %d rows, %s -> %s (stamped %s)",
         len(by_element),
         total_rows,
-        skipped,
+        ledger.summary(),
         out_dir,
         stamp_path,
     )
+    return ledger
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,15 +323,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="thinning tolerance, relative (default 0.01)",
     )
     parser.add_argument("--cache-dir", type=Path, help="cache raw .h5 downloads here")
+    parser.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="survey the whole run instead of refusing at the end. The library is still written and the process still exits non-zero — this reports the damage, it does not accept it (same contract as migrate_xs_schema.py --skip-unmigratable).",
+    )
     return parser
 
 
-def main() -> None:
+def main() -> int:
     args = build_parser().parse_args()
 
     _ensure_native_libs()
-    build(args.out_dir, args.nuclides, args.tol, cache_dir=args.cache_dir)
+    try:
+        ledger = build(
+            args.out_dir,
+            args.nuclides,
+            args.tol,
+            cache_dir=args.cache_dir,
+            allow_missing=args.allow_missing,
+        )
+    except LostNuclides:
+        logger.exception("refusing to report success on an incomplete library")
+        return 1
+    # Reached only under --allow-missing, which writes the library anyway. The
+    # exit code is what stops a survey being mistaken for a clean build (#329).
+    return 1 if ledger.lost else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
