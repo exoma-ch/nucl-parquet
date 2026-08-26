@@ -272,3 +272,80 @@ def test_declared_projectiles_match_the_files_on_disk() -> None:
         if undeclared:
             problems.append(f"{name}: ships {undeclared} but does not declare them")
     assert not problems, "catalog.json disagrees with the data tree:\n  " + "\n  ".join(problems)
+
+
+# -- Layer 1.g: physical sanity on the published data ------------------------
+
+
+def test_no_negative_energies_anywhere() -> None:
+    """An incident energy below zero is nonphysical.
+
+    Three reached the published data (#330). The builders guard the cross
+    section (`if xs <= 0: continue`) but never guarded the energy, so a sign
+    error in a transcribed EXFOR entry passed straight into a column that every
+    interpolation routine trusts without checking.
+
+    Fixed in the 2026.8.3 re-ingest — the guard removed exactly those three
+    rows and nothing else (exfor-channels 4,162,404 -> 4,162,401). The gate
+    stays so a future sign error cannot ship.
+    """
+    import duckdb
+
+    # Iterate the catalog's declared library paths rather than globbing all of
+    # data/. A bare `**/*.parquet` sweeps in data/g4_raw/ — a gitignored build
+    # cache holding a truncated file — and the meta tables, which have no
+    # energy column at all. Checking exactly what the catalog declares is both
+    # narrower and more meaningful.
+    catalog = json.loads(_CATALOG.read_text())
+    offenders = {}
+    for name, lib in sorted(catalog["libraries"].items()):
+        path = lib.get("path")
+        if not path:
+            continue
+        glob = f"{_DATA_DIR}/{path}*.parquet"
+        try:
+            n = duckdb.sql(
+                f"SELECT count(*) FROM read_parquet('{glob}', union_by_name=true) WHERE energy_MeV < 0"
+            ).fetchone()[0]
+        except duckdb.Error:
+            continue  # library absent from this checkout, or carries no energy column
+        if n:
+            offenders[name] = n
+    assert not offenders, f"rows with negative energy_MeV: {offenders} — see #330"
+
+
+def test_thermal_au197_capture_is_physically_plausible() -> None:
+    """Au-197(n,γ) at thermal is 98.7 b — the reference dosimetry standard.
+
+    Any library carrying a point there should be within a factor of a few.
+
+    This gate was written against a real failure: `cendl-3.2` reported
+    **1.0002e-14 mb**, off by ~19 orders of magnitude, because MT=2 elastic was
+    mislabelled as (n,γ) and CENDL's real capture tabulation does not reach
+    thermal at all (#328, #287). The 2026.8.3 re-ingest fixed it; the gate stays
+    so it cannot come back.
+
+    Deliberately a magnitude band rather than an equality-to-zero check. The
+    first version of this test asserted `xs_mb = 0`, found nothing, and passed
+    while cendl was wrong by 1e19 — a test that looks for the wrong thing is
+    worse than no test, because it reports success. The 1e-14 only became
+    visible when the value was printed unrounded.
+
+    Libraries with no thermal point are skipped rather than failed: not
+    sampling thermal is a scope choice for production-kind data, and failing
+    them here would conflate absence with wrongness.
+    """
+    import duckdb
+
+    expected = 98_700.0  # mb
+    rows = duckdb.sql(f"""
+        SELECT library, avg(xs_mb) FROM read_parquet('{_DATA_DIR}/*/xs/n_Au.parquet', union_by_name=true)
+        WHERE target_Z=79 AND target_A=197 AND residual_Z=79 AND residual_A=198
+          AND energy_MeV BETWEEN 2.0e-8 AND 3.0e-8
+        GROUP BY library
+    """).fetchall()
+    bad = {lib: xs for lib, xs in rows if xs is not None and not (expected / 5 < xs < expected * 5)}
+    assert not bad, (
+        f"Au-197(n,g) at thermal is implausible in {bad} — expected ~{expected:,.0f} mb "
+        f"(libraries checked: {sorted(lib for lib, _ in rows)}). See #328."
+    )
