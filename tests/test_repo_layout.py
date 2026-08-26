@@ -161,6 +161,50 @@ def test_output_help_names_the_default(module_name: str) -> None:
     )
 
 
+def test_scripts_do_not_re_derive_the_data_dir() -> None:
+    """`scripts/_paths.py` must remain the only place that spells `ROOT / "data"`.
+
+    Nine scripts used to carry their own `ROOT = Path(__file__).parent.parent`
+    and derive `ROOT / "data"` from it. Every one of them was *correct*, so this
+    is not guarding against a live bug — it is guarding against the copy. A new
+    ingest script gets written by copying an existing one, and while the
+    re-derived spelling remains the majority pattern in the directory, the next
+    author inherits the shape that produced #341 rather than the fixed one.
+
+    Enforcing it here rather than in review, because "did you import DATA_DIR?"
+    is exactly the kind of thing review forgets and a test never does.
+    """
+    offenders: dict[str, list[str]] = {}
+    for script in sorted((ROOT / "scripts").glob("*.py")):
+        if script.name == "_paths.py":  # the one legitimate definition
+            continue
+        hits = [
+            f"{script.name}:{n}: {line.strip()}"
+            for n, line in enumerate(script.read_text().splitlines(), 1)
+            if line.lstrip().startswith(("ROOT = Path(", "ROOT=Path(")) or 'ROOT / "data"' in line
+        ]
+        if hits:
+            offenders[script.name] = hits
+
+    assert not offenders, (
+        "scripts re-derive the repo root or the data directory instead of importing "
+        "them from scripts/_paths.py:\n" + "\n".join(h for hs in offenders.values() for h in hs) + "\n\n"
+        "Use `from _paths import DATA_DIR` (and `ROOT` if you genuinely need the "
+        "checkout root). One place to be right is the whole point of _paths.py (#341)."
+    )
+
+
+def test_the_data_dir_guard_can_actually_fail() -> None:
+    """The matcher above must reject the pattern it was written to retire.
+
+    Same reasoning as `test_the_guard_can_actually_fail`: now that every script
+    is clean, a broken matcher and a clean directory look identical.
+    """
+    legacy = ["ROOT = Path(__file__).parent.parent", '    ap.add_argument("--data-dir", default=ROOT / "data")']
+    matched = [ln for ln in legacy if ln.lstrip().startswith(("ROOT = Path(", "ROOT=Path(")) or 'ROOT / "data"' in ln]
+    assert matched == legacy, "the matcher no longer recognises the pre-#341 spelling"
+
+
 def test_exfor_reads_tendl_from_the_data_dir() -> None:
     """`--all` enumerates elements from `data/tendl-2023-iso/`, not the repo root.
 

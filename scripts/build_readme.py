@@ -21,8 +21,11 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-CATALOG = ROOT / "data" / "catalog.json"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR, ROOT  # noqa: E402
+
+CATALOG = DATA_DIR / "catalog.json"
 README = ROOT / "README.md"
 
 

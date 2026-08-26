@@ -59,8 +59,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
 
 # Reuse the VIII.0 fetch/thin/inventory machinery rather than restating it.
 from build_neutron_njoy import (  # noqa: E402
@@ -284,7 +285,7 @@ def main() -> None:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=ROOT / "data" / "endfb-8.0" / "channels",
+        default=DATA_DIR / "endfb-8.0" / "channels",
         help="output directory (default: data/endfb-8.0/channels)",
     )
     parser.add_argument("--nuclides", nargs="+", help="nuclide stems, e.g. Fe56 Pb208")

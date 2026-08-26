@@ -20,6 +20,7 @@ import argparse
 import io
 import logging
 import re
+import sys
 import zipfile
 from pathlib import Path
 
@@ -27,13 +28,16 @@ import numpy as np
 import polars as pl
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
 IAEA_MIRROR = "https://nds.iaea.org/public/download-endf"
 COMPRESSION = "zstd"
 
@@ -97,7 +101,7 @@ def build(
     library: str = "endfb-8.1",
 ) -> None:
     if data_dir is None:
-        data_dir = ROOT / "data"
+        data_dir = DATA_DIR
 
     iaea_path = LIBRARY_PATHS.get(library)
     if iaea_path is None:
