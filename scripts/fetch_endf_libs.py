@@ -521,6 +521,20 @@ class ParsedFile:
     mf3_rows: int = 0
     mf10_sections: int = 0
     mf10_rows: int = 0
+    #: MF=3 sections carrying at least one finite, positive, in-range point.
+    #: A section of all-negative values yields no row and is not a failure —
+    #: charged-particle MF=3 MT=2 is the nuclear-interference term against a
+    #: divergent Rutherford cross-section and is negative by construction.
+    mf3_usable_sections: int = 0
+    #: Of those, the ones whose MT names a single residual. Only these can
+    #: produce a `kind='production'` row, so only these belong in that guard's
+    #: denominator — jendl-5's deuteron sublibrary is entirely MT=2 and MT=5,
+    #: neither of which names one, and zero production rows there is correct.
+    mf3_residual_sections: int = 0
+    #: MF=10 sections carrying at least one level with a nameable product.
+    #: MT=18 uses IZAP=-1 for "fission products, unspecified"; a section of
+    #: nothing but those yields no row and is not a failure either.
+    mf10_product_sections: int = 0
     #: `kind='channel'` rows — one per MF=3 MT, carrying MT itself (#347).
     channel_rows: int = 0
     #: Channel rows whose MT names no single product: total, elastic,
@@ -589,8 +603,17 @@ def lfs_to_state(lfs: int, product_lfs_levels: set[int]) -> str:
 def parse_mf10_rows(
     material,  # noqa: ANN001 — endf.Material, imported lazily by the caller
     target_a: int,
-) -> tuple[list[dict], int]:
-    """Extract MF=10 isomeric-production rows. Returns (rows, sections_seen).
+) -> tuple[list[dict], int, int]:
+    """Extract MF=10 isomeric-production rows.
+
+    Returns `(rows, sections_seen, sections_naming_a_product)`.
+
+    The two counts differ, and the difference is the guard's denominator. A
+    section whose every level carries `IZAP <= 0` names no product to file a row
+    under — MT=18 uses `IZAP = -1` for "fission products, unspecified" — so
+    emitting nothing for it is correct, not a failure. jeff-4.0's proton
+    sublibrary is *entirely* such sections, and counting raw sections made the
+    #340 guard fire on a library that was being read perfectly (#372 follow-up).
 
     Shape note (#340). The pinned `endf` package parses MF=9 and MF=10 with
     `endf.mf9.parse_mf9_mf10`, which returns::
@@ -611,7 +634,11 @@ def parse_mf10_rows(
     """
     sections = [(mt, sec) for (mf, mt), sec in material.section_data.items() if mf == 10]
     if not sections:
-        return [], 0
+        return [], 0, 0
+
+    # Sections carrying at least one level with a nameable product. This, not
+    # `len(sections)`, is what "MF=10 should have produced rows" means.
+    product_sections = sum(1 for _mt, sec in sections if any(int(level["IZAP"]) > 0 for level in sec["levels"]))
 
     # Which levels does this material carry for each product, across every
     # section? lfs_to_state needs the whole set to rank consistently.
@@ -667,7 +694,7 @@ def parse_mf10_rows(
             }
             for e_ev, xs_b in zip(e_union, xs_total)
         )
-    return rows, len(sections)
+    return rows, len(sections), product_sections
 
 
 def parse_endf_file(
@@ -731,6 +758,8 @@ def parse_endf_file(
     by_residual: dict[tuple[int, int], list[tuple[np.ndarray, np.ndarray]]] = {}
     channel_rows: list[dict] = []
     null_residual_rows = 0
+    mf3_usable_sections = 0
+    mf3_residual_sections = 0
 
     for (mf, mt), section in material.section_data.items():
         if mf != 3:
@@ -749,10 +778,19 @@ def parse_endf_file(
         # Drop TALYS overflow sentinels (~1.99e35 b) and non-positive values.
         good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
         if not good.any():
+            # Nothing usable here. Common and correct in the charged-particle
+            # sublibraries: MF=3 MT=2 holds the nuclear-interference term
+            # relative to the divergent Rutherford cross-section (the elastic
+            # distribution itself is in MF=6 with LAW=5), so it is negative
+            # throughout and is not a cross-section this table can carry.
+            logger.debug("  MF=3 MT=%d: no positive in-range points, skipping", mt)
             continue
+        mf3_usable_sections += 1
         e_good, xs_good = energies_ev[good], xs_barns[good]
 
         residual = mt_to_residual(mt, target_z, target_a, proj_z, proj_a)
+        if residual is not None:
+            mf3_residual_sections += 1
 
         # --- kind='channel': the ENDF datum as ENDF states it -----------------
         # One row set per MT, carrying MT itself. `residual` is null wherever the
@@ -805,7 +843,7 @@ def parse_endf_file(
         )
 
     mf3_rows = len(rows)
-    mf10_rows, mf10_sections = parse_mf10_rows(material, target_a)
+    mf10_rows, mf10_sections, mf10_product_sections = parse_mf10_rows(material, target_a)
     rows.extend(mf10_rows)
     rows.extend(channel_rows)
 
@@ -814,6 +852,9 @@ def parse_endf_file(
         channel_rows=len(channel_rows),
         null_residual_rows=null_residual_rows,
         mf3_sections=len(mf3_mts),
+        mf3_usable_sections=mf3_usable_sections,
+        mf3_residual_sections=mf3_residual_sections,
+        mf10_product_sections=mf10_product_sections,
         mf3_rows=mf3_rows,
         mf10_sections=mf10_sections,
         mf10_rows=len(mf10_rows),
@@ -935,6 +976,9 @@ def fetch_library(
     mf10_rows = 0
     channel_rows = 0
     null_residual_rows = 0
+    mf3_usable_sections = 0
+    mf3_residual_sections = 0
+    mf10_product_sections = 0
 
     for i, fname in enumerate(filenames):
         if (i + 1) % 50 == 0:
@@ -945,6 +989,9 @@ def fetch_library(
         mf3_rows += parsed_file.mf3_rows
         channel_rows += parsed_file.channel_rows
         null_residual_rows += parsed_file.null_residual_rows
+        mf3_usable_sections += parsed_file.mf3_usable_sections
+        mf3_residual_sections += parsed_file.mf3_residual_sections
+        mf10_product_sections += parsed_file.mf10_product_sections
         mf10_sections += parsed_file.mf10_sections
         mf10_rows += parsed_file.mf10_rows
         if not parsed_file.rows:
@@ -989,42 +1036,78 @@ def fetch_library(
     # Per-file guards. The empty-ingest check above only sees a library that
     # produced *nothing*; each ENDF file type can go dark on its own while the
     # other keeps the element count healthy, and neither failure is visible in
-    # an exit code. Both raise before anything is written.
+    # an exit code. All three raise before anything is written.
+    #
+    # Each one asks "sections that *could* have produced rows produced none".
+    # The denominator matters as much as the numerator: counting raw sections
+    # made two of these fire on charged-particle sublibraries that were being
+    # read perfectly, because a section can legitimately have nothing to emit.
+    # A guard that cries wolf gets lowered to a warning, and then it is not a
+    # guard — so the denominators are narrowed here rather than the guards.
     #
     # MF=10 (#340): reading it through an object shape the `endf` package never
     # returned discarded every isomeric section in every library, and the #334
     # guard could not see it because MF=3 kept producing plenty of rows.
-    if mf10_sections and not mf10_rows:
+    if mf10_product_sections and not mf10_rows:
         raise RuntimeError(
-            f"{lib_key}/{sublib_code}: {mf10_sections} MF=10 isomeric-production "
-            f"sections were read from the source files and produced 0 rows. "
+            f"{lib_key}/{sublib_code}: {mf10_product_sections} of {mf10_sections} MF=10 "
+            "isomeric-production sections name a product, and they produced 0 rows. "
             "That is the #340 signature — the `endf` package's MF=10 shape has "
             "most likely moved again (see parse_mf10_rows). Refusing to report "
             "success while silently dropping every isomeric product."
         )
-
-    # MF=3, symmetrically. This became possible to miss only once MF=10 started
-    # emitting rows: before #340 a dead MF=3 read meant a dead library and the
-    # empty-ingest guard caught it, whereas now MF=10 alone could keep the
-    # element count up while every channel cross-section vanished.
-    if mf3_sections and not mf3_rows:
-        raise RuntimeError(
-            f"{lib_key}/{sublib_code}: {mf3_sections} MF=3 cross-section sections "
-            f"were read from the source files and produced 0 rows. Either the "
-            "`endf` package no longer returns the curve under 'sigma', or "
-            "mt_to_residual now rejects every MT. Refusing to report success on "
-            "a library with no channel cross-sections."
+    if mf10_sections and not mf10_product_sections:
+        # Not a failure: MT=18 carries IZAP=-1, "fission products, unspecified".
+        # jeff-4.0/p is entirely such sections. Said out loud so the difference
+        # between "nothing to emit" and "emitted nothing" stays visible.
+        logger.info(
+            "  %s/%s: all %d MF=10 sections name no product (IZAP<=0, e.g. MT=18 fission); no isomeric rows to emit.",
+            lib_key,
+            sublib_code,
+            mf10_sections,
         )
 
-    # Channel rows, symmetrically again (#347). MF=3 sections that name no
-    # residual — total, elastic, inelastic, fission — were dropped by the caller
-    # for the whole life of this script, and neither guard above can see it:
-    # production rows keep flowing from the transmutation channels.
-    if mf3_sections and not channel_rows:
+    # MF=3 production rows. Only a section whose MT names a single residual can
+    # make one, so only those belong in the denominator: jendl-5's deuteron
+    # sublibrary is entirely MT=2 and MT=5, neither of which names a residual,
+    # and zero production rows there is the right answer rather than a fault.
+    if mf3_residual_sections and not mf3_rows:
         raise RuntimeError(
-            f"{lib_key}/{sublib_code}: {mf3_sections} MF=3 sections produced 0 "
-            "kind='channel' rows. Every evaluated row would then carry a null MT, "
-            "which is the #347 state this ingest exists to leave behind."
+            f"{lib_key}/{sublib_code}: {mf3_residual_sections} of {mf3_sections} MF=3 "
+            "sections name a residual, and they produced 0 production rows. Either "
+            "the `endf` package no longer returns the curve under 'sigma', or "
+            "mt_to_residual now rejects every MT."
+        )
+    if mf3_usable_sections and not mf3_residual_sections:
+        logger.info(
+            "  %s/%s: none of the %d usable MF=3 sections name a residual "
+            "(all MT=2/MT=5 or similar); channel rows only, no production sums.",
+            lib_key,
+            sublib_code,
+            mf3_usable_sections,
+        )
+
+    # Channel rows (#347). MF=3 sections that name no residual — total, elastic,
+    # inelastic, fission — were dropped by the caller for the whole life of this
+    # script, and neither guard above can see it: production rows keep flowing
+    # from the transmutation channels. The denominator is sections with at least
+    # one usable point, because a section of all-negative values (charged-particle
+    # MF=3 MT=2) has nothing to emit either.
+    if mf3_usable_sections and not channel_rows:
+        raise RuntimeError(
+            f"{lib_key}/{sublib_code}: {mf3_usable_sections} of {mf3_sections} MF=3 "
+            "sections carry usable points, and they produced 0 kind='channel' rows. "
+            "Every evaluated row would then carry a null MT, which is the #347 "
+            "state this ingest exists to leave behind."
+        )
+    if mf3_sections and not mf3_usable_sections:
+        logger.info(
+            "  %s/%s: none of the %d MF=3 sections carry a positive in-range point. "
+            "Expected where MF=3 MT=2 is the charged-particle interference term "
+            "(the elastic distribution is in MF=6 LAW=5).",
+            lib_key,
+            sublib_code,
+            mf3_sections,
         )
 
     state_counts: dict[str, int] = {}
@@ -1108,8 +1191,11 @@ def fetch_library(
         "projectiles": [sublib_code],
         "elements": sorted(element_rows.keys()),
         "mf3_sections": mf3_sections,
+        "mf3_usable_sections": mf3_usable_sections,
+        "mf3_residual_sections": mf3_residual_sections,
         "mf3_rows": mf3_rows,
         "mf10_sections": mf10_sections,
+        "mf10_product_sections": mf10_product_sections,
         "mf10_rows": mf10_rows,
         "channel_rows": channel_rows,
         "null_residual_rows": null_residual_rows,

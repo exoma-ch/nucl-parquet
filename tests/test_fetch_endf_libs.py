@@ -483,8 +483,14 @@ def test_guard_fires_when_mf10_sections_yield_no_rows(monkeypatch, tmp_path):
             "n_013-Al-27_1325.zip": _mod().ParsedFile(
                 rows=[_MF3_ROW],
                 mf3_sections=12,
+                mf3_usable_sections=12,
+                mf3_residual_sections=12,
                 mf3_rows=1,
                 mf10_sections=4,
+                # The section names a product and still emitted nothing — that
+                # is the #340 signature. A section naming none is a different
+                # thing and is covered by the IZAP=-1 tests below.
+                mf10_product_sections=4,
                 mf10_rows=0,
             )
         },
@@ -496,21 +502,31 @@ def test_guard_fires_when_mf10_sections_yield_no_rows(monkeypatch, tmp_path):
 
 def test_guard_fires_when_mf3_sections_yield_no_rows(monkeypatch, tmp_path):
     """Symmetric to the MF=10 guard, and only reachable since #340: MF=10 rows
-    can now keep the element count healthy while every channel cross-section
-    disappears, which the empty-ingest guard would read as a successful run."""
+    can now keep the element count healthy while every production sum
+    disappears, which the empty-ingest guard would read as a successful run.
+
+    `channel_rows` is deliberately non-zero. Without it the *channel* guard
+    fires first and this passes without ever reaching the one it names — which
+    it did, silently, until a mutation run showed that disarming the production
+    guard broke no test.
+    """
     m = _stub_library(
         monkeypatch,
         {
             "n_013-Al-27_1325.zip": _mod().ParsedFile(
-                rows=[_MF10_ROW],
+                rows=[_MF10_ROW, _CHANNEL_ROW],
                 mf3_sections=12,
+                mf3_usable_sections=12,
+                mf3_residual_sections=12,
                 mf3_rows=0,
+                channel_rows=1,
                 mf10_sections=4,
+                mf10_product_sections=4,
                 mf10_rows=1,
             )
         },
     )
-    with pytest.raises(RuntimeError, match="MF=3"):
+    with pytest.raises(RuntimeError, match="name a residual"):
         m.fetch_library("irdff-2", "n", tmp_path, session=None)
     assert not (tmp_path / "irdff-2" / "manifest.json").exists()
 
@@ -524,8 +540,11 @@ def test_guard_is_quiet_when_the_library_genuinely_has_no_mf10(monkeypatch, tmp_
             "n_013-Al-27_1325.zip": _mod().ParsedFile(
                 rows=[_MF3_ROW, _CHANNEL_ROW],
                 mf3_sections=12,
+                mf3_usable_sections=12,
+                mf3_residual_sections=12,
                 mf3_rows=1,
                 mf10_sections=0,
+                mf10_product_sections=0,
                 mf10_rows=0,
                 channel_rows=1,
                 null_residual_rows=1,
@@ -651,6 +670,8 @@ def test_guard_fires_when_no_channel_rows_are_emitted(monkeypatch, tmp_path):
             "n_013-Al-27_1325.zip": _mod().ParsedFile(
                 rows=[_MF3_ROW],
                 mf3_sections=12,
+                mf3_usable_sections=12,
+                mf3_residual_sections=12,
                 mf3_rows=1,
                 channel_rows=0,
                 null_residual_rows=0,
@@ -753,3 +774,119 @@ def test_real_u235_evaluation_reproduces_the_thermal_anchors(tmp_path):
     # And the whole point: these rows name no residual.
     for mt in (1, 18):
         assert all(r["residual_Z"] is None for r in parsed.rows if r["kind"] == "channel" and r["MT"] == mt)
+
+
+# ---------------------------------------------------------------------------
+# Guard denominators — sections that *could* have produced rows (#372 follow-up)
+# ---------------------------------------------------------------------------
+#
+# Two guards fired on charged-particle sublibraries that were being read
+# perfectly. Both counted raw sections, and a section can legitimately have
+# nothing to emit:
+#
+#   jeff-4.0/p   36 MF=10 sections, every one MT=18 with IZAP=-1
+#                ("fission products, unspecified" — names no product)
+#   jendl-5/d    18 MF=3 sections, every one MT=2 or MT=5
+#                (neither names a residual, so no production row is possible)
+#
+# The charged-particle sublibraries have never been re-ingested since #334, so
+# nothing had ever exercised these guards against them. These fixtures are those
+# two shapes, so the denominators cannot regress.
+
+# jeff-4.0/p's Hf-180: MF=3 MT=2 negative throughout (the nuclear-interference
+# term against a divergent Rutherford cross-section — the elastic distribution
+# lives in MF=6 with LAW=5), MT=5 positive, and one MF=10 MT=18 with IZAP=-1.
+CP_ELASTIC_NEGATIVE = [(2.5e5, -3e-06), (4.0e6, -3e-06), (5.0e6, -9.5e-05)]
+CP_ANYTHING = [(2.5e5, 0.5), (4.0e6, 1.2), (5.0e6, 1.859)]
+CP_FISSION = [(2.5e5, 0.01), (4.0e6, 0.02), (5.0e6, 0.03)]
+
+
+def charged_particle_material() -> str:
+    """The jeff-4.0/p shape: MF=10 that names no product, MF=3 MT=2 all negative."""
+    za = 72180.0
+    return "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 2, CP_ELASTIC_NEGATIVE),
+            mf3_section(za, 5, CP_ANYTHING),
+            mf10_section(za, 18, [(-1, 0, CP_FISSION)]),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+
+
+def deuteron_material() -> str:
+    """The jendl-5/d shape: only MT=2 and MT=5, neither naming a residual."""
+    za = 3006.0
+    return "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 2, [(2.0e5, -0.004948), (4.0e5, -0.013521), (6.0e7, 0.030008)]),
+            mf3_section(za, 5, [(2.0e5, 0.0301), (4.0e5, 0.5), (6.0e7, 0.9789)]),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+
+
+def test_mf10_sections_naming_no_product_are_counted_separately():
+    """IZAP=-1 is "fission products, unspecified". A section of nothing but those
+    has nothing to emit, so it must not sit in the guard's denominator."""
+    parsed = _mod().parse_endf_file(charged_particle_material(), 72, 180, "p")
+    assert parsed.mf10_sections == 1, "the section is still counted and reported"
+    assert parsed.mf10_product_sections == 0, "IZAP=-1 names no product"
+    assert parsed.mf10_rows == 0, "and correctly produces no rows"
+
+
+def test_a_library_whose_only_mf10_is_izap_minus_one_does_not_trip_the_guard(monkeypatch, tmp_path):
+    """The jeff-4.0/p false positive, end to end. 36 sections, all IZAP=-1."""
+    m = _stub_library(
+        monkeypatch,
+        {"p_072-Hf-180_7243.zip": _mod().parse_endf_file(charged_particle_material(), 72, 180, "p")},
+    )
+    m.fetch_library("jeff-4.0", "p", tmp_path, session=None)  # must not raise
+
+    manifest = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())
+    assert manifest["mf10_sections"] == 1
+    assert manifest["mf10_product_sections"] == 0
+    assert manifest["mf10_rows"] == 0
+    assert manifest["channel_rows"] > 0, "the MF=3 side still produced rows"
+
+
+def test_mf3_sections_naming_no_residual_are_counted_separately():
+    """MT=2 and MT=5 name no residual, so no production row is possible and
+    zero of them is the right answer — the jendl-5/d false positive."""
+    parsed = _mod().parse_endf_file(deuteron_material(), 3, 6, "d")
+    assert parsed.mf3_sections == 2
+    assert parsed.mf3_usable_sections == 2, "both have positive points"
+    assert parsed.mf3_residual_sections == 0, "neither MT names a residual"
+    assert parsed.mf3_rows == 0, "so there are no production rows"
+    assert parsed.channel_rows > 0, "but the channel rows are there"
+    assert parsed.null_residual_rows == parsed.channel_rows
+
+
+def test_a_library_with_no_residual_naming_mts_does_not_trip_the_guard(monkeypatch, tmp_path):
+    """The jendl-5/d false positive, end to end."""
+    m = _stub_library(
+        monkeypatch,
+        {"d_003-Li-6_0325.zip": _mod().parse_endf_file(deuteron_material(), 3, 6, "d")},
+    )
+    m.fetch_library("jendl-5", "d", tmp_path, session=None)  # must not raise
+
+    manifest = json.loads((tmp_path / "jendl-5" / "manifest.json").read_text())
+    assert manifest["mf3_sections"] == 2
+    assert manifest["mf3_residual_sections"] == 0
+    assert manifest["mf3_rows"] == 0
+    assert manifest["channel_rows"] > 0
+
+
+def test_an_all_negative_mf3_section_is_not_counted_as_usable():
+    """Charged-particle MF=3 MT=2 is negative by construction. Counting it as a
+    section that should have produced rows would fire the channel guard on a
+    library being read correctly."""
+    parsed = _mod().parse_endf_file(charged_particle_material(), 72, 180, "p")
+    assert parsed.mf3_sections == 2, "MT=2 and MT=5 are both present"
+    assert parsed.mf3_usable_sections == 1, "only MT=5 has a positive point"
+    assert not _channel(parsed, 2), "the all-negative section emits nothing"
+    assert _channel(parsed, 5), "the positive one still does"
