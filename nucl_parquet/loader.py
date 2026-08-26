@@ -267,6 +267,19 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # `SUM(xs_mb)` silently double-count, with nothing in the row saying so.
     _register_endf_mt(db)
 
+    # endf_interp: what each `interp_law` code means. The mirror image of
+    # endf_mt, and the reason both exist in the shapes they do — see
+    # `nucl_parquet/endf_interp.py`. The *relation* (what INT=5 means) is
+    # reference data and lives here; the *datum* (which INT this region uses) is
+    # per-evaluation and had to be a column, because it varies inside a single
+    # MF=3 section and no coarser key holds it.
+    #
+    #   SELECT * FROM xs JOIN endf_interp USING (interp_law)
+    #   WHERE NOT endf_interp.is_linear
+    #
+    # answers "which of my rows does np.interp read wrongly" (#338).
+    _register_endf_interp(db)
+
     # ground_states: when nuclides.parquet exists, override the file-based
     # ground_states view with a filtered view of nuclides.
     #
@@ -319,6 +332,34 @@ def _register_endf_mt(db: duckdb.DuckDBPyConnection) -> None:
     db.execute(
         "CREATE OR REPLACE VIEW endf_mt AS "
         "SELECT * FROM (VALUES " + values + ") AS t(MT, name, redundant, sums_over, particle_production)"
+    )
+
+
+def _register_endf_interp(db: duckdb.DuckDBPyConnection) -> None:
+    """Register the `endf_interp` reference view from the in-package law table.
+
+    Six rows of ENDF-102 vocabulary, so the same reasoning as `endf_mt`: code,
+    not data, and queryable from a plain checkout with nothing downloaded.
+    """
+    from .endf_interp import interp_table
+
+    rows = interp_table()
+    if not rows:  # pragma: no cover - the table is a literal
+        return
+    values = ",".join(
+        "({}, '{}', {}, {}, {}, '{}')".format(
+            r["interp_law"],
+            r["name"].replace("'", "''"),
+            "TRUE" if r["log_x"] else "FALSE",
+            "TRUE" if r["log_y"] else "FALSE",
+            "TRUE" if r["is_linear"] else "FALSE",
+            r["description"].replace("'", "''"),
+        )
+        for r in rows
+    )
+    db.execute(
+        "CREATE OR REPLACE VIEW endf_interp AS "
+        "SELECT * FROM (VALUES " + values + ") AS t(interp_law, name, log_x, log_y, is_linear, description)"
     )
 
 

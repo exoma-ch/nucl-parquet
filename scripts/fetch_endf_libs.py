@@ -44,6 +44,7 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
 from nucl_parquet.builder_stamp import RETIRED_MANIFEST_KEYS, write_builder_stamp  # noqa: E402
+from nucl_parquet.endf_interp import LIN_LIN, laws_per_point  # noqa: E402
 from nucl_parquet.state_vocabulary import (  # noqa: E402
     ENDF_TARGET_MARKERS,
     SUM,
@@ -610,6 +611,13 @@ class ParsedFile:
     #: merely skipped: "this library represents no charged-particle elastic"
     #: and "this library was never asked" must stay distinguishable.
     signed_sections: dict[int, int] = field(default_factory=dict)
+
+    #: Residual sums whose contributing MF=3 sections disagreed about their
+    #: interpolation law, so `interp_law` is NULL on those production rows
+    #: (#338). Counted rather than merely tolerated: the survey that justified
+    #: the summing rule measured 0 of 253 residual groups disagreeing, and a
+    #: number climbing off zero means that premise no longer holds.
+    summed_without_law: int = 0
     #: `kind='channel'` rows — one per MF=3 MT, carrying MT itself (#347).
     channel_rows: int = 0
     #: Channel rows whose MT names no single product: total, elastic,
@@ -618,9 +626,14 @@ class ParsedFile:
 
 
 def sum_on_union_grid(
-    contribs: list[tuple[np.ndarray, np.ndarray]],
-) -> tuple[np.ndarray, np.ndarray]:
+    contribs: list[tuple[np.ndarray, np.ndarray, np.ndarray | None]],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Sum cross-section contributions onto the union of their energy grids.
+
+    Each contribution is `(energies_eV, xs_barns, laws)`, where `laws[i]` is the
+    ENDF `INT` governing the interval starting at `energies_eV[i]`. Returns the
+    same triple for the sum, with `laws` **None** when the result has no single
+    law — see below.
 
     Several ENDF reactions routinely reach the same product: MT=600-649 all make
     (Z-1, A) in MF=3, and JEFF's Sr-86 reaches Rb-84m through MT=32, 41 and 105
@@ -629,17 +642,42 @@ def sum_on_union_grid(
     what collapsed Fe-56(n,p) from 114 mb to 0.1 mb (#326). Interpolate each
     contribution onto the union grid instead and add.
 
-    Linear interpolation is the ENDF default (INT=2); outside a contribution's
-    own threshold-to-max range it contributes zero.
+    ## What law a *sum* has (#338)
+
+    A single contribution passes through untouched, laws and all — that row set
+    is still the evaluator's own curve on the evaluator's own grid.
+
+    Two or more is different, because this function resamples with `np.interp`,
+    which is lin-lin. If every contributing interval is already law 2 that is
+    exact and the sum is honestly law 2. If any contribution says otherwise then
+    the resampling has *approximated* it, and no single law describes the result:
+    the answer is NULL, meaning "not stated", which is the truth.
+
+    That branch is rare by measurement, not by hope. Surveying 3,624 MF=3
+    sections across 92 tapes and applying this parser's own preference for a
+    summed MT over its partial band, **0 of 253** residual groups had
+    contributors that disagreed about their law — and 0 of the 61 groups where
+    the summed MT is absent so the partials really must be unioned. Where
+    disagreement did exist in the raw data (5 groups, all JENDL-5), MT=103 was
+    present and won, so the sum never saw it.
     """
     if len(contribs) == 1:
         return contribs[0]
-    e_union = np.unique(np.concatenate([e for e, _ in contribs]))
+    e_union = np.unique(np.concatenate([e for e, _, _ in contribs]))
     xs_total = np.zeros_like(e_union)
-    for e, s in contribs:
+    for e, s, _ in contribs:
         xs_total += np.interp(e_union, e, s, left=0.0, right=0.0)
     positive = xs_total > 0
-    return e_union[positive], xs_total[positive]
+    e_out, xs_out = e_union[positive], xs_total[positive]
+
+    # A contribution whose `laws` is None has no law of its own — an MF=9 row,
+    # which is a *product* and so representable by no law at all (see
+    # `parse_mf9_rows`). A sum that includes one cannot have a law either.
+    if any(laws is None for _, _, laws in contribs):
+        return e_out, xs_out, None
+    all_linear = all(np.all(laws == LIN_LIN) for _, _, laws in contribs if laws.size)
+    laws_out = np.full(e_out.shape, LIN_LIN, dtype=np.int64) if all_linear else None
+    return e_out, xs_out, laws_out
 
 
 def lfs_to_state(lfs: int, product_lfs_levels: set[int]) -> str:
@@ -818,17 +856,20 @@ def parse_mf10_rows(
 
             energies_ev = np.asarray(tab.x, dtype=float)
             xs_barns = np.asarray(tab.y, dtype=float)
+            # Expand the law per point BEFORE filtering — ENDF's breakpoints are
+            # indices into this array, so any mask invalidates them (#338).
+            laws = laws_per_point(tab.breakpoints, tab.interpolation, len(energies_ev))
             good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
             if not good.any():
                 continue
 
             state = lfs_to_state(int(level["LFS"]), product_lfs_levels[izap])
             key = (izap // 1000, izap % 1000, state)
-            by_product.setdefault(key, []).append((energies_ev[good], xs_barns[good]))
+            by_product.setdefault(key, []).append((energies_ev[good], xs_barns[good], laws[good]))
 
     rows: list[dict] = []
     for (prod_z, prod_a, state), contribs in by_product.items():
-        e_union, xs_total = sum_on_union_grid(contribs)
+        e_union, xs_total, laws_out = sum_on_union_grid(contribs)
         rows.extend(
             {
                 "target_A": target_a,
@@ -841,8 +882,9 @@ def parse_mf10_rows(
                 "state": state,
                 "energy_MeV": float(e_ev) * 1e-6,
                 "xs_mb": float(xs_b) * 1e3,
+                "interp_law": None if laws_out is None else int(laws_out[i]),
             }
-            for e_ev, xs_b in zip(e_union, xs_total)
+            for i, (e_ev, xs_b) in enumerate(zip(e_union, xs_total))
         )
     return rows, len(sections), product_sections
 
@@ -1003,11 +1045,13 @@ def parse_mf9_rows(
                 continue
 
             state = lfs_to_state(int(level["LFS"]), product_lfs_levels[izap])
-            by_product.setdefault((*product, state), []).append((grid[good], xs[good]))
+            # `None`, not a law: an MF=9 row is a *product* sigma(E) x Y(E), and
+            # no ENDF interpolation law describes it — see the note below.
+            by_product.setdefault((*product, state), []).append((grid[good], xs[good], None))
 
     rows: list[dict] = []
     for (prod_z, prod_a, state), contribs in by_product.items():
-        e_union, xs_total = sum_on_union_grid(contribs)
+        e_union, xs_total, _laws = sum_on_union_grid(contribs)
         rows.extend(
             {
                 "target_A": target_a,
@@ -1020,6 +1064,28 @@ def parse_mf9_rows(
                 "state": state,
                 "energy_MeV": float(e_ev) * 1e-6,
                 "xs_mb": float(xs_b) * 1e3,
+                # Always NULL, and not for want of trying (#338/#390).
+                #
+                # These rows are sigma(E) x Y(E). Ask which laws survive a
+                # product: laws 4 and 5 do, because they are logarithmic in y and
+                # ln(sigma*Y) = ln(sigma) + ln(Y) stays linear in whatever x-axis
+                # the law uses; law 1 does, being constant. Laws 2 and 3 do NOT —
+                # a linear times a linear is a *quadratic*, and no ENDF law
+                # spells that.
+                #
+                # Which leaves nowhere to inherit from. This function resamples
+                # both curves with `np.interp`, so the only case where that
+                # resampling is exact is when both are law 2 — precisely the case
+                # whose product is unrepresentable. On a realistic interval
+                # (sigma 100->400 mb, Y 0.90->0.30) claiming law 2 for the product
+                # is wrong by **30%** at the midpoint. And where either input is
+                # not law 2, the resampling already approximated it.
+                #
+                # So there is no branch on which one of these rows could honestly
+                # name a law. NULL means "not stated", which is exactly true, and
+                # a consumer joining `endf_interp` sees no row rather than a
+                # comfortable lin-lin that is off by a third.
+                "interp_law": None,
             }
             for e_ev, xs_b in zip(e_union, xs_total)
         )
@@ -1092,6 +1158,9 @@ def parse_endf_file(
     mf3_residual_sections = 0
     signed_sections: dict[int, int] = {}
     mf3_by_mt: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    # Residual sums whose contributions disagreed about interpolation, so the
+    # summed rows carry no law (#338). Expected to stay 0 on real evaluations.
+    summed_without_law = 0
 
     for (mf, mt), section in material.section_data.items():
         if mf != 3:
@@ -1103,6 +1172,11 @@ def parse_endf_file(
                 continue
             energies_ev = np.asarray(tab.x, dtype=float)
             xs_barns = np.asarray(tab.y, dtype=float)
+            # ENDF's (NBT, INT) region arrays are INDICES into this point array,
+            # so they must be expanded to a law per point before anything is
+            # filtered out below — otherwise the boundaries silently refer to
+            # points that are no longer there (#338).
+            laws = laws_per_point(tab.breakpoints, tab.interpolation, len(energies_ev))
         except (AttributeError, TypeError, KeyError) as e:
             logger.debug("  Skipping MF=%d MT=%d: %s", mf, mt, e)
             continue
@@ -1118,7 +1192,7 @@ def parse_endf_file(
             logger.debug("  MF=3 MT=%d: no positive in-range points, skipping", mt)
             continue
         mf3_usable_sections += 1
-        e_good, xs_good = energies_ev[good], xs_barns[good]
+        e_good, xs_good, laws_good = energies_ev[good], xs_barns[good], laws[good]
         # Keep the curve for MF=9 to multiply its yields by. Stored before the
         # skip_partials policy below, so "which sigma pairs with this yield"
         # never depends on a redundant-MT decision made for another purpose.
@@ -1151,17 +1225,20 @@ def parse_endf_file(
                 "state": SUM,
                 "energy_MeV": float(e_ev) * 1e-6,
                 "xs_mb": float(xs_b) * 1e3,
+                # A channel row is one MF=3 section on the tape's own grid, so
+                # the evaluator's law applies to it exactly (#338).
+                "interp_law": int(law),
             }
-            for e_ev, xs_b in zip(e_good, xs_good)
+            for e_ev, xs_b, law in zip(e_good, xs_good, laws_good)
         )
 
         # --- kind='production': our sum over the channels reaching a residual --
         if residual is None or mt in skip_partials:
             continue
-        by_residual.setdefault(residual, []).append((e_good, xs_good))
+        by_residual.setdefault(residual, []).append((e_good, xs_good, laws_good))
 
     for (res_z, res_a), contribs in by_residual.items():
-        e_union, xs_total = sum_on_union_grid(contribs)
+        e_union, xs_total, laws_out = sum_on_union_grid(contribs)
         rows.extend(
             {
                 "target_A": target_a,
@@ -1179,9 +1256,16 @@ def parse_endf_file(
                 "state": SUM,
                 "energy_MeV": float(e_ev) * 1e-6,
                 "xs_mb": float(xs_b) * 1e3,
+                # NULL where several contributions were resampled lin-lin onto a
+                # union grid and did not all agree that lin-lin was right — the
+                # sum then has no single law and saying so is the honest answer
+                # (#338). A lone contribution keeps its own laws.
+                "interp_law": None if laws_out is None else int(laws_out[i]),
             }
-            for e_ev, xs_b in zip(e_union, xs_total)
+            for i, (e_ev, xs_b) in enumerate(zip(e_union, xs_total))
         )
+        if laws_out is None:
+            summed_without_law += 1
 
     mf3_rows = len(rows)
     mf10_rows, mf10_sections, mf10_product_sections = parse_mf10_rows(material, target_a)
@@ -1204,6 +1288,7 @@ def parse_endf_file(
 
     return ParsedFile(
         rows=rows,
+        summed_without_law=summed_without_law,
         channel_rows=len(channel_rows),
         null_residual_rows=null_residual_rows,
         mf3_sections=len(mf3_mts),
@@ -1343,6 +1428,7 @@ def fetch_library(
     mf9_product_sections = 0
     mf9_rows = 0
     mf9_yield_overshoots: dict[tuple[int, int], float] = {}
+    summed_without_law = 0
     signed_sections: dict[int, int] = {}
     # Every upstream tape that yielded nothing. Skipping one silently is how a
     # single natural target (p+Be-9, n+Ho-165) disappears from a release with no
@@ -1371,6 +1457,7 @@ def fetch_library(
         mf9_product_sections += parsed_file.mf9_product_sections
         mf9_rows += parsed_file.mf9_rows
         mf9_yield_overshoots.update(parsed_file.mf9_yield_overshoots)
+        summed_without_law += parsed_file.summed_without_law
         for mt, n in parsed_file.signed_sections.items():
             signed_sections[mt] = signed_sections.get(mt, 0) + n
         mf10_sections += parsed_file.mf10_sections
@@ -1519,6 +1606,24 @@ def fetch_library(
             "Every evaluated row would then carry a null MT, which is the #347 "
             "state this ingest exists to leave behind."
         )
+    if summed_without_law:
+        # Not a failure. It means several MF=3 sections reaching one residual
+        # declared different interpolation laws, so `sum_on_union_grid` had to
+        # resample them lin-lin and the sum has no single law to report. The
+        # rows are still right on their own grid; they simply cannot say how to
+        # read *between* the points, and NULL says exactly that (#338).
+        #
+        # Said out loud because the survey behind that rule measured 0 of 253
+        # residual groups disagreeing. A non-zero count here is new information
+        # about real evaluations, not routine noise.
+        logger.warning(
+            "  %s/%s: %d residual sum(s) had contributing MF=3 sections with differing "
+            "interpolation laws; their production rows carry a NULL interp_law (#338)",
+            lib_key,
+            sublib_code,
+            summed_without_law,
+        )
+
     if signed_sections:
         # Loud, and once per library rather than once per file. Dropping data is
         # exactly the kind of thing this script has done silently before.
@@ -1577,6 +1682,7 @@ def fetch_library(
                 "state": pl.Utf8,
                 "energy_MeV": pl.Float64,
                 "xs_mb": pl.Float64,
+                "interp_law": pl.Int32,
             },
         )
         # Write CANONICAL_XS_SCHEMA directly (#359). This script used to emit the
@@ -1666,6 +1772,14 @@ def fetch_library(
         "mf9_yield_overshoots": {f"{z}-{a}": round(v, 4) for (z, a), v in sorted(mf9_yield_overshoots.items())},
         "channel_rows": channel_rows,
         "null_residual_rows": null_residual_rows,
+        # Production rows whose contributing MF=3 sections disagreed about
+        # interpolation, so the sum carries a NULL `interp_law` (#338). Recorded
+        # for the same reason as `signed_sections_dropped` above: it keeps "this
+        # library states no law here" apart from "nobody looked", without
+        # re-running the ingest. Expected to be 0 — the survey behind the summing
+        # rule measured 0 of 253 residual groups disagreeing — so a non-zero
+        # value is a finding about real evaluations, not routine noise.
+        "summed_without_law": summed_without_law,
         "states": dict(sorted(state_counts.items())),
     }
     manifest["ingest"] = {k: ingest[k] for k in sorted(ingest)}
