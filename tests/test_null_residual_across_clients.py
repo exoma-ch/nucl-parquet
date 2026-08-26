@@ -231,3 +231,118 @@ def test_the_go_client_has_no_cross_section_reader() -> None:
         "audited; give it the same null-residual handling as the Rust and TS clients and "
         "add it to _RESIDUAL_READERS."
     )
+
+
+# --- The target's state: who will have to read it, and when (#353) -----------
+#
+# `target_state` is declared in CANONICAL_XS_SCHEMA and written by the ENDF
+# builder, but no shipped parquet carries it until the re-ingest. Until then a
+# client cannot be made correct against it — there is no data to test with, and
+# the one question that matters (does the ground state arrive as `'g'`, as `''`,
+# or as absent?) is answered by the rebuild, not by guessing now.
+#
+# So this is a *tripwire that arms itself*: it is quiet while the column is
+# absent, and the moment any shard ships one it fails and names the files that
+# key on the target. Same contract as the PENDING ledgers — the check turns on
+# by itself rather than depending on someone remembering.
+
+#: Client sources that key cross-sections by target, and so will merge two
+#: target states onto one key once the column exists. `target_A` alone is not the
+#: target: Br-80 and Br-80m share it.
+_TARGET_KEYED_READERS = {
+    # `HashMap<(target_A, residual_Z, residual_A, state), XYTable>` — two
+    # evaluations for one target_A land in one XYTable and interleave.
+    "rs/nucl-parquet/src/xs.rs",
+    # Extracts `targetA` into a typed array for the WASM hand-off.
+    "ts/nucl-parquet/src/columns.ts",
+    # The tests for it — they build fixtures column by column, so they are where
+    # a `target_state` fixture has to be added too.
+    "ts/nucl-parquet/test/xs_nulls.test.ts",
+    "ts/nucl-parquet/test/columns.test.ts",
+}
+
+
+def _shipped_shard_has_target_state() -> bool:
+    """True once any shipped cross-section shard carries the column."""
+    import polars as pl
+
+    data = _REPO_ROOT / "data"
+    if not (data / "catalog.json").exists():
+        return False
+    for shard in data.rglob("*.parquet"):
+        try:
+            if "target_state" in pl.read_parquet_schema(shard):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def test_the_set_of_target_keyed_clients_is_known() -> None:
+    """A new client that keys on `target_A` must come past this list.
+
+    Stated as an allowlist for the same reason `_RESIDUAL_READERS` is: adding a
+    target-keyed reader is exactly the moment to decide what it does about two
+    target states, and a silent pass is the wrong answer.
+    """
+    found = set()
+    for path in sorted(_CLIENTS.rglob("*")):
+        if path.suffix not in _SOURCE_SUFFIXES:
+            continue
+        if "node_modules" in path.parts or "target" in path.parts or "dist" in path.parts:
+            continue
+        if re.search(r"\btarget_A\b|\btargetA\b", path.read_text(encoding="utf-8", errors="ignore")):
+            found.add(str(path.relative_to(_CLIENTS)))
+
+    assert found == _TARGET_KEYED_READERS, (
+        f"the set of client files keying on the target changed.\n"
+        f"  added:   {sorted(found - _TARGET_KEYED_READERS)}\n"
+        f"  removed: {sorted(_TARGET_KEYED_READERS - found)}\n"
+        "`target_A` alone does not identify a target — Br-80 and Br-80m share it (#353). "
+        "Add the file here, and read `target_state` alongside once the data ships it."
+    )
+
+
+def test_target_keyed_clients_read_target_state_once_the_data_has_it() -> None:
+    """Arms itself at the re-ingest: shipped column ⇒ clients must key on it.
+
+    While no shard carries `target_state` this asserts the *premise* instead of
+    passing vacuously, so a scan that silently stops finding shards fails here
+    rather than looking like a clean bill of health.
+    """
+    if not _shipped_shard_has_target_state():
+        pytest.skip("no shipped shard carries target_state yet — #353's re-ingest has not run")
+
+    missing = [
+        name
+        for name in sorted(_TARGET_KEYED_READERS)
+        if not re.search(r"target_state|targetState", (_CLIENTS / name).read_text(encoding="utf-8"))
+    ]
+    assert not missing, (
+        f"{missing} key cross-sections by target but do not read `target_state`, and the "
+        "shipped data now carries it. Two evaluations for one target_A — Br-80 and "
+        "Br-80m — are merging onto one key inside the client (#353)."
+    )
+
+
+def test_the_mcp_servers_pass_new_columns_through_unchanged() -> None:
+    """States why the MCP servers are absent above: they never enumerate columns.
+
+    All three build DuckDB views with `SELECT *`, so a column added to the
+    canonical schema reaches a caller with no code change. That is a property
+    worth pinning rather than re-deriving: an MCP server that starts naming
+    columns would silently stop forwarding new ones.
+    """
+    servers = {
+        "py/nucl-parquet-mcp/nucl_parquet_mcp/server.py": r"SELECT \*",
+        "ts/nucl-parquet-mcp/src/index.ts": r"SELECT \*",
+    }
+    for name, pattern in servers.items():
+        path = _CLIENTS / name
+        assert path.exists(), f"{name} moved — update this audit"
+        text = path.read_text(encoding="utf-8")
+        assert re.search(pattern, text), f"{name} no longer uses SELECT *; it must forward new columns explicitly"
+        assert not re.search(r"\btarget_A\b", text), (
+            f"{name} started naming cross-section columns. It must now also name `target_state`, "
+            "or go back to SELECT * (#353)."
+        )

@@ -37,7 +37,13 @@ import pytest
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from nucl_parquet.state_vocabulary import STATES, SUM  # noqa: E402
+from nucl_parquet.state_vocabulary import (  # noqa: E402
+    GROUND,
+    STATES,
+    SUM,
+    TARGET_STATES,
+    parse_x4_state,
+)
 
 
 def _mod():
@@ -338,12 +344,26 @@ def test_overflow_sentinels_and_zeros_are_dropped(parsed):
 
 
 def test_every_row_matches_the_parquet_schema(parsed):
-    expected = {"target_A", "kind", "MT", "residual_Z", "residual_A", "state", "energy_MeV", "xs_mb"}
+    expected = {
+        "target_A",
+        # The target's own isomeric state (#353). Present on every row because
+        # `fetch_library` declares it in the write schema; a row missing it would
+        # make polars infer a Null column for a shard of ground-state targets.
+        "target_state",
+        "kind",
+        "MT",
+        "residual_Z",
+        "residual_A",
+        "state",
+        "energy_MeV",
+        "xs_mb",
+    }
     assert parsed.rows
     for row in parsed.rows:
         assert set(row) == expected
         assert row["target_A"] == 27
         assert row["state"] is None or row["state"] in STATES
+        assert row["target_state"] in TARGET_STATES
         assert row["xs_mb"] > 0
 
 
@@ -1178,3 +1198,165 @@ def test_a_signed_section_is_dropped_for_neutrons_too():
     assert parsed.signed_sections == {16: 1}
     assert not _channel(parsed, 16)
     assert _channel(parsed, 102)
+
+
+# ---------------------------------------------------------------------------
+# The target's own isomeric state (#353)
+# ---------------------------------------------------------------------------
+#
+# `parse_endf_filename` has extracted the target's isomer marker since #334, and
+# the caller assigned it to `_isomer` and dropped it. With no `target_state`
+# column, `n_035-Br-80` and `n_035-Br-80M` — two nuclides, different half-lives,
+# different cross-sections — both landed as `target_A = 80` in one shard:
+# 1,490 rows under 757 distinct keys in the shipped tendl-2025/xs/n_Br.parquet.
+
+
+def mf1_451_section(za: float, lis: int, liso: int) -> str:
+    """A minimal MF=1/451 descriptive section carrying LIS and LISO."""
+    seq = 1
+    out = _line(_endf_float(za) + _endf_float(26.75) + _endf_int(0) * 4, 1, 451, seq)
+    seq += 1
+    # ELIS, STA, LIS, LISO, -, NFOR
+    out += _line(
+        _endf_float(0.0) + _endf_float(0.0) + _endf_int(lis) + _endf_int(liso) + _endf_int(0) + _endf_int(6),
+        1,
+        451,
+        seq,
+    )
+    seq += 1
+    # AWI, EMAX, LREL, -, NSUB, NVER
+    out += _line(
+        _endf_float(1.0) + _endf_float(2.0e7) + _endf_int(0) + _endf_int(0) + _endf_int(10) + _endf_int(8),
+        1,
+        451,
+        seq,
+    )
+    seq += 1
+    # TEMP, -, LDRV, -, NWD, NXC
+    out += _line(
+        _endf_float(0.0) + _endf_float(0.0) + _endf_int(0) + _endf_int(0) + _endf_int(1) + _endf_int(0), 1, 451, seq
+    )
+    seq += 1
+    out += _line("synthetic material for tests".ljust(66), 1, 451, seq)
+    seq += 1
+    return out + _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 1, 0, 99999)
+
+
+def material_with_liso(lis: int, liso: int):
+    """A material carrying only MF=1/451, for target-state resolution."""
+    import endf
+
+    text = (
+        "".ljust(66)
+        + "TPID\n"
+        + mf1_451_section(13027.0, lis, liso)
+        + _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0)
+        + f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n"
+    )
+    return endf.Material(io.StringIO(text))
+
+
+def test_endf_package_exposes_liso_and_lis_separately():
+    """Pin the field the target state is read from, as #340 pinned MF=10's shape.
+
+    ENDF-6 has two nearby fields and they are not interchangeable: `LIS` is the
+    target's excited *level* number, `LISO` its *isomeric state* number. The
+    values below are the real Br-80m shape — a first isomer sitting at the second
+    excited level — so a package version that swapped or dropped one fails here
+    rather than silently ranking every metastable target one step too high.
+    """
+    info = material_with_liso(lis=2, liso=1).section_data[1, 451]
+    assert info["LIS"] == 2, "LIS counts excited levels"
+    assert info["LISO"] == 1, "LISO counts isomeric states — this is the first isomer"
+
+
+def test_target_state_comes_from_liso_not_lis():
+    """The rank must be LISO's, which is why #353's suggested LIS check is wrong.
+
+    Cross-checking the filename marker against `LIS` would have compared rank 1
+    ('M') against 2 and failed on a perfectly correct evaluation — the issue's
+    own Br-80m example.
+    """
+    m = _mod()
+    assert m.target_state_from_material(material_with_liso(2, 1), "m", 80, "n_035-Br-80M.zip") == "m"
+    assert m.target_state_from_material(material_with_liso(0, 0), "", 80, "n_035-Br-80.zip") == GROUND
+    assert m.target_state_from_material(material_with_liso(4, 2), "m2", 108, "n_047-Ag-108M2.zip") == "m2"
+
+
+def test_an_unmarked_endf_filename_is_a_ground_state_claim():
+    """No marker means the ground state — a claim, not an absence.
+
+    ENDF names metastable targets explicitly and states LISO=0 for the rest, so
+    absence of a marker carries information here. Contrast EXFOR, where an absent
+    suffix means the record did not say and `parse_x4_state` returns None.
+    """
+    m = _mod()
+    assert m.target_state_from_material(material_with_liso(0, 0), "", 27, "n_013-Al-27.zip") == GROUND
+    assert parse_x4_state(None) is None
+
+
+def test_a_natural_element_target_gets_no_state():
+    """`target_A = 0` is an isotopic mixture, so NULL — checked before LISO."""
+    m = _mod()
+    assert m.target_state_from_material(material_with_liso(0, 0), "", 0, "n_017-Cl-0.zip") is None
+
+
+def test_filename_and_evaluation_disagreeing_is_a_hard_failure():
+    """A ground-state marker on an isomeric evaluation must not be resolved silently.
+
+    Preferring either source writes one nuclide's cross-sections under the
+    other's key — the defect this column exists to end, re-created by the fix for
+    it. #353 asks for a hard failure and this is it.
+    """
+    m = _mod()
+    with pytest.raises(m.TargetStateConflict, match="LISO=1"):
+        m.target_state_from_material(material_with_liso(2, 1), "", 80, "n_035-Br-80.zip")
+    with pytest.raises(m.TargetStateConflict, match="LISO=0"):
+        m.target_state_from_material(material_with_liso(0, 0), "zz", 80, "n_035-Br-80ZZ.zip")
+
+
+def test_an_unspellable_marker_without_liso_raises_rather_than_guessing():
+    """No MF=1/451 and a marker we cannot spell: refuse.
+
+    Filing it under the ground state is what discarding the marker did for every
+    file, which is the bug. 'n' appears in some mirror listings and this
+    repository does not know what it means — so it does not pretend to.
+    """
+    m = _mod()
+    material = _endf_material_without_mf1()
+    with pytest.raises(m.TargetStateConflict, match="not one this repository can spell"):
+        m.target_state_from_material(material, "n", 80, "n_035-Br-80N.zip")
+    # A marker it *can* spell still resolves from the filename alone.
+    assert m.target_state_from_material(material, "m", 80, "n_035-Br-80M.zip") == "m"
+    assert m.target_state_from_material(material, "", 27, "n_013-Al-27.zip") == GROUND
+
+
+def _endf_material_without_mf1():
+    import endf
+
+    return endf.Material(io.StringIO(synthetic_material()))
+
+
+def test_every_row_of_a_file_carries_the_targets_state(parsed):
+    """The stamp is a property of the file, so it must be on every row and equal.
+
+    Asserts a positive value rather than "no row is missing it": the synthetic
+    material has no MF=1/451 and no marker, so every row must say `'g'`.
+    """
+    assert parsed.rows, "the synthetic material must produce rows"
+    states = {row["target_state"] for row in parsed.rows}
+    assert states == {GROUND}, f"expected every row stamped 'g', got {sorted(states)}"
+
+
+def test_a_metastable_target_stamps_every_row_m():
+    """The #353 fix, end to end: the marker reaches the rows instead of `_isomer`."""
+    rows = _mod().parse_endf_file(synthetic_material(), 13, 27, "n", "m").rows
+    assert rows
+    assert {row["target_state"] for row in rows} == {"m"}
+
+
+def test_target_state_values_are_in_the_vocabulary():
+    """Whatever the ingest stamps must be spellable by state_vocabulary (#380)."""
+    for marker in ("", "m", "m2"):
+        value = _mod().parse_endf_file(synthetic_material(), 13, 27, "n", marker).rows[0]["target_state"]
+        assert value in TARGET_STATES, f"marker {marker!r} produced {value!r}, outside {sorted(TARGET_STATES)}"

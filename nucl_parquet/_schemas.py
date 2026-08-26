@@ -52,6 +52,32 @@ CANONICAL_XS_SCHEMA = {
     "proj_A": "Int32",
     "target_Z": "Int32",
     "target_A": "Int32",  # 0 = natural element (ENDF convention)
+    # Which isomeric state of the target the row is about — the same vocabulary
+    # as `state` below, defined once in `nucl_parquet/state_vocabulary.py`.
+    #
+    # Br-80 and Br-80m are two nuclides with different half-lives and different
+    # cross-sections, shipped by ENDF as two evaluations in two files. Without
+    # this column they land as `target_A = 80` in one shard, interleaved and
+    # indistinguishable: 1,490 rows under 757 distinct keys in
+    # `tendl-2025/xs/n_Br.parquet`, almost exactly 2x (#353). Identity lived in
+    # the filename, the filename was consumed, and the rows did not carry it —
+    # CLAUDE.md principle 5, and the same failure as `projectile` before #359.
+    #
+    #   'g'    the ground state. For ENDF this is a *claim*, not a default: an
+    #          unmarked filename means the ground state, and MF=1/451 LISO=0 says
+    #          so independently. Absence of a marker is information here.
+    #   'm'…   the isomer, by ascending excitation, taken from LISO.
+    #   'l'    measured tables only — a mixed isomeric target the measurement did
+    #          not resolve. ENDF cannot express this about its own target.
+    #   NULL   not stated, *or* not applicable: `target_A = 0` is a natural
+    #          element, an isotopic mixture that has no isomeric state to name.
+    #
+    # There is deliberately no 'sum'. Two target states are two evaluations, not
+    # one summed quantity, so nothing ever computes that aggregate — and reusing
+    # 'sum' (which means "over isomeric states of one nuclide") for a natural
+    # element (a mixture of *isotopes*) would rebuild the #357 collision on the
+    # target side. See `state_vocabulary.target_state_for_natural_element`.
+    "target_state": "Utf8",
     # ENDF's channel identity, and the primitive: MT -> residual is derivable,
     # residual -> MT is not. Null on production rows, which are a sum over
     # several MTs and so name none.
@@ -119,7 +145,32 @@ CANONICAL_XS_SCHEMA = {
     "year": "Int32",
 }
 
+#: Columns declared in `CANONICAL_XS_SCHEMA` that the *shipped* parquets do not
+#: carry yet, with the issue that lands them.
+#:
+#: A schema addition and the rebuild that fills it are two changes: the builders
+#: must write the column before there is any run that could produce it, so the
+#: declaration necessarily leads the data. Without this ledger the choice would
+#: be between a red suite for however long the rebuild takes and adding the
+#: column silently — and a schema test that has been red for a week is one nobody
+#: reads.
+#:
+#: Same contract as `state_vocabulary.PENDING_MIGRATION` and
+#: `data/builder_stamp_exemptions.json`: an entry is a debt, not a decision, and
+#: it is self-cleaning. Once every table carries the column,
+#: `tests/test_canonical_schema.py` fails on the leftover entry until it is
+#: deleted, so the ledger cannot quietly become permanent.
+PENDING_COLUMN_ADDITION: dict[str, str] = {
+    "target_state": (
+        "#353: metastable targets are merged into their ground state. The builder "
+        "writes the column; the shipped parquets gain it in the ENDF re-ingest."
+    ),
+}
+
 # Columns that must never be null in a canonical table — the identity spine.
+#
+# `target_state` is deliberately absent: it is NULL for every natural-element
+# target (`target_A = 0`), which is a real answer rather than a missing one.
 CANONICAL_XS_REQUIRED = (
     "library",
     "kind",

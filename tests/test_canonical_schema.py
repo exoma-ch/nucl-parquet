@@ -14,7 +14,11 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from nucl_parquet._schemas import CANONICAL_XS_REQUIRED, CANONICAL_XS_SCHEMA
+from nucl_parquet._schemas import (
+    CANONICAL_XS_REQUIRED,
+    CANONICAL_XS_SCHEMA,
+    PENDING_COLUMN_ADDITION,
+)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 
@@ -47,8 +51,13 @@ pytestmark = pytest.mark.skipif(not _xs_dirs(), reason="no cross-section data")
 
 @pytest.mark.data
 def test_all_xs_tables_share_the_canonical_schema() -> None:
-    """One shape, so `UNION ALL BY NAME` across sources is meaningful."""
-    expected = set(CANONICAL_XS_SCHEMA)
+    """One shape, so `UNION ALL BY NAME` across sources is meaningful.
+
+    Columns in `PENDING_COLUMN_ADDITION` are excused: the builder writes them but
+    the shipped parquets predate the rebuild that fills them. The excuse is
+    per-column and named, not "tolerate anything missing".
+    """
+    expected = set(CANONICAL_XS_SCHEMA) - set(PENDING_COLUMN_ADDITION)
     problems: list[str] = []
     con = duckdb.connect()
     for key, d in _xs_dirs():
@@ -60,6 +69,50 @@ def test_all_xs_tables_share_the_canonical_schema() -> None:
             if missing:
                 problems.append(f"{key}/{sample.name}: missing {sorted(missing)}")
     assert not problems, "tables not in canonical form:\n  " + "\n  ".join(problems)
+
+
+def test_pending_columns_are_actually_in_the_schema() -> None:
+    """The ledger may only excuse columns the schema declares.
+
+    An entry naming a column that no longer exists excuses nothing and hides a
+    typo in the one place a typo would silently widen the exemption.
+    """
+    unknown = sorted(set(PENDING_COLUMN_ADDITION) - set(CANONICAL_XS_SCHEMA))
+    assert not unknown, f"PENDING_COLUMN_ADDITION names columns not in CANONICAL_XS_SCHEMA: {unknown}"
+
+
+def test_every_pending_column_names_an_issue() -> None:
+    """A debt with no issue number is a decision nobody agreed to."""
+    for column, reason in PENDING_COLUMN_ADDITION.items():
+        assert "#" in reason, f"{column}: pending reason must cite the issue that clears it — got {reason!r}"
+
+
+@pytest.mark.data
+def test_the_pending_column_ledger_is_self_cleaning() -> None:
+    """Once every table carries a pending column, its entry must be deleted.
+
+    Otherwise the ledger silently becomes a permanent exemption, and the schema
+    test stops checking the column it was added for. This is the same
+    self-cleaning contract as `state_vocabulary.PENDING_MIGRATION`.
+    """
+    con = duckdb.connect()
+    for column in sorted(PENDING_COLUMN_ADDITION):
+        everywhere = True
+        for _key, d in _xs_dirs():
+            for sample in sorted(d.glob("*.parquet")):
+                cols = {
+                    r[0]
+                    for r in con.sql(f"SELECT name FROM parquet_schema('{sample}') WHERE name != 'root'").fetchall()
+                }
+                if column not in cols:
+                    everywhere = False
+                    break
+            if not everywhere:
+                break
+        assert not everywhere, (
+            f"every shipped xs table now carries {column!r} — delete its "
+            "PENDING_COLUMN_ADDITION entry so the schema test enforces it again."
+        )
 
 
 @pytest.mark.data
