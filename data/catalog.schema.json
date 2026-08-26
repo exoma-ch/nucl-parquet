@@ -76,7 +76,7 @@
               "string",
               "null"
             ],
-            "description": "Repo-relative path of the script that produced this library's parquets, or `null` if it was produced by a pipeline that is not in this repository (see #346). Required for every library that declares a `path`. Its digest is stamped into the library's manifest.json so a builder fix that never reached the data is detectable — see nucl_parquet/builder_stamp.py and #342."
+            "description": "Repo-relative path of the script that produces or fetches this library, or `null` if it was produced by a pipeline that is not in this repository (see #346). Required for every library: a library with neither this nor a `provenance` block answers neither 'what made you' nor 'why is there no answer'. `strata-data-nuclear` spelled it `fetcher` and was invisible to every check for exactly that reason — there is one spelling. Its digest is stamped into the library's manifest.json where one exists, so a builder fix that never reached the data is detectable — see nucl_parquet/builder_stamp.py and #342."
           },
           "provenance": {
             "type": "object",

@@ -129,6 +129,27 @@ def mf10_section(za: float, mt: int, levels: list[tuple[int, int, list]]) -> str
     return out + _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 10, 0, 99999)
 
 
+def mf9_section(za: float, mt: int, levels: list[tuple[int, int, list]]) -> str:
+    """MF=9 isomeric *yields*. Same record layout as MF=10 — the `endf` package
+    parses both with `parse_mf9_mf10` — but each level's TAB1 is Y(E), a
+    fraction, rather than sigma(E). `levels` is [(IZAP, LFS, [(E_eV, Y), ...])].
+    """
+    head = (
+        _endf_float(za)
+        + _endf_float(26.75)
+        + _endf_int(0)  # LIS
+        + _endf_int(0)
+        + _endf_int(len(levels))  # NS
+        + _endf_int(0)
+    )
+    out = _line(head, 9, mt, 1)
+    seq = 2
+    for izap, lfs, xy in levels:
+        body, seq = _tab1([_endf_float(0.0), _endf_float(0.0), _endf_int(izap), _endf_int(lfs)], xy, 9, mt, seq)
+        out += body
+    return out + _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 9, 0, 99999)
+
+
 # Al-26 from (n,2n): a 100 mb ground part and a 40 mb metastable part.
 AL26_G = [(1.4e7, 0.060), (2.0e7, 0.100), (3.0e7, 0.080)]
 AL26_M = [(1.4e7, 0.020), (2.0e7, 0.040), (3.0e7, 0.030)]
@@ -1464,3 +1485,199 @@ def test_the_ingest_record_survives_a_manifest_regeneration(monkeypatch, tmp_pat
     assert merged["builder"] == existing["builder"]
     assert merged["projectiles"] == ["n"]
     assert merged["files"] == 1
+
+
+# MF=9 — isomeric yields (#352)
+# ---------------------------------------------------------------------------
+#
+# Same shape as MF=10, different currency: each level carries Y(E), a fraction of
+# the MT reaction, so the cross-section is sigma_MF3(MT, E) * Y(E). Getting the
+# pairing wrong fabricates cross-sections, which is worse than the absence it
+# replaces — so the fixtures pin the pairing, not just the parse.
+
+# MT=102 capture on Al-27 -> Al-28, split 75/25 between ground and the isomer.
+CAPTURE_Y_G = [(1.0e5, 0.75), (1.0e6, 0.75), (1.4e7, 0.75)]
+CAPTURE_Y_M = [(1.0e5, 0.25), (1.0e6, 0.25), (1.4e7, 0.25)]
+
+
+def yield_material() -> str:
+    """MF=3 MT=102 with an MF=9 MT=102 splitting it — and no MF=10 at all,
+    which is ENDF/B-VIII.1 Am-241's situation."""
+    za = 13027.0
+    return "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 102, CAPTURE),
+            mf9_section(za, 102, [(13028, 0, CAPTURE_Y_G), (13028, 1, CAPTURE_Y_M)]),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+
+
+@pytest.fixture(scope="module")
+def yields():
+    return _mod().parse_endf_file(yield_material(), 13, 27, "n")
+
+
+def test_endf_package_mf9_shape_is_pinned():
+    """MF=9 levels carry 'Y', where MF=10 carries 'sigma'.
+
+    `endf.mf9.parse_mf9_mf10` serves both files and switches on MF for that one
+    key. Pin it, so a version bump that renames it fails here rather than
+    silently reinstating the absence #352 describes.
+    """
+    import endf
+
+    material = endf.Material(io.StringIO(yield_material()))
+    section = material.section_data[9, 102]
+    assert set(section) == {"ZA", "AWR", "LIS", "NS", "levels"}
+    assert section["NS"] == 2
+    for level in section["levels"]:
+        assert set(level) == {"QM", "QI", "IZAP", "LFS", "Y"}
+        assert "sigma" not in level, "MF=9 carries a yield, not a cross-section"
+        assert level["IZAP"] == 13028
+    assert [lv["LFS"] for lv in section["levels"]] == [0, 1]
+    assert section["levels"][0]["Y"].y[0] == pytest.approx(0.75)
+
+
+def test_mf9_yields_are_multiplied_by_their_mf3_cross_section(yields):
+    """The pairing, asserted on the numbers rather than assumed.
+
+    MF=9 MT=102 x MF=3 MT=102: capture is 300 / 20 / 1 mb, split 75/25, so the
+    ground rows must be 225 / 15 / 0.75 mb and the isomer 75 / 5 / 0.25 mb.
+    A row set that merely *exists* would pass a weaker test while multiplying by
+    the wrong section.
+    """
+    ground = _rows(yields, 13, 28, "g")
+    meta = _rows(yields, 13, 28, "m")
+    sigma_mb = [xs * 1e3 for _e, xs in CAPTURE]
+    assert [xs for _e, xs in ground] == pytest.approx([s * 0.75 for s in sigma_mb])
+    assert [xs for _e, xs in meta] == pytest.approx([s * 0.25 for s in sigma_mb])
+
+
+def test_mf9_reconstructs_the_channel_exactly(yields):
+    """Y is a normalised fraction, so summing the states must give back the MF=3
+    channel. Measured to hold on 53 of 54 real products; exact by construction
+    here."""
+    ground = dict(_rows(yields, 13, 28, "g"))
+    meta = dict(_rows(yields, 13, 28, "m"))
+    total = dict(_rows(yields, 13, 28, SUM))
+    assert total, "the MF=3 production row must still be there"
+    for energy, sigma in total.items():
+        assert ground[energy] + meta[energy] == pytest.approx(sigma)
+
+
+def test_mf9_rows_are_production_rows_with_no_mt(yields):
+    """Summed across whatever MTs reach the product, exactly like MF=10's."""
+    rows = [r for r in yields.rows if r["state"] in ("g", "m") and r["kind"] == "production"]
+    assert rows
+    for r in rows:
+        assert r["MT"] is None
+        assert (r["residual_Z"], r["residual_A"]) == (13, 28)
+
+
+def test_mf9_counters_and_guard_denominator(yields):
+    assert yields.mf9_sections == 1
+    assert yields.mf9_product_sections == 1
+    assert yields.mf9_rows == len(CAPTURE) * 2
+
+
+def test_a_yield_with_no_mf3_section_produces_nothing_and_is_not_counted():
+    """A yield alone is not a cross-section. The section must not sit in the
+    guard's denominator either, or the guard fires on a file being read right."""
+    za = 13027.0
+    material = "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 16, AL26_TOTAL),  # some other MT
+            mf9_section(za, 102, [(13028, 0, CAPTURE_Y_G)]),  # no MF=3 MT=102
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+    parsed = _mod().parse_endf_file(material, 13, 27, "n")
+    assert parsed.mf9_sections == 1
+    assert parsed.mf9_product_sections == 0, "no MF=3 MT=102 to multiply by"
+    assert parsed.mf9_rows == 0
+    assert not _rows(parsed, 13, 28, "g")
+
+
+def test_mf9_does_not_double_count_a_product_mf10_already_carries():
+    """ENDF routes a product to one file via MF=8's LMF, and no overlap was found
+    in 120 sampled evaluations. If one ever appears, MF=10 wins and MF=9 is
+    skipped — summing both would report the same production twice."""
+    za = 13027.0
+    material = "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 102, CAPTURE),
+            mf10_section(za, 102, [(13028, 0, AL26_G), (13028, 1, AL26_M)]),
+            mf9_section(za, 102, [(13028, 0, CAPTURE_Y_G), (13028, 1, CAPTURE_Y_M)]),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+    parsed = _mod().parse_endf_file(material, 13, 27, "n")
+    assert parsed.mf10_rows > 0, "MF=10 keeps the product"
+    assert parsed.mf9_rows == 0, "MF=9 must not add it a second time"
+    # The surviving values are MF=10's, not sigma x Y.
+    assert [xs for _e, xs in _rows(parsed, 13, 28, "g")] == pytest.approx([60.0, 100.0, 80.0])
+
+
+def test_yields_summing_above_one_are_carried_but_reported():
+    """ENDF/B-VIII.1's Pt-196 MF=9 MT=102 reaches a combined yield of 4.887.
+    That is the evaluation's normalisation, so the rows are carried — but a level
+    out-producing its own channel is not something to ship silently."""
+    za = 13027.0
+    material = "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 102, CAPTURE),
+            mf9_section(
+                za,
+                102,
+                [(13028, 0, [(1.0e5, 2.0), (1.4e7, 2.0)]), (13028, 1, [(1.0e5, 1.5), (1.4e7, 1.5)])],
+            ),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+    parsed = _mod().parse_endf_file(material, 13, 27, "n")
+    assert parsed.mf9_rows > 0, "carried, not dropped"
+    assert parsed.mf9_yield_overshoots == {(13, 28): pytest.approx(3.5)}
+
+
+def test_guard_fires_when_mf9_sections_yield_no_rows(monkeypatch, tmp_path):
+    """Same family as #340's MF=10 guard and #376's denominators."""
+    m = _stub_library(
+        monkeypatch,
+        {
+            "n_013-Al-27_1325.zip": _mod().ParsedFile(
+                rows=[_MF3_ROW, _CHANNEL_ROW],
+                mf3_sections=12,
+                mf3_usable_sections=12,
+                mf3_residual_sections=12,
+                mf3_rows=1,
+                channel_rows=1,
+                mf9_sections=4,
+                mf9_product_sections=4,
+                mf9_rows=0,
+            )
+        },
+    )
+    with pytest.raises(RuntimeError, match="MF=9"):
+        m.fetch_library("jendl-5", "n", tmp_path, session=None)
+
+
+def test_manifest_records_the_yield_rows(monkeypatch, tmp_path):
+    m = _stub_library(monkeypatch, {"n_013-Al-27_1325.zip": _mod().parse_endf_file(yield_material(), 13, 27, "n")})
+    m.fetch_library("jendl-5", "n", tmp_path, session=None)
+    manifest = json.loads((tmp_path / "jendl-5" / "manifest.json").read_text())
+    # Per-sublibrary since #383: one --sublibrary run sees one projectile, so a
+    # flat count is a fact about whichever run went last, not about the library.
+    record = manifest["ingest"]["n"]
+    assert record["mf9_sections"] == 1
+    assert record["mf9_product_sections"] == 1
+    assert record["mf9_rows"] == len(CAPTURE) * 2
+    assert record["mf9_yield_overshoots"] == {}
