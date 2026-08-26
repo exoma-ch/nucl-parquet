@@ -106,4 +106,12 @@ A `!` after the scope (or a `BREAKING CHANGE:` footer) signals a major bump. In 
 
 ### Data releases
 
-Data lives outside the per-package code semver. Bumping data means editing `data/catalog.json::data_version` and pushing a `data-YYYY.MM.DD` tag manually — see `.github/workflows/release-data.yml`. Conventional-commit scopes for data work (`feat(data)`, etc.) do not trigger any code-package bump.
+Data lives outside the per-package code semver, on its own CalVer tag namespace. Conventional-commit scopes for data work (`feat(data)`, etc.) do not trigger any code-package bump.
+
+Releasing data is one edit: bump `data/catalog.json::data_version` to the next `YYYY.MM.MICRO` and merge to `main`. Do not push a tag by hand. `.github/workflows/auto-tag-data.yml` pushes `data-<version>` with the release-bot App token on merge, and that tag push fires `.github/workflows/release-data.yml`, which re-validates tag-vs-catalog and publishes the signed tarball, manifest and signatures.
+
+If a version is tagged but has no release — the #344 failure — re-run **Auto-tag data release** from the Actions tab; it reconciles the catalog against what is actually published and re-triggers the release. The equivalent by hand is:
+
+```console
+$ gh workflow run release-data.yml -f tag=data-YYYY.MM.MICRO
+```

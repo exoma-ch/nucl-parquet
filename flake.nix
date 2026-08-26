@@ -36,6 +36,7 @@
           cacert # TLS roots for uv/npm/go/cargo fetches
           minisign # data-release signing + verification (#289)
           zstd # unpack data tarballs when verifying a release
+          jq # auto-tag-data.yml's detect step, executed for real by tests (#344)
         ];
 
         # Only the code needed for the pure `nix flake check` lint — deliberately
