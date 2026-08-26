@@ -67,11 +67,17 @@ uv sync --dev
 # a gate that is not named here does not run in CI at all; #341's tests were
 # written to stop a 623-file stale tree coming back and would have been silent.
 # Needs only a git checkout — no data tree, no network.
+# test_fetch_endf_libs: gates the ENDF ingest's MF=10 isomeric read (#340) —
+# pins the shape the `endf` package returns, so a version bump fails here rather
+# than silently emptying every ground/metastable split again, and asserts the
+# ingest raises instead of exiting 0 when it drops data. Builds its own ENDF-6
+# material, so it needs no data and no network.
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
   tests/test_data_signing.py \
   tests/test_stsv.py \
   tests/test_release_config.py \
   tests/test_repo_layout.py \
+  tests/test_fetch_endf_libs.py \
   -m "not data and not network" -v
 ok "python tests passed"
 endgroup

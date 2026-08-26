@@ -32,6 +32,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import requests
 
@@ -341,7 +342,8 @@ def mt_to_residual(
     they must NOT populate a product channel. Elastic in particular collides with
     the (n,γ) residual (Z, A+1) and would swamp the real capture with potential
     scattering (~barns vs ~mb). Metastable products from inelastic are carried by
-    the MF=10 isomeric section instead.
+    the MF=10 isomeric section instead — see `parse_mf10_rows`, which names the
+    product from ENDF's IZAP rather than deriving it from MT.
     """
     if mt == 2:  # elastic — neutron re-emerges, no isotope produced
         return None
@@ -407,15 +409,185 @@ def parse_endf_filename(filename: str) -> tuple[int, int, str] | None:
     return None
 
 
+# Cross-sections below/above these bounds are TALYS overflow sentinels
+# (~1.99e35 b) or non-physical, and are dropped on both the MF=3 and MF=10 paths.
+_XS_MAX_BARNS = 1e30
+
+
+@dataclass
+class ParsedFile:
+    """Rows from one evaluation, plus the counters the ingest guards need.
+
+    The `*_sections` counters record what was *present in the source*, whether
+    or not any row survived; the `*_rows` counters record what came out. Keeping
+    the two apart is the whole point: #340 was a parser that saw the sections
+    and emitted zero rows while the run exited 0, and a guard can only catch
+    that if it can see both numbers.
+
+    MF=3 is counted for the same reason MF=10 is. Before #340 the MF=10 path
+    produced nothing, so "MF=3 died" and "the whole library died" were the same
+    event and the empty-ingest guard caught it. Now that MF=10 emits rows, a
+    library could keep a healthy element count on MF=10 alone while every MF=3
+    cross-section vanished — `parse_mf3` returns its curve under the key
+    `'sigma'`, and that lookup is exactly as version-fragile as the one that
+    caused #340.
+    """
+
+    rows: list[dict]
+    mf3_sections: int = 0
+    mf3_rows: int = 0
+    mf10_sections: int = 0
+    mf10_rows: int = 0
+
+
+def sum_on_union_grid(
+    contribs: list[tuple[np.ndarray, np.ndarray]],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sum cross-section contributions onto the union of their energy grids.
+
+    Several ENDF reactions routinely reach the same product: MT=600-649 all make
+    (Z-1, A) in MF=3, and JEFF's Sr-86 reaches Rb-84m through MT=32, 41 and 105
+    in MF=10. Emitting one row set per reaction would leave a consumer to either
+    double-count or arbitrarily pick one, and deduplicating after the fact is
+    what collapsed Fe-56(n,p) from 114 mb to 0.1 mb (#326). Interpolate each
+    contribution onto the union grid instead and add.
+
+    Linear interpolation is the ENDF default (INT=2); outside a contribution's
+    own threshold-to-max range it contributes zero.
+    """
+    if len(contribs) == 1:
+        return contribs[0]
+    e_union = np.unique(np.concatenate([e for e, _ in contribs]))
+    xs_total = np.zeros_like(e_union)
+    for e, s in contribs:
+        xs_total += np.interp(e_union, e, s, left=0.0, right=0.0)
+    positive = xs_total > 0
+    return e_union[positive], xs_total[positive]
+
+
+def lfs_to_state(lfs: int, product_lfs_levels: set[int]) -> str:
+    """Map an ENDF MF=9/MF=10 `LFS` onto this repo's `state` vocabulary.
+
+    `LFS` is the *level number* of the produced nuclide, not an isomer index.
+    Real evaluations use 0, 1, 2, 3 — but also 14, 22, 47 and 72, because
+    TALYS-derived files (TENDL, JEFF, parts of ENDF/B) put the isomer wherever
+    it happens to sit in the level scheme. Fe-53m really is level 22. Spelling
+    that literally as `'m22'` would mint a state no other table in this repo can
+    join against: `meta/ensdf/nuclides.parquet` knows only `''`, `'m'`, `'m2'`,
+    `'m3'`, and `tendl-2023-iso/xs` only `''`, `'g'`, `'m'`.
+
+    So rank rather than transcribe. `LFS=0` becomes `'g'` — the evaluation
+    asserts *ground state*, which is a different and stronger claim than MF=3's
+    `''` ("summed over whatever states this channel populates"), and keeping the
+    two spellings apart is what stops Al-27(n,2n) from filing its 177 mb total
+    and its 114 mb ground-state part under one key. The non-zero levels for that
+    product, in ascending order, become `'m'`, `'m2'`, `'m3'`, …
+
+    `product_lfs_levels` must be every LFS the material carries for this product
+    across *all* its MF=10 sections, not just the section in hand: the same
+    product routinely appears under several MTs carrying different subsets of
+    its levels, and ranking per-section would spell one nuclide two ways in one
+    file. Known limitation: if an evaluation ships only the second isomer and
+    omits the first, we call it `'m'`, because MF=10 alone cannot tell us how
+    many isomers sit below the level it named.
+    """
+    if lfs <= 0:
+        return "g"
+    excited = sorted(level for level in product_lfs_levels if level > 0)
+    rank = excited.index(lfs) + 1
+    return "m" if rank == 1 else f"m{rank}"
+
+
+def parse_mf10_rows(
+    material,  # noqa: ANN001 — endf.Material, imported lazily by the caller
+    target_a: int,
+) -> tuple[list[dict], int]:
+    """Extract MF=10 isomeric-production rows. Returns (rows, sections_seen).
+
+    Shape note (#340). The pinned `endf` package parses MF=9 and MF=10 with
+    `endf.mf9.parse_mf9_mf10`, which returns::
+
+        {'ZA':…, 'AWR':…, 'LIS':…, 'NS':…,
+         'levels': [{'QM':…, 'QI':…, 'IZAP':…, 'LFS':…, 'sigma': Tabulated1D}]}
+
+    The previous implementation read `section.get("subsections", [])` and
+    `sub.get("ZAPS", 0)`. Neither key has ever existed, so `.get()` returned its
+    default on every section, the loop body never ran, and every isomeric
+    production section in every library was discarded while the ingest exited 0.
+    `tests/test_fetch_endf_libs.py` pins this shape so an `endf` version bump
+    that moves it fails a test instead of silently dropping the data again.
+
+    Note MF=10 names its product directly via `IZAP` (Z*1000 + A), so unlike the
+    MF=3 path there is nothing to derive from MT and no reaction we have to know
+    about in advance — MT=5 ("anything") is carried as faithfully as MT=16.
+    """
+    sections = [(mt, sec) for (mf, mt), sec in material.section_data.items() if mf == 10]
+    if not sections:
+        return [], 0
+
+    # Which levels does this material carry for each product, across every
+    # section? lfs_to_state needs the whole set to rank consistently.
+    product_lfs_levels: dict[int, set[int]] = {}
+    for _mt, section in sections:
+        for level in section["levels"]:
+            izap = int(level["IZAP"])
+            if izap > 0:
+                product_lfs_levels.setdefault(izap, set()).add(int(level["LFS"]))
+
+    # (product_Z, product_A, state) -> contributions to sum on the union grid.
+    by_product: dict[tuple[int, int, str], list[tuple[np.ndarray, np.ndarray]]] = {}
+    for mt, section in sections:
+        for level in section["levels"]:
+            izap = int(level["IZAP"])
+            if izap <= 0:
+                # MT=18 carries IZAP=-1 in JEFF/TENDL: fission names no single
+                # product, so there is nothing to file a production row under.
+                # Expected for fission, worth hearing about anywhere else.
+                log = logger.debug if mt == 18 else logger.warning
+                log("  MF=10 MT=%d: IZAP=%d names no product, skipping", mt, izap)
+                continue
+            tab = level.get("sigma")
+            if tab is None:
+                logger.warning("  MF=10 MT=%d IZAP=%d: no 'sigma' TAB1, skipping", mt, izap)
+                continue
+
+            energies_ev = np.asarray(tab.x, dtype=float)
+            xs_barns = np.asarray(tab.y, dtype=float)
+            good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
+            if not good.any():
+                continue
+
+            state = lfs_to_state(int(level["LFS"]), product_lfs_levels[izap])
+            key = (izap // 1000, izap % 1000, state)
+            by_product.setdefault(key, []).append((energies_ev[good], xs_barns[good]))
+
+    rows: list[dict] = []
+    for (prod_z, prod_a, state), contribs in by_product.items():
+        e_union, xs_total = sum_on_union_grid(contribs)
+        rows.extend(
+            {
+                "target_A": target_a,
+                "residual_Z": prod_z,
+                "residual_A": prod_a,
+                "state": state,
+                "energy_MeV": float(e_ev) * 1e-6,
+                "xs_mb": float(xs_b) * 1e3,
+            }
+            for e_ev, xs_b in zip(e_union, xs_total)
+        )
+    return rows, len(sections)
+
+
 def parse_endf_file(
     endf_text: str,
     target_z: int,
     target_a: int,
     projectile: str,
-) -> list[dict]:
+) -> ParsedFile:
     """Parse an ENDF-6 format text file and extract cross-section data.
 
-    Returns list of row dicts with keys matching the Parquet schema.
+    Returns a `ParsedFile`: row dicts keyed to the Parquet schema, plus the
+    MF=10 counters `fetch_library` guards on.
 
     Discrete-level partials (e.g. MT=600-649 for (n,p), 800-849 for (n,α)) all
     map to the same residual (Z-1,A) or (Z-2,A-3). When the evaluation *also*
@@ -430,7 +602,6 @@ def parse_endf_file(
     before emitting rows.
     """
     import endf
-    import numpy as np
 
     proj_z, proj_a = PROJECTILE_ZA[projectile]
 
@@ -438,7 +609,7 @@ def parse_endf_file(
         material = endf.Material(io.StringIO(endf_text))
     except Exception as e:
         logger.warning("Failed to parse ENDF material Z=%d A=%d: %s", target_z, target_a, e)
-        return []
+        return ParsedFile(rows=[])
 
     rows: list[dict] = []
 
@@ -488,80 +659,38 @@ def parse_endf_file(
             continue
 
         # Drop TALYS overflow sentinels (~1.99e35 b) and non-positive values.
-        good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= 1e30)
+        good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
         if not good.any():
             continue
         by_residual.setdefault(residual, []).append((energies_ev[good], xs_barns[good]))
 
     for (res_z, res_a), contribs in by_residual.items():
-        # Union energy grid across every MT contributing to this residual, so
-        # partials sampled on different grids all appear in the sum.
-        if len(contribs) == 1:
-            e_union, xs_total = contribs[0]
-        else:
-            e_union = np.unique(np.concatenate([e for e, _ in contribs]))
-            xs_total = np.zeros_like(e_union)
-            for e, s in contribs:
-                # Linear interp is the ENDF-default (INT=2). Outside a partial's
-                # threshold-to-max range it contributes 0.
-                xs_total += np.interp(e_union, e, s, left=0.0, right=0.0)
-            positive = xs_total > 0
-            e_union = e_union[positive]
-            xs_total = xs_total[positive]
-
+        e_union, xs_total = sum_on_union_grid(contribs)
         for e_ev, xs_b in zip(e_union, xs_total):
             rows.append(
                 {
                     "target_A": target_a,
                     "residual_Z": res_z,
                     "residual_A": res_a,
-                    "state": "",  # MF=3 doesn't distinguish isomers
+                    # '' is "summed over whatever states this channel populates",
+                    # which MF=10 spells 'g'/'m'/'m2' — see lfs_to_state.
+                    "state": "",
                     "energy_MeV": float(e_ev) * 1e-6,
                     "xs_mb": float(xs_b) * 1e3,
                 }
             )
 
-    # Extract MF=10 (isomeric production cross-sections)
-    for (mf, mt), section in material.section_data.items():
-        if mf != 10:
-            continue
+    mf3_rows = len(rows)
+    mf10_rows, mf10_sections = parse_mf10_rows(material, target_a)
+    rows.extend(mf10_rows)
 
-        try:
-            # MF=10 sections contain cross-sections for specific product nuclides
-            # Each subsection has ZA (product Z*1000+A), LFS (isomeric state), and TAB1
-            subsections = section.get("subsections", [])
-            if not subsections:
-                continue
-
-            for sub in subsections:
-                za_product = sub.get("ZAPS", 0)
-                lfs = sub.get("LFS", 0)
-                tab = sub.get("sigma")
-                if tab is None or za_product == 0:
-                    continue
-
-                res_z_10 = za_product // 1000
-                res_a_10 = za_product % 1000
-                state = "m" if lfs > 0 else ""
-
-                for e_ev, xs_b in zip(tab.x, tab.y):
-                    if xs_b <= 0 or xs_b > 1e30:  # same sentinel guard as MF=3
-                        continue
-                    rows.append(
-                        {
-                            "target_A": target_a,
-                            "residual_Z": res_z_10,
-                            "residual_A": res_a_10,
-                            "state": state,
-                            "energy_MeV": e_ev * 1e-6,
-                            "xs_mb": xs_b * 1e3,
-                        }
-                    )
-        except (AttributeError, TypeError, KeyError) as e:
-            logger.debug("  Skipping MF=10 MT=%d: %s", mt, e)
-            continue
-
-    return rows
+    return ParsedFile(
+        rows=rows,
+        mf3_sections=len(mf3_mts),
+        mf3_rows=mf3_rows,
+        mf10_sections=mf10_sections,
+        mf10_rows=len(mf10_rows),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +726,7 @@ def download_and_parse(
     sublib_code: str,
     filename: str,
     session: requests.Session,
-) -> list[dict]:
+) -> ParsedFile:
     """Download a single ENDF zip file and parse it."""
     sublib_dir = lib.sublibraries[sublib_code]
     url = f"{IAEA_MIRROR}/{lib.iaea_path}/{sublib_dir}/{filename}"
@@ -606,7 +735,7 @@ def download_and_parse(
     parsed = parse_endf_filename(filename)
     if parsed is None:
         logger.warning("Cannot parse filename: %s", filename)
-        return []
+        return ParsedFile(rows=[])
 
     target_z, target_a, _isomer = parsed
 
@@ -615,18 +744,18 @@ def download_and_parse(
         resp.raise_for_status()
     except requests.RequestException as e:
         logger.warning("Download failed %s: %s", filename, e)
-        return []
+        return ParsedFile(rows=[])
 
     # Extract ENDF text from zip
     try:
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
             names = zf.namelist()
             if not names:
-                return []
+                return ParsedFile(rows=[])
             endf_text = zf.read(names[0]).decode("ascii", errors="replace")
     except (zipfile.BadZipFile, KeyError) as e:
         logger.warning("Bad zip %s: %s", filename, e)
-        return []
+        return ParsedFile(rows=[])
 
     return parse_endf_file(endf_text, target_z, target_a, sublib_code)
 
@@ -657,13 +786,23 @@ def fetch_library(
     element_rows: dict[str, list[dict]] = {}
     total_files = 0
     total_rows = 0
+    # Counted across every source file, including files that yielded no rows —
+    # "sections seen but nothing emitted" is exactly the state we must detect.
+    mf3_sections = 0
+    mf3_rows = 0
+    mf10_sections = 0
+    mf10_rows = 0
 
     for i, fname in enumerate(filenames):
         if (i + 1) % 50 == 0:
             logger.info("  Processing %d/%d ...", i + 1, len(filenames))
 
-        rows = download_and_parse(lib, sublib_code, fname, session)
-        if not rows:
+        parsed_file = download_and_parse(lib, sublib_code, fname, session)
+        mf3_sections += parsed_file.mf3_sections
+        mf3_rows += parsed_file.mf3_rows
+        mf10_sections += parsed_file.mf10_sections
+        mf10_rows += parsed_file.mf10_rows
+        if not parsed_file.rows:
             continue
 
         parsed = parse_endf_filename(fname)
@@ -672,13 +811,62 @@ def fetch_library(
 
         target_z = parsed[0]
         elem = _ELEMENT_SYMBOLS.get(target_z, f"Z{target_z}")
-        element_rows.setdefault(elem, []).extend(rows)
+        element_rows.setdefault(elem, []).extend(parsed_file.rows)
         total_files += 1
-        total_rows += len(rows)
+        total_rows += len(parsed_file.rows)
 
+    # A library that ingests nothing must not report success. BROND-3.1 did
+    # exactly that — every filename used a shape the parser did not recognise,
+    # each was skipped with a warning, and the run finished with 0 elements and
+    # exit code 0. Had that output been copied over data/, the library would
+    # have been silently deleted rather than rebuilt. Raised before anything is
+    # written, so no artefact claiming success survives.
+    #
+    # #334 added this check but left an earlier `logger.warning(...); return` on
+    # the same condition above it, so the raise was unreachable and the guard
+    # never fired. Warn-and-return *is* the silent success it was written to
+    # stop; there is one check now, and it raises.
     if not element_rows:
-        logger.warning("No data extracted for %s/%s", lib.name, sublib_code)
-        return
+        raise RuntimeError(
+            f"{lib_key}/{sublib_code} produced 0 elements from {len(filenames)} source files. "
+            "Every file was skipped — check the 'Cannot parse filename' warnings above. "
+            "Refusing to report success on an empty ingest."
+        )
+
+    # Per-file guards. The empty-ingest check above only sees a library that
+    # produced *nothing*; each ENDF file type can go dark on its own while the
+    # other keeps the element count healthy, and neither failure is visible in
+    # an exit code. Both raise before anything is written.
+    #
+    # MF=10 (#340): reading it through an object shape the `endf` package never
+    # returned discarded every isomeric section in every library, and the #334
+    # guard could not see it because MF=3 kept producing plenty of rows.
+    if mf10_sections and not mf10_rows:
+        raise RuntimeError(
+            f"{lib_key}/{sublib_code}: {mf10_sections} MF=10 isomeric-production "
+            f"sections were read from the source files and produced 0 rows. "
+            "That is the #340 signature — the `endf` package's MF=10 shape has "
+            "most likely moved again (see parse_mf10_rows). Refusing to report "
+            "success while silently dropping every isomeric product."
+        )
+
+    # MF=3, symmetrically. This became possible to miss only once MF=10 started
+    # emitting rows: before #340 a dead MF=3 read meant a dead library and the
+    # empty-ingest guard caught it, whereas now MF=10 alone could keep the
+    # element count up while every channel cross-section vanished.
+    if mf3_sections and not mf3_rows:
+        raise RuntimeError(
+            f"{lib_key}/{sublib_code}: {mf3_sections} MF=3 cross-section sections "
+            f"were read from the source files and produced 0 rows. Either the "
+            "`endf` package no longer returns the curve under 'sigma', or "
+            "mt_to_residual now rejects every MT. Refusing to report success on "
+            "a library with no channel cross-sections."
+        )
+
+    state_counts: dict[str, int] = {}
+    for rows in element_rows.values():
+        for row in rows:
+            state_counts[row["state"]] = state_counts.get(row["state"], 0) + 1
 
     # Write Parquet files per element
     # For neutron data: lib_key/xs/n_Fe.parquet
@@ -698,30 +886,23 @@ def fetch_library(
                 "xs_mb": pl.Float64,
             },
         )
-        # parse_endf_file has already summed partial MTs per residual on the
-        # union energy grid, and MF=10 subsections use (residual_Z, residual_A,
-        # state) that never collide with an MF=3 row for the same target. A
-        # bare unique(subset=…) here would silently drop MT-partials that share
-        # a residual (Fe-56(n,p) collapsed to 0.1 mb; #326) — sort only.
-        df = df.sort("target_A", "residual_Z", "residual_A", "energy_MeV")
+        # parse_endf_file has already summed contributions per (residual, state)
+        # on the union energy grid — for MF=3 partial MTs and, since #340, for
+        # the several MTs that reach one MF=10 product. MF=10 rows cannot
+        # collide with the MF=3 rows for the same residual either, because MF=3
+        # spells its state '' and MF=10 spells it 'g'/'m'/'m2' (lfs_to_state):
+        # Al-27(n,2n) files its 177 mb total and its 114 mb ground-state part
+        # under different keys, which is what they are. A bare unique(subset=…)
+        # here would silently drop MT-partials that share a residual (Fe-56(n,p)
+        # collapsed to 0.1 mb; #326) — sort only.
+        df = df.sort("target_A", "residual_Z", "residual_A", "state", "energy_MeV")
 
         out_path = xs_dir / f"{sublib_code}_{elem}.parquet"
         df.write_parquet(out_path, compression=COMPRESSION)
 
-    # A library that ingests nothing must not report success. BROND-3.1 did
-    # exactly that — every filename used a shape the parser did not recognise,
-    # each was skipped with a warning, and the run finished with 0 elements and
-    # exit code 0. Had that output been copied over data/, the library would
-    # have been silently deleted rather than rebuilt. Checked before the
-    # manifest is written, so no artefact claiming success survives.
-    if not element_rows:
-        raise RuntimeError(
-            f"{lib_key}/{sublib_code} produced 0 elements from {total_files} source files. "
-            "Every file was skipped — check the 'Cannot parse filename' warnings above. "
-            "Refusing to report success on an empty ingest."
-        )
-
-    # Write manifest
+    # Write manifest. `mf10_sections` / `states` are recorded so the next reader
+    # can tell "this library ships no isomeric data" from "this library's
+    # isomeric data was dropped on the floor" without re-running the ingest.
     manifest = {
         "library": lib_key,
         "sublibrary": sublib_code,
@@ -730,15 +911,23 @@ def fetch_library(
         "source_files": total_files,
         "projectiles": [sublib_code],
         "elements": sorted(element_rows.keys()),
+        "mf3_sections": mf3_sections,
+        "mf3_rows": mf3_rows,
+        "mf10_sections": mf10_sections,
+        "mf10_rows": mf10_rows,
+        "states": dict(sorted(state_counts.items())),
     }
     manifest_path = output_dir / lib_key / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
     logger.info(
-        "  Done: %d elements, %d source files, %d total rows → %s/",
+        "  Done: %d elements, %d source files, %d total rows (%d MF=10 sections → %d isomeric rows; states %s) → %s/",
         len(element_rows),
         total_files,
         total_rows,
+        mf10_sections,
+        mf10_rows,
+        dict(sorted(state_counts.items())),
         lib_key,
     )
 
