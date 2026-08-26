@@ -50,7 +50,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 # Constants (natural units where useful)
 _M_E_KEV = 510.998_950  # electron rest mass in keV

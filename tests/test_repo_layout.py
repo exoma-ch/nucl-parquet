@@ -282,6 +282,7 @@ def test_the_data_dir_guard_can_actually_fail() -> None:
 #: script -> the argparse dest that decides where it writes. Must exist, be
 #: Path-typed, and (when it has a default) default inside the data directory.
 _OUTPUT_DEST = {
+    "backfill_xs_nuclides.py": "data_dir",
     "build_channels.py": "out_dir",
     "build_kerma.py": "data_dir",
     "build_manifests.py": "data_dir",
@@ -402,7 +403,16 @@ def test_scripts_without_an_output_default_require_one(script_name: str) -> None
 
 @pytest.mark.parametrize(
     "script_name",
-    ["fetch_iupac_compositions.py", "fetch_ame2020.py", "update_suppliers.py", "migrate_xs_schema.py"],
+    [
+        "fetch_iupac_compositions.py",
+        "fetch_ame2020.py",
+        "update_suppliers.py",
+        "migrate_xs_schema.py",
+        # Fetches ENDF tapes from the IAEA mirror and rewrites tracked shards
+        # in place — the sharpest form of this class, since it *merges* into an
+        # existing file rather than replacing it (#335).
+        "backfill_xs_nuclides.py",
+    ],
 )
 def test_network_writers_offer_a_dry_run(script_name: str) -> None:
     """A script that fetches and then overwrites tracked data must offer a no-write mode.

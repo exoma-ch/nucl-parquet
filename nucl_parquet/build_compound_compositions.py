@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 # Compositions per NIST XCOM Table 4 (mass fractions). All entries sum to 1.0
 # within ICRU/NIST rounding (typically ±5e-5). Keys match xcom_compounds.material.

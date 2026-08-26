@@ -42,7 +42,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 # Energy grid in MeV/u: 0.001–300, 200 log-spaced points
 _ENERGIES_MEV_U: np.ndarray = np.geomspace(0.001, 300.0, 200)

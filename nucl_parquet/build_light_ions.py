@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 # (source_name, base_source, energy_scale_factor)
 # energy_MeV_new = energy_MeV_base × scale

@@ -29,7 +29,7 @@ import logging
 import re
 import sys
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +54,13 @@ logger = logging.getLogger(__name__)
 
 IAEA_MIRROR = "https://nds.iaea.org/public/download-endf"
 COMPRESSION = "zstd"
+
+#: How many tape names the "yielded no rows" report spells out before it stops.
+#: A sublibrary is up to ~2300 tapes and a wholesale failure would otherwise
+#: emit one unreadable multi-kilobyte line. The *count* is always exact and the
+#: remainder is stated — a truncation nobody is told about is the same class of
+#: bug as the silent skip this report exists to expose.
+_MAX_LISTED_TAPES = 40
 
 # ---------------------------------------------------------------------------
 # Library registry
@@ -324,11 +331,25 @@ MT_EMITTED_PARTICLES: dict[int, tuple[str, ...]] = {
 }
 
 # Discrete-level and continuum partials: one range of MTs, one emitted particle.
-#   MT 51-91:   (x,n') to specific levels, plus the n continuum at 91
+#   MT 50-91:   (x,n) to specific levels, plus the n continuum at 91
 #   MT 600-649: (x,p) levels, 650-699 (x,d), 700-749 (x,t),
 #   MT 750-799: (x,³He), 800-849 (x,α), 875-891 (x,2n)
+#
+# The neutron band starts at 50, not 51. For an incident *neutron* MT=50 is
+# (n,n₀) — the same thing as elastic — and the residual==target check in
+# `mt_to_residual` discards it, so widening the band is a no-op for every
+# neutron library. For an incident *charged particle* MT=50 is (z,n₀), the
+# ground-state transition of a genuine transmutation, and dropping it loses real
+# cross section near threshold: ⁹Be(p,n₀)⁹B opens at 2.06 MeV and is the
+# dominant (p,n) channel there.
+#
+# This only bites tapes that decompose (z,n) into the discrete-level band with
+# no MT=4 total to fall back on — in practice the older adopted evaluations
+# (LANL) rather than TALYS output, which writes MT=4. That is the same family of
+# tapes as the #335 dropouts, and ⁷Li(p,n)⁷Be lands on its textbook 1.88 MeV
+# threshold once MT=50 is included.
 LEVEL_RANGE_PARTICLES: dict[tuple[int, int], tuple[str, ...]] = {
-    (51, 91): ("n",),
+    (50, 91): ("n",),
     (600, 649): ("p",),
     (650, 699): ("d",),
     (700, 749): ("t",),
@@ -498,6 +519,41 @@ def parse_endf_filename(filename: str) -> tuple[int, int, str] | None:
 _XS_MAX_BARNS = 1e30
 
 
+def is_signed_section(xs_barns: np.ndarray) -> bool:
+    """True if this MF=3 curve carries a negative value, and so is not a sigma.
+
+    A signed quantity is not a cross-section, so none of it is usable — not even
+    the positive part (#377).
+
+    For charged-particle projectiles, MF=3 MT=2 does not hold elastic sigma.
+    Charged-particle elastic lives in MF=6 MT=2 under LAW=5 and diverges
+    (Rutherford), so there is no finite total to tabulate; MF=3 MT=2 holds the
+    *nuclear-interference term* relative to it, which is signed by construction.
+
+    Filtering to `xs > 0` handles the all-negative sections correctly by
+    accident — the whole section vanishes. The mixed-sign ones are the defect:
+    p+Cu-65 has 44 points, 25 of them positive, and keeping those writes a
+    172 mb → 12.6 b curve over 1–30 MeV as `kind='channel'`, `MT=2`, `xs_mb`.
+    That is a different physical quantity wearing sigma's units, and it looks
+    entirely reasonable — the #326 and #351 failure shape, where the number is
+    plausible so nothing questions it.
+
+    The rule is stated on the data, not on (projectile, MT): any negative value
+    means the section is not sigma. An audit of 165 evaluations across five
+    charged-particle sublibraries and three neutron ones found MT=2 to be the
+    *only* signed MF=3 section, and no negatives at all under neutrons — so this
+    is not broader than the class it describes, and it stays right if another MT
+    joins it.
+
+    A function rather than an inline test because `scripts/backfill_xs_nuclides.py`
+    reads MF=3 sections too, straight off a tape, and had its own point-wise
+    `xs > 0` filter — i.e. the half-fix this rule exists to reject. One spelling,
+    imported (CLAUDE.md principle 1).
+    """
+    finite = np.isfinite(xs_barns)
+    return bool(finite.any() and (xs_barns[finite] < 0).any())
+
+
 @dataclass
 class ParsedFile:
     """Rows from one evaluation, plus the counters the ingest guards need.
@@ -536,6 +592,11 @@ class ParsedFile:
     #: MT=18 uses IZAP=-1 for "fission products, unspecified"; a section of
     #: nothing but those yields no row and is not a failure either.
     mf10_product_sections: int = 0
+    #: MT -> number of MF=3 sections dropped whole for carrying a negative
+    #: value, i.e. for not being a cross-section (#377). Reported rather than
+    #: merely skipped: "this library represents no charged-particle elastic"
+    #: and "this library was never asked" must stay distinguishable.
+    signed_sections: dict[int, int] = field(default_factory=dict)
     #: `kind='channel'` rows — one per MF=3 MT, carrying MT itself (#347).
     channel_rows: int = 0
     #: Channel rows whose MT names no single product: total, elastic,
@@ -761,6 +822,7 @@ def parse_endf_file(
     null_residual_rows = 0
     mf3_usable_sections = 0
     mf3_residual_sections = 0
+    signed_sections: dict[int, int] = {}
 
     for (mf, mt), section in material.section_data.items():
         if mf != 3:
@@ -776,14 +838,14 @@ def parse_endf_file(
             logger.debug("  Skipping MF=%d MT=%d: %s", mf, mt, e)
             continue
 
-        # Drop TALYS overflow sentinels (~1.99e35 b) and non-positive values.
+        # Drop TALYS overflow sentinels (~1.99e35 b) and non-positive values,
+        # and drop a signed section whole — see `is_signed_section` (#377).
+        if is_signed_section(xs_barns):
+            signed_sections[mt] = signed_sections.get(mt, 0) + 1
+            continue
+
         good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
         if not good.any():
-            # Nothing usable here. Common and correct in the charged-particle
-            # sublibraries: MF=3 MT=2 holds the nuclear-interference term
-            # relative to the divergent Rutherford cross-section (the elastic
-            # distribution itself is in MF=6 with LAW=5), so it is negative
-            # throughout and is not a cross-section this table can carry.
             logger.debug("  MF=3 MT=%d: no positive in-range points, skipping", mt)
             continue
         mf3_usable_sections += 1
@@ -860,6 +922,7 @@ def parse_endf_file(
         mf3_sections=len(mf3_mts),
         mf3_usable_sections=mf3_usable_sections,
         mf3_residual_sections=mf3_residual_sections,
+        signed_sections=signed_sections,
         mf10_product_sections=mf10_product_sections,
         mf3_rows=mf3_rows,
         mf10_sections=mf10_sections,
@@ -985,6 +1048,17 @@ def fetch_library(
     mf3_usable_sections = 0
     mf3_residual_sections = 0
     mf10_product_sections = 0
+    signed_sections: dict[int, int] = {}
+    # Every upstream tape that yielded nothing. Skipping one silently is how a
+    # single natural target (p+Be-9, n+Ho-165) disappears from a release with no
+    # diff to notice and ~100% coverage everywhere else — see #335 / #336.
+    #
+    # The aggregate guards below cannot see this: they ask whether a *sublibrary*
+    # went dark, and a sublibrary where 2296 of 2298 tapes convert perfectly is
+    # healthy by every one of those measures. Which two are missing is the whole
+    # question, and only a per-tape account answers it. The skip is legitimate
+    # (some evaluations really do carry no production data), the silence is not.
+    yielded_nothing: list[str] = []
 
     for i, fname in enumerate(filenames):
         if (i + 1) % 50 == 0:
@@ -998,9 +1072,12 @@ def fetch_library(
         mf3_usable_sections += parsed_file.mf3_usable_sections
         mf3_residual_sections += parsed_file.mf3_residual_sections
         mf10_product_sections += parsed_file.mf10_product_sections
+        for mt, n in parsed_file.signed_sections.items():
+            signed_sections[mt] = signed_sections.get(mt, 0) + n
         mf10_sections += parsed_file.mf10_sections
         mf10_rows += parsed_file.mf10_rows
         if not parsed_file.rows:
+            yielded_nothing.append(fname)
             continue
 
         parsed = parse_endf_filename(fname)
@@ -1012,6 +1089,23 @@ def fetch_library(
         element_rows.setdefault(elem, []).extend(parsed_file.rows)
         total_files += 1
         total_rows += len(parsed_file.rows)
+
+    if yielded_nothing:
+        # Loud by default. A run that drops nuclides is not necessarily wrong,
+        # but it must never again be indistinguishable from one that doesn't.
+        # Emitted before the guards below so the account survives even when the
+        # run goes on to raise — the names are what a human needs either way.
+        shown = yielded_nothing[:_MAX_LISTED_TAPES]
+        rest = len(yielded_nothing) - len(shown)
+        logger.warning(
+            "  %d/%d tapes yielded no rows for %s/%s and are ABSENT from the output: %s%s",
+            len(yielded_nothing),
+            len(filenames),
+            lib.name,
+            sublib_code,
+            ", ".join(sorted(shown)),
+            f", … and {rest} more" if rest else "",
+        )
 
     # A library that ingests nothing must not report success. BROND-3.1 did
     # exactly that — every filename used a shape the parser did not recognise,
@@ -1106,6 +1200,21 @@ def fetch_library(
             "Every evaluated row would then carry a null MT, which is the #347 "
             "state this ingest exists to leave behind."
         )
+    if signed_sections:
+        # Loud, and once per library rather than once per file. Dropping data is
+        # exactly the kind of thing this script has done silently before.
+        logger.info(
+            "  %s/%s: dropped %d MF=3 section(s) whole for carrying negative values "
+            "(by MT: %s). A signed quantity is not a cross-section, so its positive "
+            "part is not one either — for charged particles MT=2 is the Rutherford "
+            "interference term and the elastic distribution is in MF=6 LAW=5, which "
+            "this ingest does not read (#377).",
+            lib_key,
+            sublib_code,
+            sum(signed_sections.values()),
+            dict(sorted(signed_sections.items())),
+        )
+
     if mf3_sections and not mf3_usable_sections:
         logger.info(
             "  %s/%s: none of the %d MF=3 sections carry a positive in-range point. "
@@ -1197,6 +1306,18 @@ def fetch_library(
         "projectiles": [sublib_code],
         "elements": sorted(element_rows.keys()),
         "mf3_sections": mf3_sections,
+        # Sections dropped for being signed, and what that means is absent as a
+        # result. "not represented" and "not measured" must stay apart: without
+        # this a reader cannot tell a library that ships no charged-particle
+        # elastic from one nobody asked (#377).
+        "signed_sections_dropped": dict(sorted(signed_sections.items())),
+        "charged_particle_elastic": (
+            "not represented — MF=3 MT=2 is the Rutherford interference term, not "
+            "sigma; the elastic distribution is in MF=6 LAW=5, which this ingest "
+            "does not read (#377)"
+        )
+        if signed_sections
+        else None,
         "mf3_usable_sections": mf3_usable_sections,
         "mf3_residual_sections": mf3_residual_sections,
         "mf3_rows": mf3_rows,

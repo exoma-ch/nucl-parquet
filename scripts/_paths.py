@@ -22,16 +22,33 @@ re-deriving `ROOT / "data"`:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 #: The repository checkout root (the parent of `scripts/`).
 ROOT = Path(__file__).resolve().parent.parent
 
-#: Where shipped data lives, and therefore where an ingest writes by default.
+sys.path.insert(0, str(ROOT))  # so a bare `python scripts/foo.py` finds the package
+
+from nucl_parquet.download import writable_data_dir  # noqa: E402
+
+#: Where an ingest writes by default.
 #:
-#: Deliberately the plain checkout path rather than
-#: `nucl_parquet.download.data_dir()`. That resolver answers a *reader's*
-#: question ("where can I find data?") and falls back to `~/.nucl-parquet`, a
-#: consumer's download cache. An ingest script writes the repo's tracked data
-#: and must never silently target that cache.
-DATA_DIR = ROOT / "data"
+#: This *delegates* to `nucl_parquet.download.writable_data_dir()` rather than
+#: computing `ROOT / "data"` itself, which reverses the note that stood here
+#: since #341. The reason given then was that the only package-level resolver was
+#: `data_dir()`, a *reader's* answer that falls back to `~/.nucl-parquet` — a
+#: consumer's download cache an ingest must never target. That objection was
+#: about the fallback, and #373 removed it: `writable_data_dir()` is the same
+#: resolution minus the cache step, raising instead.
+#:
+#: With the objection answered, computing the path here as well would leave two
+#: implementations of "where does a writer put data" that merely happen to agree.
+#: One of them would eventually stop agreeing. So there is now exactly one, and
+#: `tests/test_writable_data_dir.py` pins that this constant *is* it.
+#:
+#: Consequence worth knowing: `$NUCL_PARQUET_DATA` now moves the scripts' default
+#: too, where before they always targeted the checkout. That is the environment
+#: variable's documented meaning — "this is my data tree" — and every script
+#: takes an explicit `--output` / `--data-dir` (#363) when you want otherwise.
+DATA_DIR = writable_data_dir()

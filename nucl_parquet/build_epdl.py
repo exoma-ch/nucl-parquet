@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 # ENDF MF/MT definitions for EPDL97
 _XS_MTS = {
