@@ -597,6 +597,14 @@ class ParsedFile:
     #: MT=18 uses IZAP=-1 for "fission products, unspecified"; a section of
     #: nothing but those yields no row and is not a failure either.
     mf10_product_sections: int = 0
+    #: MF=9 isomeric *yields*: sections seen, sections that both name a product
+    #: and have an MF=3 curve to multiply, and rows emitted (#352).
+    mf9_sections: int = 0
+    mf9_product_sections: int = 0
+    mf9_rows: int = 0
+    #: (Z, A) -> max summed yield, for products whose MF=9 levels sum above 1.
+    #: Carried faithfully but reported: the level then out-produces its channel.
+    mf9_yield_overshoots: dict[tuple[int, int], float] = field(default_factory=dict)
     #: MT -> number of MF=3 sections dropped whole for carrying a negative
     #: value, i.e. for not being a cross-section (#377). Reported rather than
     #: merely skipped: "this library represents no charged-particle elastic"
@@ -839,6 +847,185 @@ def parse_mf10_rows(
     return rows, len(sections), product_sections
 
 
+def parse_mf9_rows(
+    material,  # noqa: ANN001 — endf.Material, imported lazily by the caller
+    target_a: int,
+    mf3_by_mt: dict[int, tuple[np.ndarray, np.ndarray]],
+    mf10_products: set[tuple[int, int]],
+) -> tuple[list[dict], int, int, dict[tuple[int, int], float]]:
+    """Extract MF=9 isomeric-yield rows. Returns the same triple as MF=10.
+
+    MF=9 carries the same physics as MF=10 in the other currency: instead of a
+    cross-section per product level it gives `Y(E)`, the *fraction* of reaction
+    MT that lands in that level. The cross-section is `sigma_MF3(MT, E) * Y(E)`,
+    so unlike MF=10 this needs a second section to mean anything, and getting the
+    pairing wrong fabricates cross-sections rather than merely losing them.
+
+    The `endf` package parses MF=9 with the same `parse_mf9_mf10` that serves
+    MF=10, so the object shape is the one #340 already pinned — except each
+    level carries `'Y'` where MF=10 carries `'sigma'`.
+
+    Three things were measured across 120 evaluations before this was written,
+    because each is an assumption that would silently corrupt data if wrong:
+
+    * **Which MF=3 MT.** MF=9 MT=X pairs with MF=3 MT=X, and in 49 of 49 sampled
+      sections that section exists. MF=8 states it independently: its `LMF`
+      field routes each product to the file carrying its production data, and it
+      read `LMF=9` for all 97 keys checked. No MF=9 MT was a discrete-level
+      partial whose summed MT also ships, so `skip_partials` never removes the
+      section this needs — `mf3_by_mt` is populated before that policy applies
+      regardless, so the pairing does not depend on it staying that way.
+    * **Double counting against MF=10.** Zero overlap in the sample, on
+      `(MT, IZAP, LFS)` and on `(IZAP, LFS)` alone. That is what MF=8's `LMF` is
+      for — a product is routed to one file, not both. Checked here anyway and
+      logged rather than assumed, because silently summing the same product
+      twice is exactly the class of defect this file keeps producing.
+    * **`IZAP` == `mt_to_residual(MT)`** in 107 of 107 levels. So MF=9 splits the
+      very residual that the MF=3 MT=X row already reports under `state='sum'`,
+      which is the same relationship MF=10 has and the reason the two do not
+      collide: they differ in `state`.
+
+    A useful consequence of Y being a normalised fraction: the levels of one
+    product sum to 1 wherever the reaction is open (measured: max sum = 1.0000 on
+    every multi-level product sampled), so `sum(sigma * Y)` over states
+    reconstructs `sigma_MF3` exactly. The sum rule is exact by construction here,
+    where for MF=10 it is only approximately true.
+    """
+    sections = [(mt, sec) for (mf, mt), sec in material.section_data.items() if mf == 9]
+    if not sections:
+        return [], 0, 0, {}
+
+    # A section can only produce rows if it names a product *and* we hold the
+    # MF=3 curve to multiply — same "denominator is what could have worked"
+    # reasoning as #376.
+    def _usable(mt: int, sec) -> bool:  # noqa: ANN001
+        return mt in mf3_by_mt and any(int(level["IZAP"]) > 0 for level in sec["levels"])
+
+    product_sections = sum(1 for mt, sec in sections if _usable(mt, sec))
+
+    product_lfs_levels: dict[int, set[int]] = {}
+    for _mt, section in sections:
+        for level in section["levels"]:
+            izap = int(level["IZAP"])
+            if izap > 0:
+                product_lfs_levels.setdefault(izap, set()).add(int(level["LFS"]))
+
+    overshoot_products: dict[tuple[int, int], float] = {}
+
+    # Y is a fraction of the MT reaction, so the levels of one product should sum
+    # to at most 1. Measured across 54 sampled products, 53 hold it exactly; the
+    # exception is ENDF/B-VIII.1's Pt-196 MF=9 MT=102, whose two levels reach a
+    # combined 4.887 at 9-12 MeV. That is the evaluation's own normalisation, not
+    # an arithmetic error here, so the rows are carried faithfully — but a yield
+    # above 1 means the level's production exceeds the channel that feeds it, and
+    # shipping that without a word is how implausible numbers survive.
+    for mt, section in sections:
+        by_izap: dict[int, list] = {}
+        for level in section["levels"]:
+            izap = int(level["IZAP"])
+            if izap > 0 and level.get("Y") is not None:
+                by_izap.setdefault(izap, []).append(level)
+        for izap, levels in by_izap.items():
+            if len(levels) < 2:
+                continue
+            grid = np.unique(np.concatenate([np.asarray(lv["Y"].x, dtype=float) for lv in levels]))
+            total = sum(
+                np.interp(grid, np.asarray(lv["Y"].x, dtype=float), np.asarray(lv["Y"].y, dtype=float)) for lv in levels
+            )
+            if total.max() > 1.01:
+                overshoot_products[(izap // 1000, izap % 1000)] = float(total.max())
+                logger.warning(
+                    "  MF=9 MT=%d product Z=%d A=%d: its %d levels' yields sum to %.3f at "
+                    "E=%.4g eV, above 1. Carried as the evaluation states it, but the level "
+                    "production then exceeds the channel feeding it.",
+                    mt,
+                    izap // 1000,
+                    izap % 1000,
+                    len(levels),
+                    total.max(),
+                    grid[total.argmax()],
+                )
+
+    by_product: dict[tuple[int, int, str], list[tuple[np.ndarray, np.ndarray]]] = {}
+    for mt, section in sections:
+        sigma = mf3_by_mt.get(mt)
+        if sigma is None:
+            logger.warning(
+                "  MF=9 MT=%d: no usable MF=3 MT=%d to multiply the yield by, skipping. "
+                "A yield without its cross-section is not a cross-section.",
+                mt,
+                mt,
+            )
+            continue
+        sig_e, sig_xs = sigma
+
+        for level in section["levels"]:
+            izap = int(level["IZAP"])
+            if izap <= 0:
+                logger.warning("  MF=9 MT=%d: IZAP=%d names no product, skipping", mt, izap)
+                continue
+            tab = level.get("Y")
+            if tab is None:
+                logger.warning("  MF=9 MT=%d IZAP=%d: no 'Y' TAB1, skipping", mt, izap)
+                continue
+
+            product = (izap // 1000, izap % 1000)
+            if product in mf10_products:
+                # Never seen in 120 sampled evaluations, and MF=8's LMF exists to
+                # prevent it. Loud rather than silently doubled if it ever happens.
+                logger.warning(
+                    "  MF=9 MT=%d product Z=%d A=%d is also carried by MF=10. ENDF routes a "
+                    "product to one file via MF=8 LMF; taking MF=10 and skipping this to "
+                    "avoid counting the same production twice.",
+                    mt,
+                    *product,
+                )
+                continue
+
+            y_e = np.asarray(tab.x, dtype=float)
+            y_val = np.asarray(tab.y, dtype=float)
+
+            # Evaluate on the union grid, but only where *both* are defined.
+            # Y is narrower than sigma in 3 of 107 sampled levels, always because
+            # it starts at the reaction threshold. Extrapolating a yield past its
+            # own range would be inventing the split.
+            lo, hi = max(y_e[0], sig_e[0]), min(y_e[-1], sig_e[-1])
+            if not (hi > lo):
+                continue
+            grid = np.unique(np.concatenate([sig_e, y_e]))
+            grid = grid[(grid >= lo) & (grid <= hi)]
+            if grid.size < 2:
+                continue
+
+            xs = np.interp(grid, sig_e, sig_xs) * np.interp(grid, y_e, y_val)
+            good = np.isfinite(xs) & (xs > 0) & (xs <= _XS_MAX_BARNS)
+            if not good.any():
+                continue
+
+            state = lfs_to_state(int(level["LFS"]), product_lfs_levels[izap])
+            by_product.setdefault((*product, state), []).append((grid[good], xs[good]))
+
+    rows: list[dict] = []
+    for (prod_z, prod_a, state), contribs in by_product.items():
+        e_union, xs_total = sum_on_union_grid(contribs)
+        rows.extend(
+            {
+                "target_A": target_a,
+                # Summed across every MT reaching this product — a production
+                # row, exactly like the MF=3 sums and the MF=10 split.
+                "kind": "production",
+                "MT": None,
+                "residual_Z": prod_z,
+                "residual_A": prod_a,
+                "state": state,
+                "energy_MeV": float(e_ev) * 1e-6,
+                "xs_mb": float(xs_b) * 1e3,
+            }
+            for e_ev, xs_b in zip(e_union, xs_total)
+        )
+    return rows, len(sections), product_sections, overshoot_products
+
+
 def parse_endf_file(
     endf_text: str,
     target_z: int,
@@ -904,6 +1091,7 @@ def parse_endf_file(
     mf3_usable_sections = 0
     mf3_residual_sections = 0
     signed_sections: dict[int, int] = {}
+    mf3_by_mt: dict[int, tuple[np.ndarray, np.ndarray]] = {}
 
     for (mf, mt), section in material.section_data.items():
         if mf != 3:
@@ -931,6 +1119,10 @@ def parse_endf_file(
             continue
         mf3_usable_sections += 1
         e_good, xs_good = energies_ev[good], xs_barns[good]
+        # Keep the curve for MF=9 to multiply its yields by. Stored before the
+        # skip_partials policy below, so "which sigma pairs with this yield"
+        # never depends on a redundant-MT decision made for another purpose.
+        mf3_by_mt[mt] = (e_good, xs_good)
 
         residual = mt_to_residual(mt, target_z, target_a, proj_z, proj_a)
         if residual is not None:
@@ -993,7 +1185,14 @@ def parse_endf_file(
 
     mf3_rows = len(rows)
     mf10_rows, mf10_sections, mf10_product_sections = parse_mf10_rows(material, target_a)
+    # MF=9 is the same physics as a yield, so it needs the MF=3 curves and needs
+    # to know which products MF=10 already claimed (#352).
+    mf10_products = {(r["residual_Z"], r["residual_A"]) for r in mf10_rows}
+    mf9_rows, mf9_sections, mf9_product_sections, mf9_yield_overshoots = parse_mf9_rows(
+        material, target_a, mf3_by_mt, mf10_products
+    )
     rows.extend(mf10_rows)
+    rows.extend(mf9_rows)
     rows.extend(channel_rows)
 
     # Stamped once here rather than in each of the three row builders: it is a
@@ -1012,6 +1211,10 @@ def parse_endf_file(
         mf3_residual_sections=mf3_residual_sections,
         signed_sections=signed_sections,
         mf10_product_sections=mf10_product_sections,
+        mf9_sections=mf9_sections,
+        mf9_product_sections=mf9_product_sections,
+        mf9_rows=len(mf9_rows),
+        mf9_yield_overshoots=mf9_yield_overshoots,
         mf3_rows=mf3_rows,
         mf10_sections=mf10_sections,
         mf10_rows=len(mf10_rows),
@@ -1136,6 +1339,10 @@ def fetch_library(
     mf3_usable_sections = 0
     mf3_residual_sections = 0
     mf10_product_sections = 0
+    mf9_sections = 0
+    mf9_product_sections = 0
+    mf9_rows = 0
+    mf9_yield_overshoots: dict[tuple[int, int], float] = {}
     signed_sections: dict[int, int] = {}
     # Every upstream tape that yielded nothing. Skipping one silently is how a
     # single natural target (p+Be-9, n+Ho-165) disappears from a release with no
@@ -1160,6 +1367,10 @@ def fetch_library(
         mf3_usable_sections += parsed_file.mf3_usable_sections
         mf3_residual_sections += parsed_file.mf3_residual_sections
         mf10_product_sections += parsed_file.mf10_product_sections
+        mf9_sections += parsed_file.mf9_sections
+        mf9_product_sections += parsed_file.mf9_product_sections
+        mf9_rows += parsed_file.mf9_rows
+        mf9_yield_overshoots.update(parsed_file.mf9_yield_overshoots)
         for mt, n in parsed_file.signed_sections.items():
             signed_sections[mt] = signed_sections.get(mt, 0) + n
         mf10_sections += parsed_file.mf10_sections
@@ -1253,6 +1464,26 @@ def fetch_library(
             lib_key,
             sublib_code,
             mf10_sections,
+        )
+
+    # MF=9, the same guard one file along (#352). Its denominator is sections
+    # that name a product *and* have an MF=3 curve to multiply, because a yield
+    # with no cross-section behind it cannot produce a row however well it parses.
+    if mf9_product_sections and not mf9_rows:
+        raise RuntimeError(
+            f"{lib_key}/{sublib_code}: {mf9_product_sections} of {mf9_sections} MF=9 "
+            "isomeric-yield sections name a product and have an MF=3 curve to multiply, "
+            "and they produced 0 rows. Either the `endf` package's MF=9 shape has moved "
+            "(it carries 'Y' where MF=10 carries 'sigma' — see parse_mf9_rows), or the "
+            "sigma x Y multiplication is dropping everything."
+        )
+    if mf9_sections and not mf9_product_sections:
+        logger.info(
+            "  %s/%s: none of the %d MF=9 sections both name a product and have an MF=3 "
+            "curve to multiply; no isomeric-yield rows to emit.",
+            lib_key,
+            sublib_code,
+            mf9_sections,
         )
 
     # MF=3 production rows. Only a section whose MT names a single residual can
@@ -1429,6 +1660,10 @@ def fetch_library(
         "mf10_sections": mf10_sections,
         "mf10_product_sections": mf10_product_sections,
         "mf10_rows": mf10_rows,
+        "mf9_sections": mf9_sections,
+        "mf9_product_sections": mf9_product_sections,
+        "mf9_rows": mf9_rows,
+        "mf9_yield_overshoots": {f"{z}-{a}": round(v, 4) for (z, a), v in sorted(mf9_yield_overshoots.items())},
         "channel_rows": channel_rows,
         "null_residual_rows": null_residual_rows,
         "states": dict(sorted(state_counts.items())),
@@ -1468,7 +1703,8 @@ def fetch_library(
 
     logger.info(
         "  Done: %d elements, %d source files, %d total rows "
-        "(%d channel rows, %d of them null-residual; %d MF=10 sections → %d isomeric rows; states %s) → %s/",
+        "(%d channel rows, %d of them null-residual; %d MF=10 sections → %d isomeric rows; "
+        "%d MF=9 sections → %d yield rows; states %s) → %s/",
         len(element_rows),
         total_files,
         total_rows,
@@ -1476,6 +1712,8 @@ def fetch_library(
         null_residual_rows,
         mf10_sections,
         mf10_rows,
+        mf9_sections,
+        mf9_rows,
         dict(sorted(state_counts.items())),
         lib_key,
     )
