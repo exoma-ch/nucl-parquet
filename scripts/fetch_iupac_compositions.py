@@ -17,18 +17,22 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from pathlib import Path
 
 import polars as pl
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
 SRC_URL = "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=&ascii=ascii&isotype=some"
-RAW_PATH = ROOT / "data" / "g4_raw" / "iupac" / "compositions.txt"
-OUT_PATH = ROOT / "data" / "auxiliary" / "iupac_compositions.parquet"
+RAW_PATH = DATA_DIR / "g4_raw" / "iupac" / "compositions.txt"
+OUT_PATH = DATA_DIR / "auxiliary" / "iupac_compositions.parquet"
 
 # `1.00782503223(9)`: leading float, then optional uncertainty in parens.
 _VAL_RE = re.compile(r"^([\d.]+)\s*(?:\(([^)]+)\))?$")

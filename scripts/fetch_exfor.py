@@ -23,11 +23,16 @@ import argparse
 import json
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 
 import polars as pl
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,7 +40,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
 API_BASE = "https://nds.iaea.org/dataexplorer/api/reactions/xs"
 COMPRESSION = "zstd"
 RATE_LIMIT_S = 0.5
@@ -377,7 +381,7 @@ def fetch_element(
 ) -> int:
     """Fetch all EXFOR data for an element + projectile, write Parquet."""
     # Get target masses from TENDL to know which isotopes to query
-    tendl_path = ROOT / "tendl-2023-iso" / "xs" / f"{projectile}_{element}.parquet"
+    tendl_path = DATA_DIR / "tendl-2023-iso" / "xs" / f"{projectile}_{element}.parquet"
     target_masses: list[int] = [0]  # Always query natural element (mass=0)
 
     if tendl_path.exists():
@@ -442,8 +446,14 @@ def fetch_element(
 
 
 def get_tendl_elements(projectile: str) -> list[str]:
-    """Get list of elements available in TENDL for a projectile."""
-    xs_dir = ROOT / "tendl-2023-iso" / "xs"
+    """Get list of elements available in TENDL for a projectile.
+
+    Reads `data/tendl-2023-iso/`. This used to look at a *repo-root*
+    `tendl-2023-iso/`, which has never existed — `Path.glob` on a missing
+    directory yields nothing rather than raising, so `--all` silently fetched
+    zero elements instead of failing (#341).
+    """
+    xs_dir = DATA_DIR / "tendl-2023-iso" / "xs"
     elements = []
     for f in sorted(xs_dir.glob(f"{projectile}_*.parquet")):
         elem = f.stem.split("_", 1)[1]
@@ -453,7 +463,13 @@ def get_tendl_elements(projectile: str) -> list[str]:
     return elements
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser.
+
+    Separate from `main` so tests can assert on the argument defaults — notably
+    `--output`, whose old repo-root value scattered ingests across tracked
+    top-level directories (#341).
+    """
     parser = argparse.ArgumentParser(
         description="Fetch EXFOR experimental data from IAEA DataExplorer API.",
     )
@@ -480,9 +496,19 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT,
-        help="Output directory (default: repo root)",
+        default=DATA_DIR,
+        # Writes <output>/exfor/. The repo root was the old default, which put a
+        # fresh ingest in a top-level directory instead of data/exfor/ (#341).
+        # Help text derived from the default so the two cannot drift apart — the
+        # old help said "repo root" and was accurate, which is how the surprise
+        # stayed documented but unfixed.
+        help=f"Output directory (default: {DATA_DIR.name}/)",
     )
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
 
     if not args.element and not args.all:

@@ -27,6 +27,7 @@ import io
 import json
 import logging
 import re
+import sys
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,13 +35,16 @@ from pathlib import Path
 import polars as pl
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
 IAEA_MIRROR = "https://nds.iaea.org/public/download-endf"
 COMPRESSION = "zstd"
 
@@ -744,7 +748,13 @@ def fetch_library(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser.
+
+    Separate from `main` so tests can assert on the argument defaults — notably
+    `--output`, whose old repo-root value scattered ingests across tracked
+    top-level directories (#341).
+    """
     parser = argparse.ArgumentParser(
         description="Fetch evaluated nuclear data libraries and convert to Parquet.",
     )
@@ -772,14 +782,24 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT,
-        help="Output directory (default: repo root)",
+        default=DATA_DIR,
+        # Writes <output>/<library>/xs/. The repo root was the old default, which
+        # put a fresh ingest in a tracked top-level directory instead of data/ (#341).
+        # Help text derived from the default so the two cannot drift apart — the
+        # old help said "repo root" and was accurate, which is how the surprise
+        # stayed documented but unfixed.
+        help=f"Output directory (default: {DATA_DIR.name}/)",
     )
     parser.add_argument(
         "--list",
         action="store_true",
         help="List available libraries and their sub-libraries",
     )
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.list:

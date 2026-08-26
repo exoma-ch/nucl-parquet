@@ -38,15 +38,19 @@ import argparse
 import json
 import logging
 import shutil
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
 HF_REPO_ID = "gerchowl/strata-data"
-DEST_DIR = ROOT / "data" / "g4_raw" / "strata-nuclear"
-CATALOG_PATH = ROOT / "data" / "catalog.json"
+DEST_DIR = DATA_DIR / "g4_raw" / "strata-nuclear"
+CATALOG_PATH = DATA_DIR / "catalog.json"
 CATALOG_KEY = "strata-data-nuclear"
 
 # Strata-data files we depend on, pinned to the same revision via

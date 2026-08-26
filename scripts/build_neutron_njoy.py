@@ -76,8 +76,9 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger("build_neutron_njoy")
 
-ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
 
 # Reuse the single source of truth for MT -> residual mapping.
 from fetch_endf_libs import mt_to_residual  # noqa: E402
@@ -459,7 +460,7 @@ def main() -> None:
     ap.add_argument(
         "--out",
         type=Path,
-        default=ROOT / "data" / "endfb-8.0" / "xs",
+        default=DATA_DIR / "endfb-8.0" / "xs",
         help="Output directory for shards (default: data/endfb-8.0/xs/)",
     )
     ap.add_argument(
