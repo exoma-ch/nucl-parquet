@@ -32,7 +32,11 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _paths import DATA_DIR  # noqa: E402
+from _paths import DATA_DIR, ROOT  # noqa: E402
+
+sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
+
+from nucl_parquet.state_vocabulary import parse_x4_state  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,27 +59,39 @@ PROJECTILE_MAP = {
 }
 
 # Parse EXFOR sf4 product notation: "29-CU-63" -> (29, 63) or "ELEM/MASS" -> None
-SF4_PATTERN = re.compile(r"^(\d+)-[A-Z]{1,2}-(\d+)([GM]?)$")
+#
+# The suffix group used to be `([GM]?)` — a single optional character, with no
+# separator. So `29-CU-63M2` and `29-CU-63-M` did not match *at all*, and the
+# caller dropped the whole measurement rather than the isomer label (#357). It
+# accepts the same suffixes as every other X4 nuclide token now, with the
+# separator optional because X4 writes it both ways, and `parse_x4_state`
+# decides what each one means.
+SF4_PATTERN = re.compile(r"^(\d+)-[A-Z]{1,2}-(\d+)-?([A-Z0-9]*)$")
 
 
-def _parse_sf4(sf4: str) -> tuple[int, int, str] | None:
-    """Parse EXFOR sf4 field like '29-CU-63' -> (Z=29, A=63, state='').
+def _parse_sf4(sf4: str) -> tuple[int, int, str | None] | None:
+    """Parse EXFOR sf4 field like '29-CU-63' -> (Z=29, A=63, state=None).
 
-    Returns None for unparseable entries like 'ELEM/MASS'.
+    Returns None for unparseable entries like 'ELEM/MASS'. The third element is
+    None when the field names no isomeric state — distinct from `'g'` (ground)
+    and from `'sum'` (a total), which `''` used to be confusable with.
     """
     if not sf4:
         return None
     m = SF4_PATTERN.match(sf4.strip())
     if not m:
         return None
-    z, a, state = int(m.group(1)), int(m.group(2)), m.group(3).lower()
-    return (z, a, state)
+    return (int(m.group(1)), int(m.group(2)), parse_x4_state(m.group(3)))
 
 
-def _parse_residual(residual_str: str) -> tuple[int, int, str] | None:
+def _parse_residual(residual_str: str) -> tuple[int, int, str | None] | None:
     """Parse residual field like 'Zn-63' or 'Co-58-M' -> (Z, A, state).
 
-    Uses element symbol to Z mapping.
+    Uses element symbol to Z mapping. State comes from the shared vocabulary:
+    this used to carry its own whitelist, which lacked `'l'` and so threw away
+    EXFOR's "isomer unresolved" flag that the sibling builder preserved, and
+    collapsed `M3` to `'m'` where `meta/ensdf/nuclides.parquet` can name it
+    exactly (#357).
     """
     if not residual_str or residual_str == "None":
         return None
@@ -100,11 +116,7 @@ def _parse_residual(residual_str: str) -> tuple[int, int, str] | None:
     except ValueError:
         return None
 
-    state = parts[2].lower() if len(parts) > 2 else ""
-    if state not in ("", "g", "m", "m1", "m2"):
-        state = "m" if "m" in state else ""
-
-    return (z, a, state)
+    return (z, a, parse_x4_state(parts[2] if len(parts) > 2 else None))
 
 
 # Element symbols for reverse lookup

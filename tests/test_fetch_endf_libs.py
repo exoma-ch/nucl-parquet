@@ -36,6 +36,8 @@ import pytest
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from nucl_parquet.state_vocabulary import STATES, SUM  # noqa: E402
+
 
 def _mod():
     import fetch_endf_libs as m
@@ -302,10 +304,10 @@ def test_mf10_ground_and_metastable_carry_their_own_cross_sections(parsed):
 
 
 def test_mf3_total_and_mf10_split_do_not_collide(parsed):
-    """MF=3 spells its state '' and MF=10 spells it 'g'/'m', so the 140 mb total
+    """MF=3 spells its state 'sum' and MF=10 spells it 'g'/'m', so the 140 mb total
     and its 100 mb ground-state part are different rows, not a silent overwrite
     of one by the other."""
-    total = _rows(parsed, 13, 26, "")
+    total = _rows(parsed, 13, 26, SUM)
     assert [xs for _e, xs in total] == pytest.approx([80.0, 140.0, 110.0])
     for (_e, t), (_e2, g), (_e3, m) in zip(total, _rows(parsed, 13, 26, "g"), _rows(parsed, 13, 26, "m")):
         assert t == pytest.approx(g + m), "sum rule broken"
@@ -340,7 +342,7 @@ def test_every_row_matches_the_parquet_schema(parsed):
     for row in parsed.rows:
         assert set(row) == expected
         assert row["target_A"] == 27
-        assert row["state"] in ("", "g", "m", "m2", "m3")
+        assert row["state"] is None or row["state"] in STATES
         assert row["xs_mb"] > 0
 
 
@@ -402,7 +404,7 @@ def test_kind_tells_channels_and_production_sums_apart(parsed):
 def test_production_rows_are_unchanged_by_the_channel_addition(parsed):
     """#347 adds rows; it must not alter the ones already shipped. Al-26 is
     still the MF=3 MT=16 sum and the MF=10 g/m split, exactly as in #340."""
-    assert [xs for _e, xs in _rows(parsed, 13, 26, "")] == pytest.approx([80.0, 140.0, 110.0])
+    assert [xs for _e, xs in _rows(parsed, 13, 26, SUM)] == pytest.approx([80.0, 140.0, 110.0])
     assert [xs for _e, xs in _rows(parsed, 13, 26, "g")] == pytest.approx([60.0, 100.0, 80.0])
     assert [xs for _e, xs in _rows(parsed, 13, 26, "m")] == pytest.approx([20.0, 40.0, 30.0])
 
@@ -412,8 +414,8 @@ def test_channel_and_production_rows_coexist_for_one_residual(parsed):
     sum over every MT reaching (13,26). Same numbers here because MT=16 is the
     only contributor — but they are different claims and different rows."""
     assert _channel(parsed, 16)
-    assert _rows(parsed, 13, 26, "")
-    assert _channel(parsed, 16) == _rows(parsed, 13, 26, "")
+    assert _rows(parsed, 13, 26, SUM)
+    assert _channel(parsed, 16) == _rows(parsed, 13, 26, SUM)
 
 
 def test_counters_report_the_channel_rows(parsed):
@@ -469,7 +471,7 @@ _MF3_ROW = {
     "MT": None,
     "residual_Z": 12,
     "residual_A": 27,
-    "state": "",
+    "state": SUM,
     "energy_MeV": 14.0,
     "xs_mb": 80.0,
 }
@@ -559,7 +561,7 @@ def test_guard_is_quiet_when_the_library_genuinely_has_no_mf10(monkeypatch, tmp_
     manifest = json.loads((tmp_path / "cendl-3.2" / "manifest.json").read_text())
     assert manifest["mf10_sections"] == 0
     assert manifest["mf3_rows"] == 1
-    assert manifest["states"] == {"": 2}  # the production row and the channel row
+    assert manifest["states"] == {SUM: 2}  # the production row and the channel row
     assert manifest["null_residual_rows"] == 1
 
 
@@ -595,7 +597,7 @@ def test_written_parquet_carries_the_states(monkeypatch, tmp_path):
     m.fetch_library("irdff-2", "n", tmp_path, session=None)
 
     df = pl.read_parquet(tmp_path / "irdff-2" / "xs" / "n_Al.parquet")
-    assert set(df["state"].unique()) == {"", "g", "m", "m2"}
+    assert set(df["state"].unique()) == {SUM, "g", "m", "m2"}
     al26m = df.filter((pl.col("residual_Z") == 13) & (pl.col("residual_A") == 26) & (pl.col("state") == "m"))
     assert al26m["xs_mb"].max() == pytest.approx(40.0)
 

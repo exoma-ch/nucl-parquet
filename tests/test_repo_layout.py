@@ -292,6 +292,7 @@ _OUTPUT_DEST = {
     "fetch_exfor.py": "output",
     "fetch_iupac_compositions.py": "output",
     "fetch_strata_nuclear.py": "dest_dir",
+    "migrate_state_vocabulary.py": "data_dir",
     "migrate_xs_schema.py": "data_dir",
     "update_suppliers.py": "data_dir",
 }

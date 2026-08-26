@@ -44,6 +44,7 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
 from nucl_parquet.builder_stamp import write_builder_stamp  # noqa: E402
+from nucl_parquet.state_vocabulary import SUM  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -810,7 +811,9 @@ def parse_endf_file(
                 "MT": mt,
                 "residual_Z": res_z,
                 "residual_A": res_a,
-                "state": "",
+                # MF=3 gives the channel total over every state it populates.
+                # SUM says that; it is a claim, not the absence of one (#357).
+                "state": SUM,
                 "energy_MeV": float(e_ev) * 1e-6,
                 "xs_mb": float(xs_b) * 1e3,
             }
@@ -833,9 +836,12 @@ def parse_endf_file(
                 "MT": None,
                 "residual_Z": res_z,
                 "residual_A": res_a,
-                # '' is "summed over whatever states this channel populates",
-                # which MF=10 spells 'g'/'m'/'m2' — see lfs_to_state.
-                "state": "",
+                # SUM is "summed over whatever states this channel
+                # populates", which MF=10 spells 'g'/'m'/'m2' — see
+                # lfs_to_state. It was spelled '' until #357, where the same
+                # four bytes also meant "not stated" on an EXFOR row and "the
+                # ground state" in meta/ensdf.
+                "state": SUM,
                 "energy_MeV": float(e_ev) * 1e-6,
                 "xs_mb": float(xs_b) * 1e3,
             }

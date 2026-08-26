@@ -50,6 +50,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 from nucl_parquet._schemas import CANONICAL_XS_SCHEMA  # noqa: E402
 from nucl_parquet.builder_stamp import manifest_path_for, write_builder_stamp  # noqa: E402
+from nucl_parquet.state_vocabulary import isomer_state, parse_x4_state  # noqa: E402
 
 # ---------------------------------------------------------------- X4 constants
 
@@ -207,17 +208,24 @@ def split_top(s: str) -> list[str]:
 _NUCLIDE = re.compile(r"^(\d+)-([A-Z]{1,3})-(\d+)(?:-([A-Z0-9]+))?$")
 
 
-def parse_nuclide(tok: str) -> tuple[int, int, str] | None:
-    """'11-NA-24-L' -> (11, 24, 'l');  '13-AL-27' -> (13, 27, '')."""
+def parse_nuclide(tok: str) -> tuple[int, int, str | None] | None:
+    """'11-NA-24-L' -> (11, 24, 'l');  '13-AL-27' -> (13, 27, None).
+
+    The state comes from `nucl_parquet.state_vocabulary`, which both EXFOR
+    builders share. This function used to normalise the suffix itself, with a
+    whitelist that differed from `fetch_exfor.py`'s and a fallback that could
+    not fire: it lowercased the suffix and then tested `startswith("M")`, so
+    `M3` fell through to `''` — the same key as the ground-state and summed
+    rows for that nuclide, and unrecoverable afterwards (#367).
+
+    An unrecognised suffix is now None ("this measurement does not say"), not
+    `''`, so it can no longer be confused with a state or with a sum (#357).
+    """
     m = _NUCLIDE.match(tok.strip().upper())
     if not m:
         return None
     z, a = int(m.group(1)), int(m.group(3))
-    state = (m.group(4) or "").lower()
-    # X4 uses G/M/M1/M2 for ground/metastable; L means "level" (isomer unresolved).
-    if state not in ("", "g", "m", "m1", "m2", "l"):
-        state = "m" if state.startswith("M") else ""
-    return z, a, state
+    return z, a, parse_x4_state(m.group(4))
 
 
 # ------------------------------------------------------------ section parsing
@@ -558,11 +566,25 @@ def _emit_rows(
             # Same guard as the fixed-residual path: (0, 0) is not a nuclide.
             if row_rz == 0 and row_ra == 0:
                 row_rz = row_ra = None
-            row_state = ""
+            # ELEM/MASS subentries carry the isomer as a *rank* in an ISO column:
+            # 0 ground, 1 first isomer, 2 second. This used to be an inline
+            # `{0:'g',1:'m',2:'m2'}.get(int(iso), '')`, which is the #367 defect
+            # in its other spelling — rank 3 fell through to `''` and landed on
+            # the ground-state key. `isomer_state` spells every rank the
+            # vocabulary allows and raises rather than inventing one.
+            row_state = None
             if em_iso is not None:
                 iso = parse_number(rec[em_iso[0]])
                 if iso is not None:
-                    row_state = {0: "g", 1: "m", 2: "m2"}.get(int(iso), "")
+                    try:
+                        row_state = isomer_state(int(iso))
+                    except ValueError:
+                        # Out of range: say nothing rather than say "ground",
+                        # and count it, so an ISO convention we do not know
+                        # about shows up in the run summary instead of
+                        # dissolving into the ground-state rows.
+                        stats["iso_rank_unspellable"] += 1
+                        row_state = None
         else:
             row_rz, row_ra, row_state = rz, ra, state
 

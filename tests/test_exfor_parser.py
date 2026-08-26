@@ -96,10 +96,27 @@ def test_parse_number_handles_implicit_exponents(token: str, expected: float | N
 @pytest.mark.parametrize(
     ("token", "expected"),
     [
-        ("13-AL-27", (13, 27, "")),
+        # No suffix: the token says nothing about the state, so the state is
+        # NULL. It used to be `''`, which was also what an *unrecognised*
+        # suffix produced, and what the ground-state and summed rows used —
+        # four different claims on one key (#357).
+        ("13-AL-27", (13, 27, None)),
         ("11-NA-24-M", (11, 24, "m")),
-        ("29-CU-0", (29, 0, "")),  # A=0 means natural element
-        ("0-G-0", (0, 0, "")),
+        ("29-CU-0", (29, 0, None)),  # A=0 means natural element
+        ("0-G-0", (0, 0, None)),
+        # The #367 regression: M3 is a state meta/ensdf can already name, so it
+        # must survive as itself. Before, it fell through a dead
+        # `startswith("M")` branch onto the same key as the ground state.
+        ("27-CO-58-M3", (27, 58, "m3")),
+        # …and an unrecognised suffix must NOT land where M3 lands. The old
+        # tests could not tell these two apart, which is why it survived.
+        ("27-CO-58-X", (27, 58, None)),
+        # X4's synonym for the first isomer, normalised so one spelling reaches
+        # disk (#357 counted 'm' and 'm1' as two of the four spellings).
+        ("27-CO-58-M1", (27, 58, "m")),
+        # "level (isomer unresolved)" — a real datum, kept, and distinct from
+        # NULL, which says nothing at all.
+        ("11-NA-24-L", (11, 24, "l")),
         ("ELEM/MASS", None),
         ("", None),
     ],
@@ -223,8 +240,11 @@ def test_elem_mass_residuals_vary_per_row(tmp_path: Path) -> None:
             ]
         ),
     )
+    # A blank ISOMER field says nothing, so the state is NULL. It used to be
+    # `''`, which is also what ISOMER=0 (an explicit *ground state* claim) had
+    # to be distinguished from downstream — it could not be.
     assert [(r["residual_Z"], r["residual_A"], r["state"]) for r in rows] == [
-        (11, 22, ""),
+        (11, 22, None),
         (17, 34, "m"),
         (30, 65, "g"),
     ]

@@ -1,0 +1,324 @@
+"""The one definition of what the `state` column may contain.
+
+`state` names *which isomeric state of a nuclide a row is about*. It had four
+spellings of that concept and, worse, one spelling carrying three unrelated
+meanings (#357, #367).
+
+## The collision this module removes
+
+`''` meant three different things depending on which table you read:
+
+| table | `''` meant | rows |
+|---|---|---|
+| ENDF cross-sections (`tendl-2025/xs`, …) | summed over every state — a *claim* | ~26.5 M |
+| EXFOR (`exfor`, `exfor-channels`) | the measurement did not say | ~4.4 M |
+| nuclide identity (`meta/ensdf/*`) | the ground state | ~4.4 M |
+
+Two consequences, both silent:
+
+* `SELECT … WHERE state = ''` over a glob returns a mixture of "this is a total",
+  "we don't know" and "this is the ground state", with nothing to separate them.
+* `JOIN … USING (Z, A, state)` between a cross-section table and
+  `meta/ensdf/nuclides.parquet` attaches ground-state half-lives to
+  summed-over-states cross-sections, *and* misses the real ground-state rows,
+  because ENDF spells the ground state `'g'` and ENSDF spelled it `''`. The
+  join the schema documentation promised did not work.
+
+## The rule
+
+Every value is a positive statement. Absence of information is `NULL`, never a
+string. There is no value that means "empty" — that is what `NULL` is for, and
+CLAUDE.md principle 3 (nulls, not sentinels) is the whole reason.
+
+    'g'    the ground state
+    'm'    the first isomer, 'm2' the second, 'm3' the third, …
+    'l'    an isomer is involved but the measurement does not resolve which
+    'sum'  summed over all states — an aggregate, not a peer of the others
+    NULL   not stated
+
+`'sum'` is the only value that is not a state at all, and it is deliberately a
+word rather than `''`: it is a *claim about the quantity*, and spelling a claim
+as an empty string is how it got confused with the absence of one. It also
+survives a CSV or pandas round-trip that would coerce `''` to null and destroy
+the distinction.
+
+`'l'` is EXFOR's `L` flag, "level (isomer unresolved)". It is a real datum —
+"a metastable state is involved, but this measurement does not say which" — and
+is genuinely different from `NULL`, which says nothing at all. Keep it.
+
+## Never sum across `'sum'` and the rest
+
+An ENDF evaluation ships both the MF=3 channel total and the MF=10 split, so
+Al-27(n,2n) is one 177 mb `'sum'` row *and* a 114 mb `'g'` + 65 mb `'m'` pair.
+`GROUP BY residual_Z, residual_A` with `SUM(xs_mb)` double-counts. Filter
+`state = 'sum'` for totals, or `state <> 'sum'` for the split — never both.
+"""
+
+from __future__ import annotations
+
+from typing import NamedTuple
+
+#: The ground state.
+GROUND = "g"
+
+#: Summed over every isomeric state. An aggregate, not a state — see the module
+#: docstring. Never sum this together with the `'g'`/`'m'` rows beside it.
+SUM = "sum"
+
+#: An isomer is involved, but the measurement does not resolve which one.
+#: EXFOR's `L` ("level") flag. Different from NULL, which asserts nothing.
+UNRESOLVED = "l"
+
+#: How many isomers above the ground state we are willing to spell. ENSDF ships
+#: up to `m3` today; the cap exists so that a parser bug cannot mint `'m47'` and
+#: have it silently accepted as a new state (which is how `'m1'` became a fourth
+#: spelling of `'m'`).
+MAX_ISOMER = 9
+
+#: Isomers in ascending excitation: 'm', 'm2', 'm3', …
+#: `'m'` rather than `'m1'` for the first, because that is the spelling
+#: `meta/ensdf/nuclides.parquet` uses and therefore the one that joins.
+ISOMERS: tuple[str, ...] = tuple("m" if i == 1 else f"m{i}" for i in range(1, MAX_ISOMER + 1))
+
+#: Every value the `state` column may hold, besides NULL.
+#:
+#: NULL is not in this set and cannot be: it is the absence of a value, not a
+#: value. `is_valid_state(None)` is True; `None in STATES` is False, on purpose.
+STATES: frozenset[str] = frozenset({GROUND, SUM, UNRESOLVED, *ISOMERS})
+
+#: The subset that names an actual isomeric state of a nuclide, so a row using
+#: one of these can be joined against `meta/ensdf/nuclides.parquet`. `'sum'` is
+#: excluded because it names no nuclide state, and `'l'` because it names an
+#: unidentified one.
+JOINABLE_STATES: frozenset[str] = frozenset({GROUND, *ISOMERS})
+
+#: EXFOR's X4 nuclide-suffix spellings, mapped onto the vocabulary above.
+#:
+#: `'m1'` is X4's spelling of the first isomer and is *the same state* as `'m'`;
+#: shipping both was one of the four spellings #357 counted. `'g'` and `'l'`
+#: pass through. Anything else — including an absent suffix — is not a state
+#: this repository can name, and becomes NULL rather than a guess.
+_X4_SUFFIXES: dict[str, str] = {
+    "g": GROUND,
+    "m": "m",
+    "m1": "m",  # X4 synonym for 'm', normalised here so only one reaches disk
+    "m2": "m2",
+    "m3": "m3",
+    "m4": "m4",
+    "l": UNRESOLVED,
+}
+
+
+# ---------------------------------------------------------------------------
+# Which values each kind of table may hold
+# ---------------------------------------------------------------------------
+#
+# Per *table*, not globally: a value that is meaningful in one table can be
+# meaningless in another, and "legal somewhere" is not a check. `'sum'` on a
+# measured EXFOR row would be a claim nobody made; `'l'` in an evaluated
+# library would be one ENDF cannot express.
+
+#: Evaluated cross-sections (ENDF and friends). MF=3 gives the channel total
+#: over every state — `'sum'` — and MF=10 splits it into `'g'`/`'m'`/…
+EVALUATED_XS_STATES: frozenset[str] = frozenset({SUM, GROUND, *ISOMERS})
+
+#: Measured cross-sections (EXFOR). A measurement names the state it resolved,
+#: says `'l'` when it knows an isomer is involved but not which, or says
+#: nothing — NULL. It never asserts `'sum'`: EXFOR reports what was measured,
+#: and "summed over states" is a claim about an evaluation, not a measurement.
+MEASURED_XS_STATES: frozenset[str] = frozenset({GROUND, UNRESOLVED, *ISOMERS})
+
+#: Nuclide-identity tables (`meta/ensdf/*`). A row *is* a nuclide in a given
+#: state, so every row names one and NULL is not meaningful either.
+NUCLIDE_STATES: frozenset[str] = frozenset({GROUND, *ISOMERS})
+
+
+#: The retired spelling itself: the empty string that meant three different
+#: things depending on which table you read.
+LEGACY_UNSPECIFIED = ""
+
+#: Every shipped table carrying a `state` column, and what it may hold.
+#:
+#: Keyed by the table's directory under `data/`, because these tables are
+#: sharded per element and every shard of a table shares one vocabulary.
+#:
+#: Explicit rather than inferred from the path. A rule like "anything under
+#: `*/xs` is evaluated" would silently classify the next table somebody adds,
+#: and a benign default where a declaration belonged is the failure mode this
+#: repository keeps paying for (#334, #340, #351, #356, #367). A table with a
+#: `state` column that is not listed here fails `tests/test_state_vocabulary.py`
+#: until somebody says what its states mean.
+TABLE_STATES: dict[str, frozenset[str]] = {
+    # --- evaluated libraries
+    "brond-3.1/xs": EVALUATED_XS_STATES,
+    "cendl-3.2/xs": EVALUATED_XS_STATES,
+    "endfb-8.0/channels": EVALUATED_XS_STATES,
+    "endfb-8.0/xs": EVALUATED_XS_STATES,
+    "endfb-8.1/xs": EVALUATED_XS_STATES,
+    "fendl-3.2/xs": EVALUATED_XS_STATES,
+    "iaea-medical/xs": EVALUATED_XS_STATES,
+    "iaea-pd-2019/xs": EVALUATED_XS_STATES,
+    "irdff-2/xs": EVALUATED_XS_STATES,
+    "jeff-4.0/xs": EVALUATED_XS_STATES,
+    "jendl-5/xs": EVALUATED_XS_STATES,
+    "jendl-ad-2017/xs": EVALUATED_XS_STATES,
+    "jendl-deu-2020/xs": EVALUATED_XS_STATES,
+    "tendl-2023-iso/xs": EVALUATED_XS_STATES,
+    "tendl-2025/xs": EVALUATED_XS_STATES,
+    # Heavy-ion fragment production. Ships NULL throughout — the Geant4 run
+    # names no isomeric state — which is exactly what NULL is for.
+    "hi-xs/xs": EVALUATED_XS_STATES,
+    "hi-xs-prod/xs": EVALUATED_XS_STATES,
+    # --- measured
+    "exfor": MEASURED_XS_STATES,
+    "exfor-channels": MEASURED_XS_STATES,
+    # --- nuclide identity
+    "meta": NUCLIDE_STATES,
+    "meta/ensdf": NUCLIDE_STATES,
+    "meta/ensdf/beta_spectra": NUCLIDE_STATES,
+    "meta/ensdf/radiation": NUCLIDE_STATES,
+}
+
+
+#: Tables whose *shipped* data still uses the pre-#357 spelling, with the issue
+#: that clears the entry. The builders are fixed; the parquets are not, because
+#: rewriting them is a data release and this is a code change.
+#:
+#: Same contract as `data/builder_stamp_exemptions.json`: an entry is a debt,
+#: not a decision, and the ledger is self-cleaning — once a table passes on its
+#: own, `tests/test_state_vocabulary.py` fails on the leftover entry until it is
+#: deleted. Without this the vocabulary test could not be written at all until
+#: the rebuild landed, and a test that cannot run yet is a test nobody writes.
+class PendingMigration(NamedTuple):
+    """A table still shipping retired spellings, and who clears the debt."""
+
+    #: Exactly which retired values it still ships. Naming them, rather than
+    #: tolerating "anything old", is what stops a pending entry from becoming a
+    #: licence for an unrelated typo.
+    legacy: frozenset[str]
+    reason: str
+
+
+def _pending(reason: str, *legacy: str) -> PendingMigration:
+    return PendingMigration(frozenset(legacy), reason)
+
+
+_ENDF = _pending("#357: '' -> 'sum', pending the ENDF re-ingest", LEGACY_UNSPECIFIED)
+_ENDF_EXT = _pending(
+    "#357: '' -> 'sum'; external-builder, so only scripts/migrate_state_vocabulary.py can fix it",
+    LEGACY_UNSPECIFIED,
+)
+_EXFOR = _pending("#357/#367: '' -> NULL and 'm1' -> 'm', pending the EXFOR re-ingest", LEGACY_UNSPECIFIED, "m1")
+_ENSDF = _pending("#378: '' -> 'g' in the nuclide-identity tables, not started", LEGACY_UNSPECIFIED)
+
+PENDING_MIGRATION: dict[str, PendingMigration] = {
+    "brond-3.1/xs": _ENDF,
+    "cendl-3.2/xs": _ENDF,
+    "endfb-8.0/channels": _ENDF,
+    "endfb-8.0/xs": _ENDF,
+    "endfb-8.1/xs": _ENDF,
+    "fendl-3.2/xs": _ENDF,
+    "iaea-medical/xs": _ENDF,
+    "irdff-2/xs": _ENDF,
+    "jeff-4.0/xs": _ENDF,
+    "jendl-5/xs": _ENDF,
+    "tendl-2025/xs": _ENDF,
+    # No in-repo builder (see data/builder_stamp_exemptions.json), so a rebuild
+    # can never fix these — only the migration script can.
+    "iaea-pd-2019/xs": _ENDF_EXT,
+    "jendl-ad-2017/xs": _ENDF_EXT,
+    "jendl-deu-2020/xs": _ENDF_EXT,
+    "tendl-2023-iso/xs": _ENDF_EXT,
+    "exfor": _EXFOR,
+    "exfor-channels": _EXFOR,
+    # Not fixed by this change. The nuclide-identity tables need their own pass:
+    # five builders, ~100 consumer call sites and one genuinely open question
+    # (meta/ensdf/radiation's '' is documented as "from the ground-band decay
+    # chain", which is not the same claim as "the ground state"). Tracked in its
+    # own issue rather than guessed at here.
+    "meta": _ENSDF,
+    "meta/ensdf": _ENSDF,
+    "meta/ensdf/beta_spectra": _ENSDF,
+    "meta/ensdf/radiation": _ENSDF,
+}
+
+#: Tables whose shipped `state` column is not an isomeric state at all and is
+#: being renamed, rather than revalued. Same self-cleaning contract.
+#:
+#: `stopping/em`'s column holds solid/liquid/gas. Sharing the name `state` with
+#: twenty tables that mean isomeric state is CLAUDE.md principle 1 at its
+#: purest — not a variant spelling but an identical name for an unrelated
+#: concept, so a consumer filtering `state` across a glob crossed phase of
+#: matter with nuclear isomers and got no error.
+#: Keyed by the parquet path relative to `data/`, not by directory: `stopping/em`
+#: also holds `electron_stopping.parquet`, which never had the column. "This
+#: file never had a `state`" and "this file lost its `state`" are different
+#: facts and the ledger must not blur them.
+PENDING_COLUMN_RENAME: dict[str, str] = {
+    "stopping/em/density_effect_params.parquet": (
+        "#357: `state` holds phase of matter; builder now writes `phase`, pending a stopping rebuild"
+    ),
+}
+
+#: The directories those files live in, for checks that work per table.
+PENDING_RENAME_TABLES: frozenset[str] = frozenset(f.rsplit("/", 1)[0] for f in PENDING_COLUMN_RENAME)
+
+
+def allowed_states(table: str) -> frozenset[str]:
+    """The values `table` may hold today, pending migrations included.
+
+    Raises for a table that has not declared itself, so a new `state` column
+    cannot arrive with an undeclared vocabulary.
+    """
+    if table not in TABLE_STATES:
+        raise KeyError(
+            f"{table!r} has a `state` column but no entry in TABLE_STATES. "
+            "Declare what its states mean before shipping it."
+        )
+    allowed = TABLE_STATES[table]
+    pending = PENDING_MIGRATION.get(table)
+    if pending is not None:
+        allowed = allowed | pending.legacy
+    return allowed
+
+
+def is_valid_state(value: str | None) -> bool:
+    """True if `value` may appear in a `state` column. NULL always may."""
+    return value is None or value in STATES
+
+
+def parse_x4_state(suffix: str | None) -> str | None:
+    """Map an EXFOR nuclide suffix onto the vocabulary. Unknown -> None.
+
+    `'27-CO-58-M3'` has suffix `'M3'` and is the third isomer of Co-58, a state
+    `meta/ensdf/nuclides.parquet` already ships. It must come back as `'m3'`.
+
+    Before #367 the two EXFOR builders each had their own inline version of this
+    and disagreed about the allowed set (`fetch_exfor.py` permitted five values,
+    `fetch_exfor_master.py` six). `fetch_exfor_master.py` also lowercased the
+    suffix and *then* tested `suffix.startswith("M")`, so that branch was dead
+    and every unrecognised suffix — including `M3` — fell through to `''`,
+    i.e. to the same key as the ground-state and summed rows for that nuclide.
+    A third isomer was not mislabelled, it was made unrecoverable.
+
+    Returning None for an unrecognised suffix is deliberate and is *not* the old
+    behaviour: None says "this measurement does not tell us the state", which is
+    true, and is a different key from `'g'` and from `'sum'`. The old `''`
+    collided with both.
+    """
+    if not suffix:
+        return None
+    return _X4_SUFFIXES.get(suffix.strip().lower())
+
+
+def isomer_state(rank: int) -> str:
+    """The state naming the `rank`-th isomer above ground. `isomer_state(1)` is `'m'`.
+
+    `rank` 0 is the ground state and returns `'g'`. Raises above `MAX_ISOMER`
+    rather than minting an unheard-of spelling.
+    """
+    if rank == 0:
+        return GROUND
+    if not 1 <= rank <= MAX_ISOMER:
+        raise ValueError(f"isomer rank {rank} is outside 1..{MAX_ISOMER}; refusing to invent a state")
+    return ISOMERS[rank - 1]

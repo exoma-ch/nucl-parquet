@@ -86,6 +86,7 @@ sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 from fetch_endf_libs import mt_to_residual  # noqa: E402
 
 from nucl_parquet.builder_stamp import manifest_path_for, write_builder_stamp  # noqa: E402
+from nucl_parquet.state_vocabulary import SUM  # noqa: E402
 
 VIII0_RAW = "https://raw.githubusercontent.com/openmc-data-storage/ENDF-B-VIII.0-NNDC/main/h5_files/neutron"
 # Large files (heavy actinides, ~100 MB) are Git-LFS-backed; raw.githubusercontent
@@ -335,7 +336,9 @@ def extract_nuclide(h5_bytes: bytes, stem: str, z: int, a: int, tol: float) -> l
                         "target_A": a,
                         "residual_Z": res_z,
                         "residual_A": res_a,
-                        "state": "",
+                        # The processed transport HDF5 carries only the
+                        # total per MT, so every row here is summed over states.
+                        "state": SUM,
                         "energy_MeV": float(ee) * 1e-6,
                         "xs_mb": float(ss) * 1e3,
                     }

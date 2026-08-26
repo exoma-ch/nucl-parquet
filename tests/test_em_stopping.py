@@ -91,17 +91,33 @@ def test_density_effect_params_schema_and_water(data_dir_path: Path) -> None:
     import polars as pl
 
     df = pl.read_parquet(data_dir_path / "stopping" / "em" / "density_effect_params.parquet")
-    assert {"name", "I_eV", "C", "X0", "X1", "a", "k", "delta0", "density_gcm3", "state", "Zeff", "nElements"} == set(
-        df.columns
-    )
+    # `phase` after #357 — the column holds solid/liquid/gas, and calling that
+    # `state` collided with the isomeric-state column in twenty other tables.
+    # Both spellings are accepted while the shipped parquet predates the
+    # rebuild; `tests/test_state_vocabulary.py` holds the debt and the deadline.
+    phase_column = "phase" if "phase" in df.columns else "state"
+    assert {
+        "name",
+        "I_eV",
+        "C",
+        "X0",
+        "X1",
+        "a",
+        "k",
+        "delta0",
+        "density_gcm3",
+        phase_column,
+        "Zeff",
+        "nElements",
+    } == set(df.columns)
     water = df.filter(pl.col("name") == "G4_WATER")
     assert water.height == 1, "G4_WATER must be present in density_effect_params"
     # NIST PML lists I-value for liquid water at 75 eV; Geant4 uses 78.0 eV (Sternheimer-Berger value).
     # Either is acceptable as long as it's the canonical value (not 0 or garbage).
     i_ev = float(water["I_eV"][0])
     assert 70.0 < i_ev < 90.0, f"G4_WATER I_eV={i_ev} — outside expected NIST/G4 range (75-78)"
-    # State must be liquid
-    assert water["state"][0] in ("liquid", "solid"), f"G4_WATER state={water['state'][0]}"
+    # Phase of matter must be liquid (or solid, for the ice parameterisation).
+    assert water[phase_column][0] in ("liquid", "solid"), f"G4_WATER phase={water[phase_column][0]}"
 
 
 @pytest.mark.data
