@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.19.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.18.1...nucl-parquet-py-v0.19.0) (2026-08-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** report the data release, not just each evaluation's version ([#385](https://github.com/exoma-ch/nucl-parquet/issues/385))
+* **clients:** stop reading a null residual_Z or state as a real value ([#381](https://github.com/exoma-ch/nucl-parquet/issues/381))
+
+### Features
+
+* **ingest:** Read MF=9 isomeric yields as sigma(MT) x Y(E) ([#390](https://github.com/exoma-ch/nucl-parquet/issues/390)) ([8b2135b](https://github.com/exoma-ch/nucl-parquet/commit/8b2135b78688e4546f6f4215c9b1827fe0b62ce3))
+* **mcp:** Report the data release, not just each evaluation's version ([#385](https://github.com/exoma-ch/nucl-parquet/issues/385)) ([df66a0a](https://github.com/exoma-ch/nucl-parquet/commit/df66a0a7e893edf1ed11205a16d11e2bd46f3f91))
+* **scripts:** Commit the MF=3 vs MF=10 sum-rule diagnostic ([#398](https://github.com/exoma-ch/nucl-parquet/issues/398)) ([0dfc626](https://github.com/exoma-ch/nucl-parquet/commit/0dfc6264f141e5cf250aa17fe1b999aa2af57a1b))
+
+
+### Bug Fixes
+
+* **catalog:** Fendl-3.2 ships 3.2c data, so say so ([#343](https://github.com/exoma-ch/nucl-parquet/issues/343)) ([b6550b6](https://github.com/exoma-ch/nucl-parquet/commit/b6550b6125ecf980abf51c24ba2cd226f5276a30))
+* **catalog:** Iaea-medical claimed projectiles it does not ship ([#321](https://github.com/exoma-ch/nucl-parquet/issues/321)) ([164b665](https://github.com/exoma-ch/nucl-parquet/commit/164b665e734041dc25085c829a174f3df74f4020))
+* **catalog:** Six dead source_urls, and a script so the next one is found on purpose ([#393](https://github.com/exoma-ch/nucl-parquet/issues/393)) ([c05a460](https://github.com/exoma-ch/nucl-parquet/commit/c05a46050c1d705812b8727605d8d2a8cf124011))
+* **clients:** Stop reading a null residual_Z or state as a real value ([#381](https://github.com/exoma-ch/nucl-parquet/issues/381)) ([7fc83c5](https://github.com/exoma-ch/nucl-parquet/commit/7fc83c5f7bef07c7fdc1371c085927a4e81de943))
+* **data:** Rebuild seven neutron libraries — elastic mislabelled as capture ([#334](https://github.com/exoma-ch/nucl-parquet/issues/334)) ([8f3061d](https://github.com/exoma-ch/nucl-parquet/commit/8f3061d7ffb86701a7e112b945e811d6a9708dfe))
+* **ingest:** Carry MT, emit null-residual channels, and write the canonical schema ([#366](https://github.com/exoma-ch/nucl-parquet/issues/366)) ([0cb2ae9](https://github.com/exoma-ch/nucl-parquet/commit/0cb2ae9a9393c6ce5ce72d15a7bfb2d2f2a3b8d1))
+* **ingest:** Count sections that could have produced rows, not raw sections ([#376](https://github.com/exoma-ch/nucl-parquet/issues/376)) ([09e1792](https://github.com/exoma-ch/nucl-parquet/commit/09e179235d6452b5e81bffe7b76de6cf1653a360))
+* **ingest:** Derive MT residuals from emitted particles; drop iaea-medical's 404ing neutron sublibrary ([#360](https://github.com/exoma-ch/nucl-parquet/issues/360)) ([46c76b6](https://github.com/exoma-ch/nucl-parquet/commit/46c76b684feade1e0ef5414b44bf1bbdb3940fd4))
+* **ingest:** Drop only structurally signed sections, repair the rest ([#395](https://github.com/exoma-ch/nucl-parquet/issues/395)) ([97535ae](https://github.com/exoma-ch/nucl-parquet/commit/97535aee1fe280cfc79020927d09c3f730f143db))
+* **ingest:** Drop signed MF=3 sections whole — a positive lobe is not a sigma ([#379](https://github.com/exoma-ch/nucl-parquet/issues/379)) ([c1c6c6f](https://github.com/exoma-ch/nucl-parquet/commit/c1c6c6fdc100a73c547013697a1bdd295fb0f6c1))
+* **ingest:** Loud migration failures, and a CLI for every ingest script ([#361](https://github.com/exoma-ch/nucl-parquet/issues/361), [#363](https://github.com/exoma-ch/nucl-parquet/issues/363)) ([#371](https://github.com/exoma-ch/nucl-parquet/issues/371)) ([cd1e325](https://github.com/exoma-ch/nucl-parquet/commit/cd1e32559f188dad5a96a4a2bce9b0391700356a))
+* **ingest:** Match he3_/he4_ filenames, and skip unshipped sublibs in --all-sublibs ([#374](https://github.com/exoma-ch/nucl-parquet/issues/374)) ([079485c](https://github.com/exoma-ch/nucl-parquet/commit/079485cb1c64dba45ff3f8fe4b4b0084c8af7636))
+* **ingest:** Read MF=10 through the shape endf actually returns ([#354](https://github.com/exoma-ch/nucl-parquet/issues/354)) ([d984016](https://github.com/exoma-ch/nucl-parquet/commit/d984016e23978d08eb6f788445b4330df81a6395))
+* **ingest:** Refuse to ship a library that lost a nuclide, and name what left ([#397](https://github.com/exoma-ch/nucl-parquet/issues/397)) ([91dd4c2](https://github.com/exoma-ch/nucl-parquet/commit/91dd4c2ae91b4b7a0448e2306e9f8142f88444aa))
+* **migrate:** Stop matching ENSDF floating-level placeholders as real energies ([#392](https://github.com/exoma-ch/nucl-parquet/issues/392)) ([1e1658a](https://github.com/exoma-ch/nucl-parquet/commit/1e1658af34b896c4ec3c04d66db73e0994912b68))
+* **package:** Split the writer's data dir from the reader's ([#373](https://github.com/exoma-ch/nucl-parquet/issues/373)) ([#382](https://github.com/exoma-ch/nucl-parquet/issues/382)) ([719e5d0](https://github.com/exoma-ch/nucl-parquet/commit/719e5d0edb017a2413ce322f89ee22cb83ac3dbf))
+* **provenance:** Per-sublibrary ingest records, and what produced the five unbuilt libraries ([#383](https://github.com/exoma-ch/nucl-parquet/issues/383)) ([338eb8b](https://github.com/exoma-ch/nucl-parquet/commit/338eb8b971a891b9e19d68119e41720992bf0350))
+* **provenance:** Strata-data-nuclear had a builder all along, spelled `fetcher` ([#391](https://github.com/exoma-ch/nucl-parquet/issues/391)) ([2fee8a2](https://github.com/exoma-ch/nucl-parquet/commit/2fee8a29ed1a4c4e25347acff13127e411b2bf91))
+* **registry:** Record TENDL's Z&gt;=3 target coverage as upstream's, not ours ([#331](https://github.com/exoma-ch/nucl-parquet/issues/331)) ([#396](https://github.com/exoma-ch/nucl-parquet/issues/396)) ([da476e0](https://github.com/exoma-ch/nucl-parquet/commit/da476e0c8bfa935ac476c1d82e7a240ae18e4378))
+* **schema:** Carry ENDF's interpolation law, so a curve says how to be read ([#389](https://github.com/exoma-ch/nucl-parquet/issues/389)) ([fa66246](https://github.com/exoma-ch/nucl-parquet/commit/fa66246ad52a15d626f59ceab9be9f5c3ee317a5))
+* **schema:** One `state` vocabulary, and retire the empty string ([#380](https://github.com/exoma-ch/nucl-parquet/issues/380)) ([5b4d680](https://github.com/exoma-ch/nucl-parquet/commit/5b4d68022938ab9608bbcbf454474c67044c377e))
+* **schema:** Resolve meta/ensdf's ground state, and refuse to guess the rest ([#387](https://github.com/exoma-ch/nucl-parquet/issues/387)) ([8ab3615](https://github.com/exoma-ch/nucl-parquet/commit/8ab36151485ce5ce7a7b064e9dcb44dc06b39d8d))
+* **tendl-2023-iso:** Restore 7 natural targets dropped by a silent ingest skip ([#339](https://github.com/exoma-ch/nucl-parquet/issues/339)) ([e945f42](https://github.com/exoma-ch/nucl-parquet/commit/e945f42acd1375f979242afd8b29cd32a34d050f))
+
 ## [0.18.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.18.0...nucl-parquet-py-v0.18.1) (2026-08-19)
 
 

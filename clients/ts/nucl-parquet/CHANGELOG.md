@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.17.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.16.1...nucl-parquet-ts-v0.17.0) (2026-08-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **clients:** stop reading a null residual_Z or state as a real value ([#381](https://github.com/exoma-ch/nucl-parquet/issues/381))
+
+### Bug Fixes
+
+* **clients:** Stop reading a null residual_Z or state as a real value ([#381](https://github.com/exoma-ch/nucl-parquet/issues/381)) ([7fc83c5](https://github.com/exoma-ch/nucl-parquet/commit/7fc83c5f7bef07c7fdc1371c085927a4e81de943))
+
 ## [0.16.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.16.0...nucl-parquet-ts-v0.16.1) (2026-08-19)
 
 

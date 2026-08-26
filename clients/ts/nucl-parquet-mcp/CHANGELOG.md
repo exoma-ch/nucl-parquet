@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-ts-v0.13.4...nucl-parquet-mcp-ts-v0.14.0) (2026-08-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** report the data release, not just each evaluation's version ([#385](https://github.com/exoma-ch/nucl-parquet/issues/385))
+
+### Features
+
+* **mcp:** Report the data release, not just each evaluation's version ([#385](https://github.com/exoma-ch/nucl-parquet/issues/385)) ([df66a0a](https://github.com/exoma-ch/nucl-parquet/commit/df66a0a7e893edf1ed11205a16d11e2bd46f3f91))
+
 ## [0.13.4](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-ts-v0.13.3...nucl-parquet-mcp-ts-v0.13.4) (2026-05-21)
 
 

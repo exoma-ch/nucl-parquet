@@ -1,6 +1,6 @@
 {
   "name": "@nucl-parquet/mcp",
-  "version": "0.13.4",
+  "version": "0.14.0",
   "description": "MCP server for nuclear data — wraps local Parquet via DuckDB",
   "type": "module",
   "bin": {
