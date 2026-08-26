@@ -27,6 +27,12 @@ dev = [
     "jsonschema>=4.0",
     # scripts/fetch_stsv.py parses Fedlex's Akoma Ntoso XML (#294).
     "lxml>=5.0",
+    # tests/test_null_residual_across_clients.py checks that DuckDB's
+    # `.fetchdf()` hop — the one the Python MCP server takes — maps a null
+    # INTEGER to pandas' nullable Int32 rather than a numpy int, which would
+    # turn it into 0 and reproduce #362 in that client. Declared so the audit
+    # runs rather than skips; a guard that skips is the failure it guards against.
+    "pandas>=2.0",
     "polars>=1.0",
     "pytest>=8.0",
     # tests/test_data_signing.py parses the release workflow. Available
