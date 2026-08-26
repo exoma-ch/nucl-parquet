@@ -61,6 +61,12 @@ _XS_TYPES_MIGRATED = {
 }
 
 
+#: Names that have been used for "the thing that produced this library" other
+#: than `builder`. Kept as a set rather than a single string because the failure
+#: mode is somebody inventing the *next* one.
+_BUILDER_SYNONYMS = {"fetcher", "producer", "generator", "script", "built_by"}
+
+
 def _exemptions() -> dict[str, dict]:
     return json.loads(_EXEMPTIONS.read_text())["exemptions"]
 
@@ -108,6 +114,77 @@ def test_every_library_that_ships_parquets_declares_a_builder() -> None:
     )
 
 
+def test_no_library_sits_between_a_builder_and_a_provenance_record() -> None:
+    """Every library, without exception, answers "what made you".
+
+    Two acceptable answers: a named `builder` with the `rebuild_command` that
+    re-runs it, or a `provenance` block saying why there is no builder. There is
+    no third state, and the point of this test is that there is no *fourth* —
+    silence.
+
+    `strata-data-nuclear` sat in that silence. It had a real in-repo builder all
+    along (`scripts/fetch_strata_nuclear.py`, which sets
+    `CATALOG_KEY = "strata-data-nuclear"` at line 54), but the catalog spelled it
+    `fetcher` — a field declared nowhere in `catalog.schema.json` and read by
+    nothing — so it was the sixth `builder`-less library and the only one that
+    got neither a builder nor a provenance record.
+
+    Every guard in this file missed it for the same reason: they were scoped to
+    libraries with a `path`, and this is the one library without one (it lists
+    `files` and a pinned `revision` instead). Scoping the checks to the shape I
+    happened to be looking at is what left the hole, so this one is scoped to
+    *every library* and takes no `path` into account at all.
+
+    That is worse than #346's problem rather than milder. `provenance` exists to
+    separate "we looked and the pipeline is not recoverable" from "nobody has
+    looked" — and a library with neither field reads as neither.
+    """
+    catalog = json.loads((_DATA_DIR / "catalog.json").read_text())
+    problems: list[str] = []
+    for key, info in sorted(catalog["libraries"].items()):
+        has_builder = isinstance(info.get("builder"), str) and info.get("rebuild_command")
+        has_provenance = isinstance(info.get("provenance"), dict) and info["provenance"].get("status")
+        if has_builder or has_provenance:
+            continue
+        problems.append(
+            f"{key}: no `builder` + `rebuild_command`, and no `provenance.status`"
+            + (
+                f" (has a stray {sorted(set(info) & _BUILDER_SYNONYMS)!r} — use `builder`)"
+                if set(info) & _BUILDER_SYNONYMS
+                else ""
+            )
+        )
+    assert not problems, (
+        "libraries that answer neither 'what built this' nor 'why is there no builder':\n  "
+        + "\n  ".join(problems)
+        + "\n\nEvery library needs one of the two. Silence is the state `provenance` was added to "
+        "make impossible (#346)."
+    )
+
+
+def test_no_library_spells_its_builder_under_another_name() -> None:
+    """One field for one concept.
+
+    `fetcher` meant exactly what `builder` means, was undeclared in
+    `catalog.schema.json`, and was read by no code in the repo — a second
+    spelling whose only effect was to make `strata-data-nuclear` invisible to
+    every check that looked for `builder`. `CLAUDE.md` principle 1: there should
+    be exactly one spelling of a concept, and a synonym is a defect rather than
+    a convenience.
+    """
+    catalog = json.loads((_DATA_DIR / "catalog.json").read_text())
+    strays = {
+        key: sorted(set(info) & _BUILDER_SYNONYMS)
+        for key, info in sorted(catalog["libraries"].items())
+        if set(info) & _BUILDER_SYNONYMS
+    }
+    assert not strays, (
+        "catalog.json spells `builder` under another name:\n  "
+        + "\n  ".join(f"{k}: {v}" for k, v in strays.items())
+        + "\n\nRename to `builder` — a synonym is a field every guard has to remember to also check."
+    )
+
+
 def test_declared_builders_exist() -> None:
     """A `builder` path that names nothing is worse than none — it looks checked."""
     catalog = json.loads((_DATA_DIR / "catalog.json").read_text())
@@ -142,8 +219,9 @@ def test_a_named_builder_always_carries_a_rebuild_command() -> None:
     problems: list[str] = []
     named = 0
     for key, info in sorted(catalog["libraries"].items()):
-        if not info.get("path"):
-            continue
+        # Deliberately not scoped to libraries with a `path`. That scope is what
+        # let `strata-data-nuclear` — the one library that lists `files` and a
+        # pinned `revision` instead — slip past every check here.
         builder, cmd = info.get("builder"), info.get("rebuild_command")
         if isinstance(builder, str):
             named += 1
@@ -154,7 +232,7 @@ def test_a_named_builder_always_carries_a_rebuild_command() -> None:
 
     # Positive assertion: the loop above passes vacuously over a catalog where
     # nothing declares a builder at all.
-    assert named >= 16, f"only {named} libraries declare a named builder — has catalog.json lost the field?"
+    assert named >= 17, f"only {named} libraries declare a named builder — has catalog.json lost the field?"
     assert not problems, (
         "catalog.json: `builder` and `rebuild_command` must be present or absent together:\n  "
         + "\n  ".join(problems)
