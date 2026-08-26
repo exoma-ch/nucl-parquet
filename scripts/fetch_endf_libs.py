@@ -29,7 +29,7 @@ import logging
 import re
 import sys
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -536,6 +536,11 @@ class ParsedFile:
     #: MT=18 uses IZAP=-1 for "fission products, unspecified"; a section of
     #: nothing but those yields no row and is not a failure either.
     mf10_product_sections: int = 0
+    #: MT -> number of MF=3 sections dropped whole for carrying a negative
+    #: value, i.e. for not being a cross-section (#377). Reported rather than
+    #: merely skipped: "this library represents no charged-particle elastic"
+    #: and "this library was never asked" must stay distinguishable.
+    signed_sections: dict[int, int] = field(default_factory=dict)
     #: `kind='channel'` rows — one per MF=3 MT, carrying MT itself (#347).
     channel_rows: int = 0
     #: Channel rows whose MT names no single product: total, elastic,
@@ -761,6 +766,7 @@ def parse_endf_file(
     null_residual_rows = 0
     mf3_usable_sections = 0
     mf3_residual_sections = 0
+    signed_sections: dict[int, int] = {}
 
     for (mf, mt), section in material.section_data.items():
         if mf != 3:
@@ -777,13 +783,36 @@ def parse_endf_file(
             continue
 
         # Drop TALYS overflow sentinels (~1.99e35 b) and non-positive values.
-        good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
+        # A signed section is not a cross-section, so none of it is usable —
+        # not even the positive part (#377).
+        #
+        # For charged-particle projectiles, MF=3 MT=2 does not hold elastic
+        # sigma. Charged-particle elastic is carried in MF=6 MT=2 under LAW=5
+        # and diverges (Rutherford), so there is no finite total to tabulate;
+        # MF=3 MT=2 holds the *nuclear-interference term* relative to it, which
+        # is signed by construction.
+        #
+        # Filtering to `xs > 0` handles the all-negative sections correctly by
+        # accident — the whole section vanishes. The mixed-sign ones are the
+        # defect: p+Cu-65 has 44 points, 25 of them positive, and keeping those
+        # writes a 172 mb → 12.6 b curve over 1–30 MeV as `kind='channel'`,
+        # `MT=2`, `xs_mb`. That is a different physical quantity wearing sigma's
+        # units, and it looks entirely reasonable — the #326 and #351 failure
+        # shape, where the number is plausible so nothing questions it.
+        #
+        # The rule is stated on the data, not on (projectile, MT): any negative
+        # value means the section is not sigma. An audit of 165 evaluations
+        # across five charged-particle sublibraries and three neutron ones found
+        # MT=2 to be the *only* signed MF=3 section, and no negatives at all
+        # under neutrons — so this is not broader than the class it describes,
+        # and it stays right if another MT joins it.
+        finite = np.isfinite(xs_barns)
+        if finite.any() and (xs_barns[finite] < 0).any():
+            signed_sections[mt] = signed_sections.get(mt, 0) + 1
+            continue
+
+        good = finite & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
         if not good.any():
-            # Nothing usable here. Common and correct in the charged-particle
-            # sublibraries: MF=3 MT=2 holds the nuclear-interference term
-            # relative to the divergent Rutherford cross-section (the elastic
-            # distribution itself is in MF=6 with LAW=5), so it is negative
-            # throughout and is not a cross-section this table can carry.
             logger.debug("  MF=3 MT=%d: no positive in-range points, skipping", mt)
             continue
         mf3_usable_sections += 1
@@ -860,6 +889,7 @@ def parse_endf_file(
         mf3_sections=len(mf3_mts),
         mf3_usable_sections=mf3_usable_sections,
         mf3_residual_sections=mf3_residual_sections,
+        signed_sections=signed_sections,
         mf10_product_sections=mf10_product_sections,
         mf3_rows=mf3_rows,
         mf10_sections=mf10_sections,
@@ -985,6 +1015,7 @@ def fetch_library(
     mf3_usable_sections = 0
     mf3_residual_sections = 0
     mf10_product_sections = 0
+    signed_sections: dict[int, int] = {}
 
     for i, fname in enumerate(filenames):
         if (i + 1) % 50 == 0:
@@ -998,6 +1029,8 @@ def fetch_library(
         mf3_usable_sections += parsed_file.mf3_usable_sections
         mf3_residual_sections += parsed_file.mf3_residual_sections
         mf10_product_sections += parsed_file.mf10_product_sections
+        for mt, n in parsed_file.signed_sections.items():
+            signed_sections[mt] = signed_sections.get(mt, 0) + n
         mf10_sections += parsed_file.mf10_sections
         mf10_rows += parsed_file.mf10_rows
         if not parsed_file.rows:
@@ -1106,6 +1139,21 @@ def fetch_library(
             "Every evaluated row would then carry a null MT, which is the #347 "
             "state this ingest exists to leave behind."
         )
+    if signed_sections:
+        # Loud, and once per library rather than once per file. Dropping data is
+        # exactly the kind of thing this script has done silently before.
+        logger.info(
+            "  %s/%s: dropped %d MF=3 section(s) whole for carrying negative values "
+            "(by MT: %s). A signed quantity is not a cross-section, so its positive "
+            "part is not one either — for charged particles MT=2 is the Rutherford "
+            "interference term and the elastic distribution is in MF=6 LAW=5, which "
+            "this ingest does not read (#377).",
+            lib_key,
+            sublib_code,
+            sum(signed_sections.values()),
+            dict(sorted(signed_sections.items())),
+        )
+
     if mf3_sections and not mf3_usable_sections:
         logger.info(
             "  %s/%s: none of the %d MF=3 sections carry a positive in-range point. "
@@ -1197,6 +1245,18 @@ def fetch_library(
         "projectiles": [sublib_code],
         "elements": sorted(element_rows.keys()),
         "mf3_sections": mf3_sections,
+        # Sections dropped for being signed, and what that means is absent as a
+        # result. "not represented" and "not measured" must stay apart: without
+        # this a reader cannot tell a library that ships no charged-particle
+        # elastic from one nobody asked (#377).
+        "signed_sections_dropped": dict(sorted(signed_sections.items())),
+        "charged_particle_elastic": (
+            "not represented — MF=3 MT=2 is the Rutherford interference term, not "
+            "sigma; the elastic distribution is in MF=6 LAW=5, which this ingest "
+            "does not read (#377)"
+        )
+        if signed_sections
+        else None,
         "mf3_usable_sections": mf3_usable_sections,
         "mf3_residual_sections": mf3_residual_sections,
         "mf3_rows": mf3_rows,
