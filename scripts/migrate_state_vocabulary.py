@@ -144,14 +144,27 @@ def _catalogued_isomer_levels(data_dir: Path) -> dict[tuple[int, int], list[floa
     nuclides = data_dir / "meta" / "ensdf" / "nuclides.parquet"
     if not nuclides.is_file():
         raise UnmigratableTable("meta/ensdf", "missing", f"{nuclides} is needed to classify radiation rows")
-    df = pl.read_parquet(nuclides, columns=["Z", "A", "state", "level_keV"])
+    df = pl.read_parquet(nuclides, columns=["Z", "A", "state", "level_keV", "floating_level_flag"])
     levels: dict[tuple[int, int], list[float]] = {}
-    for z, a, state, level in df.iter_rows():
+    for z, a, state, level, floating in df.iter_rows():
         # Pre-migration the isomers are already spelled 'm'/'m2'/'m3'; post-
         # migration they still are. Only the ground label moves, so this reads
         # correctly either way.
-        if state not in (LEGACY_UNSPECIFIED, GROUND, None):
-            levels.setdefault((int(z), int(a)), []).append(float(level))
+        if state in (LEGACY_UNSPECIFIED, GROUND, None):
+            continue
+        # ENSDF's floating-level notation ('+X', '+Y', …) means the excitation
+        # is relative to a reference it could not pin down, so `level_keV` is a
+        # *placeholder* 0.0 rather than a measured energy — all 175 such rows in
+        # nuclides.parquet carry a flag, and none is genuinely at 0 keV.
+        #
+        # Comparing a gamma's emitting level against that 0.0 pairs every
+        # ordinary ground-band gamma with a phantom isomer at 0 keV. That is
+        # what made #386 look like 13,106 unattributable rows; 13,080 of them
+        # were this, and are plain ground-band gammas. A placeholder is not an
+        # energy, and must not be matched as one.
+        if (floating or "-") != "-":
+            continue
+        levels.setdefault((int(z), int(a)), []).append(float(level))
     return levels
 
 
@@ -206,8 +219,10 @@ def migrate_nuclide_keyed(data_dir: Path, table: str, *, dry_run: bool) -> tuple
     right — except for 13,106 rows across 45 nuclides whose emitting level
     coincides with a catalogued isomer of the same nuclide. Whether those are
     ground-band cascade gammas or isomer decays cannot be settled from an energy
-    coincidence, so they become NULL (#386); resolving them needs ENSDF's own
-    band assignment, not a better energy tolerance.
+    coincidence, so they become NULL (#386): 26 rows across 13 nuclides, once
+    ENSDF's floating-level placeholders are excluded from the comparison.
+    Resolving those needs the decay dataset's own parent attribution, not a
+    better energy tolerance.
     """
     paths = shards(data_dir, table)
     if not paths:

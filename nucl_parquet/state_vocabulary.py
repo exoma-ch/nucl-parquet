@@ -143,10 +143,12 @@ MEASURED_XS_STATES: frozenset[str] = frozenset({GROUND, UNRESOLVED, *ISOMERS})
 #:     ground, and G4ENSDFSTATE does not list those nuclides' ground states at
 #:     all. Four of them carry ENSDF's `+X` floating flag, so their excitation
 #:     is relative to an unknown offset and is not even a definite energy.
-#:   * `radiation` carries 13,106 rows whose `state` was `''` ("the ground-band
-#:     decay chain") but whose emitting level coincides with a catalogued isomer
-#:     of the same nuclide. Whether those are ground-band cascade gammas or
-#:     isomer decays cannot be settled from an energy coincidence (#386).
+#:   * `radiation` carries 26 rows across 13 nuclides whose `state` was `''`
+#:     ("the ground-band decay chain") but whose emitting level coincides with a
+#:     catalogued isomer of the same nuclide at a *measured* energy. Whether
+#:     those are ground-band cascade gammas or isomer decays cannot be settled
+#:     from an energy coincidence; no table in this repository carries ENSDF's
+#:     own band attribution, so resolving them needs upstream data (#386).
 #:
 #: `'g'` is a positive claim about which nuclear state a row belongs to.
 #: Asserting it over a row measured as ambiguous is inventing a claim — the
