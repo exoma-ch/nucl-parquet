@@ -451,11 +451,29 @@ def mt_to_residual(
 #                                                   produced 0 elements,
 #                                                   0 rows, exit code 0)
 #   n_095-Am-242M_9547.zip    isomeric state suffix on A (JEFF/JENDL/TENDL)
+#   he4_002-HE-4_0228.zip     projectile code carries a digit, element
+#                             UPPERCASE (ENDF/B-VIII.1 he3/he4 — this one
+#                                        matched *nothing*, so five shipped
+#                                        sublibraries could not be rebuilt)
 #
 # Two alternatives rather than one increasingly baroque pattern, and an
 # explicit isomer group so metastable targets stop being discarded.
-_FN_ZFIRST = re.compile(r"[a-z]+_(\d{1,3})-([A-Za-z]+)-(\d+)([A-Za-z]\d?)?_(\d+)\.zip")
-_FN_MATFIRST = re.compile(r"[a-z]+_(\d+)_(\d{1,3})-([A-Za-z]+)-(\d+)([A-Za-z]\d?)?\.zip")
+#
+# The prefix is the sublibrary *directory* name on the mirror, which is the
+# projectile code: n, p, d, t, he3, he4. `[a-z]+` could not match the last two,
+# so `parse_endf_filename` returned None for every file in them (#372).
+#
+# `[a-z]+\d*_` and not `[a-z0-9]+_`. Both accept every real filename — the
+# difference is what they accept *besides*. `[a-z0-9]+` cannot tell a projectile
+# code from a MAT number, so it reads `9640_029-Cu-63_2925.zip` as Z=29, A=63,
+# attributing to a target a file whose leading field is a MAT. `[a-z]+\d*`
+# requires the shape a projectile code actually has — letters, then an optional
+# mass number — and rejects `9640_`, `42_` and `0_`. Accepting a malformed name
+# and inventing an attribution for it is the failure direction this file has
+# been bitten by four times; rejecting it reaches the empty-ingest guard, which
+# is loud.
+_FN_ZFIRST = re.compile(r"[a-z]+\d*_(\d{1,3})-([A-Za-z]+)-(\d+)([A-Za-z]\d?)?_(\d+)\.zip")
+_FN_MATFIRST = re.compile(r"[a-z]+\d*_(\d+)_(\d{1,3})-([A-Za-z]+)-(\d+)([A-Za-z]\d?)?\.zip")
 
 
 def parse_endf_filename(filename: str) -> tuple[int, int, str] | None:
@@ -1205,7 +1223,15 @@ def main() -> None:
             # parquets, retired in #263, into data/endfb-8.1/xs/ — a projectile
             # catalog.json does not list, which is the drift #356's test
             # forbids. Still reachable by naming it: --library endfb-8.1.
-            if args.all and (lib_key, sublib) in UNSHIPPED_SUBLIBRARIES:
+            #
+            # `--all-sublibs` is a sweep too, and #360 guarded only `--all`
+            # (#372). Every `rebuild_command` in catalog.json uses the
+            # per-library form, so the rebuild drove the one path without the
+            # skip and attempted iaea-medical/a — recorded right here as never
+            # ingested. A sweep is "I did not name this sublibrary", however the
+            # sweep is spelled.
+            swept = args.all or args.all_sublibs
+            if swept and (lib_key, sublib) in UNSHIPPED_SUBLIBRARIES:
                 logger.info(
                     "Skipping %s/%s in a sweep: %s Fetch it explicitly with --library %s if you mean to.",
                     lib.name,
