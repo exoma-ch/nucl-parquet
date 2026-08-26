@@ -78,10 +78,14 @@ logger = logging.getLogger("build_neutron_njoy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _paths import DATA_DIR  # noqa: E402
+from _paths import DATA_DIR, ROOT  # noqa: E402
+
+sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
 # Reuse the single source of truth for MT -> residual mapping.
 from fetch_endf_libs import mt_to_residual  # noqa: E402
+
+from nucl_parquet.builder_stamp import manifest_path_for, write_builder_stamp  # noqa: E402
 
 VIII0_RAW = "https://raw.githubusercontent.com/openmc-data-storage/ENDF-B-VIII.0-NNDC/main/h5_files/neutron"
 # Large files (heavy actinides, ~100 MB) are Git-LFS-backed; raw.githubusercontent
@@ -447,11 +451,16 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, cache_dir: Path
         path = write_element(out_dir, sym, rows)
         written += 1
         logger.info("-> %s (%d rows, %.0f KB)", path.name, len(rows), path.stat().st_size / 1024)
+    # Record which builder produced this, so a fix here that never reached the
+    # data is detectable without re-downloading anything (#342).
+    stamp_path = manifest_path_for(out_dir, "endfb-8.0")
+    write_builder_stamp(stamp_path, Path(__file__), files_written=written)
     logger.info(
-        "Done: %d per-element files written, %d nuclides skipped, out=%s",
+        "Done: %d per-element files written, %d nuclides skipped, out=%s (stamped %s)",
         written,
         skipped,
         out_dir,
+        stamp_path,
     )
 
 

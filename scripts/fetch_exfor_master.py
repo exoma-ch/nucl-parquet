@@ -49,6 +49,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 from nucl_parquet._schemas import CANONICAL_XS_SCHEMA  # noqa: E402
+from nucl_parquet.builder_stamp import manifest_path_for, write_builder_stamp  # noqa: E402
 
 # ---------------------------------------------------------------- X4 constants
 
@@ -722,6 +723,9 @@ def main() -> None:
             grp = grp.select(list(CANONICAL_XS_SCHEMA)).sort("MT", "residual_Z", "residual_A", "energy_MeV")
             grp.write_parquet(out_dir / f"{proj}_{sym}.parquet", compression="zstd")
             written += 1
+        # Record which builder produced this, so a fix here that never reached
+        # the data is detectable without re-parsing exfor_master (#342).
+        write_builder_stamp(manifest_path_for(out_dir, name), pathlib.Path(__file__), files_written=written)
         print(f"wrote {written:>4} files, {part.height:>9,} rows -> {out_dir}")
 
 

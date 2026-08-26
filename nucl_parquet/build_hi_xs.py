@@ -30,6 +30,8 @@ from pathlib import Path
 
 import polars as pl
 
+from nucl_parquet.builder_stamp import manifest_path_for, write_builder_stamp
+
 # ---------------------------------------------------------------------------
 # Element data
 # ---------------------------------------------------------------------------
@@ -435,6 +437,7 @@ def build(data_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     energies_per_u = np.geomspace(_E_PER_U_MIN, _E_PER_U_MAX, _N_ENERGIES)
+    written = 0
 
     for proj_key, (proj_sym, proj_Z, proj_A) in PROJECTILES.items():
         energies_MeV = energies_per_u * proj_A
@@ -475,10 +478,16 @@ def build(data_dir: Path) -> None:
             chunk = df.filter(pl.col("target_Z") == target_Z)
             out_path = out_dir / f"{proj_key}_{target_sym}.parquet"
             chunk.write_parquet(out_path, compression="zstd")
+            written += 1
 
         print(f"  → {len(df):,} rows across {df['target_Z'].n_unique()} targets")
 
     _update_catalog(data_dir)
+    # Record which builder produced this, so a fix here that never reached the
+    # data is detectable (#342). `files_written` counts what *this* run wrote —
+    # a run that produced nothing must not stamp whatever is already on disk,
+    # and `write_builder_stamp` refuses.
+    write_builder_stamp(manifest_path_for(out_dir, "hi-xs"), Path(__file__), files_written=written)
     print("\nDone.")
 
 

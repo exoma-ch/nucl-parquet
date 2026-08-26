@@ -33,36 +33,12 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
-XS_TYPES = {
-    "cross_sections",
-    "transport_cross_sections",
-    "production_cross_sections",
-    "total_reaction_cross_sections",
-    "experimental_cross_sections",
-}
-
-
-def library_dirs(data_dir: Path) -> list[tuple[str, Path, Path]]:
-    """Yield (library key, parquet dir, manifest path) for every xs library."""
-    catalog = json.loads((data_dir / "catalog.json").read_text())
-    out = []
-    for key, info in catalog.get("libraries", {}).items():
-        if info.get("data_type") not in XS_TYPES or "path" not in info:
-            continue
-        pq_dir = data_dir / info["path"]
-        if not pq_dir.exists() or not any(pq_dir.glob("*.parquet")):
-            continue
-        # One manifest per library, at a path that cannot collide with another
-        # library's. The established convention is `data/<lib>/manifest.json`
-        # beside `xs/`, but two libraries can share a root (`endfb-8.0/xs/` and
-        # `endfb-8.0/channels/`) and some hold parquets directly (`exfor/`).
-        # Walking up unconditionally makes the second library silently overwrite
-        # the first — so only walk up when the parent directory *is* this
-        # library, and otherwise keep the manifest beside its own data.
-        parent = pq_dir.parent
-        lib_root = parent if parent.name == key else pq_dir
-        out.append((key, pq_dir, lib_root / "manifest.json"))
-    return out
+# Which libraries ship a manifest, and where it lives, is defined once — the
+# builders resolve the same path when they write their provenance stamp, and
+# `tests/test_builder_staleness.py` walks the same set when it audits them. Two
+# copies of that rule is how `endfb-8.0/xs/` and `endfb-8.0/channels/` came to
+# overwrite each other's manifest in the first place.
+from nucl_parquet.builder_stamp import library_dirs  # noqa: E402
 
 
 def build_manifest(key: str, pq_dir: Path) -> dict:
@@ -109,8 +85,15 @@ def main() -> None:
         fresh = build_manifest(key, pq_dir)
         if manifest_path.exists():
             existing = json.loads(manifest_path.read_text())
-            # Preserve fields this builder does not derive (e.g. `source_files`,
-            # `sublibrary`) so re-running never loses provenance a builder wrote.
+            # Preserve fields this builder does not derive (`source_files`,
+            # `sublibrary`, and above all `builder`) so re-running never loses
+            # provenance a builder wrote.
+            #
+            # `builder` is deliberately never *written* here: this script
+            # regenerates manifests from data that may be years old, and
+            # stamping it with today's builder digest would attest that today's
+            # code produced yesterday's parquets — the exact lie the stamp
+            # exists to detect (#342). Only a real ingest may stamp.
             merged = {**existing, **fresh}
         else:
             merged = fresh
