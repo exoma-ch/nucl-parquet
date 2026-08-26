@@ -91,7 +91,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _canonical import LIGHT_ION, Z_TO_SYMBOL, canonical_frame, element_stem  # noqa: E402
 from _paths import DATA_DIR, ROOT  # noqa: E402
-from fetch_endf_libs import IAEA_MIRROR, is_signed_section, mt_to_residual  # noqa: E402
+from fetch_endf_libs import (  # noqa: E402
+    IAEA_MIRROR,
+    charged_particle_elastic_mts,
+    mt_to_residual,
+)
 
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
@@ -267,6 +271,7 @@ def channel_rows(
 
     # residual -> list of (Tabulated1D, mt)
     per_residual: dict[tuple[int, int], list] = {}
+    elastic_mts = charged_particle_elastic_mts(material)
     for (mf, mt), section in material.section_data.items():
         if mf != 3 or mt in skip:
             continue
@@ -276,23 +281,27 @@ def channel_rows(
         tab = section.get("sigma")
         if tab is None or len(tab.x) == 0:
             continue
-        # Same rule as the main ingest (#377/#379): a section carrying any
-        # negative value is not a cross-section, so its positive part is not one
-        # either and the whole section goes. `build_frame`'s point-wise `xs > 0`
-        # filter is exactly the half-fix #379 rejected — it would keep the
-        # positive lobe of a signed curve and write it as `xs_mb`.
+        # Same rule as the main ingest (#377, as corrected by #394): drop a
+        # section whole only where MF=6 marks it *structurally* signed with
+        # LAW=5 — the Rutherford interference term, which is not a cross-section
+        # in any part. A negative point in an ordinary curve is a defect in the
+        # curve, and `build_frame`'s point-wise `xs > 0` filter repairs it;
+        # discarding the section for that reason cost 69 real cross-sections
+        # when the main ingest did it (#394).
         #
-        # No backfilled tape trips this today: across all eight, the only signed
-        # MF=3 section is p+Be-9 MT=2, which never reaches here because MT=2 is
-        # in NO_RESIDUAL_MTS. The check is here so the class stays closed for the
-        # next tape, not because it currently fires.
-        if is_signed_section(np.asarray(tab.y, dtype=float)):
+        # No backfilled tape trips this today: across all eight, the only
+        # structurally signed MF=3 section is p+Be-9 MT=2, which never reaches
+        # here because MT=2 is in NO_RESIDUAL_MTS. The check is here so the class
+        # stays closed for the next tape, not because it currently fires.
+        if mt in elastic_mts:
             logger.warning(
-                "  Z=%d A=%d %s: MF=3/MT=%d carries negative values and is not a "
-                "cross-section — dropping the section whole (#377)",
+                "  Z=%d A=%d %s: MF=6/MT=%d carries LAW=5, so MF=3/MT=%d is the "
+                "Rutherford interference term, not a cross-section — dropping the "
+                "section whole (#377/#394)",
                 target_z,
                 target_a,
                 projectile,
+                mt,
                 mt,
             )
             continue
