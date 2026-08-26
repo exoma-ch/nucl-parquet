@@ -252,82 +252,206 @@ _ELEMENT_SYMBOLS: dict[int, str] = {
     99: "Es",
 }
 
-# Projectile (Z, A) for mass/charge balance
-PROJECTILE_ZA: dict[str, tuple[int, int]] = {
+# Light-particle (Z, A), for mass/charge balance.
+#
+# Serves both roles the balance needs: the sublibrary code names the *incoming*
+# projectile, and the same symbols name the particles that *leave* in
+# MT_EMITTED_PARTICLES below. One table, so "d" cannot be a deuteron on the way
+# in and something else on the way out.
+PARTICLE_ZA: dict[str, tuple[int, int]] = {
+    "g": (0, 0),  # γ — carries neither charge nor mass number
     "n": (0, 1),
     "p": (1, 1),
     "d": (1, 2),
     "t": (1, 3),
-    "h": (2, 3),
-    "a": (2, 4),
+    "h": (2, 3),  # ³He
+    "a": (2, 4),  # α
 }
+
+#: Sublibrary code -> projectile (Z, A). A view of PARTICLE_ZA restricted to the
+#: symbols that can be an incident particle (γ is not a sublibrary here).
+PROJECTILE_ZA: dict[str, tuple[int, int]] = {code: PARTICLE_ZA[code] for code in ("n", "p", "d", "t", "h", "a")}
 
 
 # ---------------------------------------------------------------------------
 # MT number -> residual product mapping
 # ---------------------------------------------------------------------------
 
-# MT -> (delta_Z, delta_A, emitted_particles_description)
-# delta is: target + projectile - residual
-# residual_Z = target_Z + proj_Z - emitted_Z
-# residual_A = target_A + proj_A - emitted_A
-
-MT_TO_EMISSION: dict[int, tuple[int, int]] = {
-    # (emitted_Z, emitted_A) — what leaves besides the residual
-    2: (0, 0),  # elastic: nothing emitted, residual = compound
-    4: (0, 1),  # (x,n') inelastic: 1 neutron
-    16: (0, 2),  # (x,2n)
-    17: (0, 3),  # (x,3n)
-    18: (0, 0),  # fission — skip (no single residual)
-    22: (2, 5),  # (x,nα): n + α
-    23: (2, 7),  # (x,n3α): n + 3α — rare
-    24: (2, 6),  # (x,2nα): 2n + α
-    25: (0, 4),  # (x,4n) — rare, added for completeness
-    28: (1, 2),  # (x,np): n + p
-    29: (2, 8),  # (x,n2α): n + 2α — rare
-    32: (1, 3),  # (x,nd): n + d
-    33: (1, 4),  # (x,nt): n + t
-    34: (2, 4),  # (x,n³He): n + ³He
-    35: (2, 5),  # (x,nd2α) — skip, too complex
-    36: (2, 6),  # (x,nt2α) — skip
-    37: (0, 5),  # (x,5n) — rare, added for completeness
-    41: (1, 3),  # (x,2np): 2n + p
-    42: (1, 4),  # (x,3np): 3n + p
-    44: (2, 6),  # (x,n2p): n + 2p
-    45: (2, 9),  # (x,npα): n + p + α
-    102: (0, 0),  # (x,γ): capture, no particles emitted
-    103: (1, 1),  # (x,p)
-    104: (1, 2),  # (x,d)
-    105: (1, 3),  # (x,t)
-    106: (2, 3),  # (x,³He)
-    107: (2, 4),  # (x,α)
-    108: (4, 8),  # (x,2α)
-    109: (4, 11),  # (x,3α)
-    111: (1, 2),  # (x,2p)
-    112: (3, 5),  # (x,pα)
-    113: (3, 8),  # (x,t2α)
-    115: (2, 5),  # (x,pd)
-    116: (2, 6),  # (x,pt)
-    117: (3, 7),  # (x,dα)
+# What leaves, named as particles rather than as a (Z, A) pair.
+#
+# The residual is what is left over:
+#     residual_Z = target_Z + proj_Z - emitted_Z
+#     residual_A = target_A + proj_A - emitted_A
+#
+# This table used to hold the (Z, A) sums directly, hand-written, with the
+# particle list beside them in a comment. Thirteen of ~30 entries had the wrong
+# sum, and every affected row was filed under the wrong nuclide — not dropped,
+# *misattributed*, so the row looked fine and the number was plausible (#351).
+# MT=44 was commented `(x,n2p): n + 2p`, which is (2, 3), and coded `(2, 6)`;
+# MT=111 `(x,2p)` was coded `(1, 2)`, which is a deuteron; MT=109 `(x,3α)` was
+# coded `(4, 11)` where three alphas are (6, 12). The comment and the arithmetic
+# were two spellings of one fact, and they disagreed for years because nothing
+# could compare them.
+#
+# So there is one spelling now. The particle list *is* the entry, and the (Z, A)
+# sum below is derived from it — a comment can no longer contradict the code
+# because the comment is gone. `tests/test_mt_residuals.py` checks these lists
+# two ways: against `endf.reaction.REACTION_NAME`, a third-party transcription
+# of the ENDF-102 reaction names, and against MF=10's `IZAP` product identifier
+# recorded from real evaluations.
+#
+# MT numbers with no single residual product are deliberately absent — see
+# NO_RESIDUAL_MTS. Note in particular that MT=5 ("anything") names a *different*
+# product in every evaluation that uses it and can never be tabulated here.
+MT_EMITTED_PARTICLES: dict[int, tuple[str, ...]] = {
+    4: ("n",),
+    11: ("n", "n", "d"),
+    16: ("n",) * 2,
+    17: ("n",) * 3,
+    22: ("n", "a"),
+    23: ("n", "a", "a", "a"),
+    24: ("n", "n", "a"),
+    25: ("n", "n", "n", "a"),
+    28: ("n", "p"),
+    29: ("n", "a", "a"),
+    30: ("n", "n", "a", "a"),
+    32: ("n", "d"),
+    33: ("n", "t"),
+    34: ("n", "h"),
+    35: ("n", "d", "a", "a"),
+    36: ("n", "t", "a", "a"),
+    37: ("n",) * 4,
+    41: ("n", "n", "p"),
+    42: ("n", "n", "n", "p"),
+    44: ("n", "p", "p"),
+    45: ("n", "p", "a"),
+    102: ("g",),
+    103: ("p",),
+    104: ("d",),
+    105: ("t",),
+    106: ("h",),
+    107: ("a",),
+    108: ("a", "a"),
+    109: ("a", "a", "a"),
+    111: ("p", "p"),
+    112: ("p", "a"),
+    113: ("t", "a", "a"),
+    114: ("d", "a", "a"),
+    115: ("p", "d"),
+    116: ("p", "t"),
+    117: ("d", "a"),
+    # ENDF-102's high-multiplicity channels, MT 152-200. TALYS-derived
+    # evaluations do ship them (MT=155, 191 and 197 all appear in the sample
+    # this table was verified against), and every one of them was previously
+    # absent, so `mt_to_residual` returned None and the channel was skipped
+    # outright — the same silent data loss as MT=11, 30 and 114 above.
+    152: ("n",) * 5,
+    153: ("n",) * 6,
+    154: ("n", "n", "t"),
+    155: ("t", "a"),
+    156: ("n",) * 4 + ("p",),
+    157: ("n",) * 3 + ("d",),
+    158: ("n", "d", "a"),
+    159: ("n", "n", "p", "a"),
+    160: ("n",) * 7,
+    161: ("n",) * 8,
+    162: ("n",) * 5 + ("p",),
+    163: ("n",) * 6 + ("p",),
+    164: ("n",) * 7 + ("p",),
+    165: ("n",) * 4 + ("a",),
+    166: ("n",) * 5 + ("a",),
+    167: ("n",) * 6 + ("a",),
+    168: ("n",) * 7 + ("a",),
+    169: ("n",) * 4 + ("d",),
+    170: ("n",) * 5 + ("d",),
+    171: ("n",) * 6 + ("d",),
+    172: ("n",) * 3 + ("t",),
+    173: ("n",) * 4 + ("t",),
+    174: ("n",) * 5 + ("t",),
+    175: ("n",) * 6 + ("t",),
+    176: ("n",) * 2 + ("h",),
+    177: ("n",) * 3 + ("h",),
+    178: ("n",) * 4 + ("h",),
+    179: ("n",) * 3 + ("p", "p"),
+    180: ("n",) * 3 + ("a", "a"),
+    181: ("n",) * 3 + ("p", "a"),
+    182: ("d", "t"),
+    183: ("n", "p", "d"),
+    184: ("n", "p", "t"),
+    185: ("n", "d", "t"),
+    186: ("n", "p", "h"),
+    187: ("n", "d", "h"),
+    188: ("n", "t", "h"),
+    189: ("n", "t", "a"),
+    190: ("n", "n", "p", "p"),
+    191: ("p", "h"),
+    192: ("d", "h"),
+    193: ("h", "a"),
+    194: ("n",) * 4 + ("p", "p"),
+    195: ("n",) * 4 + ("a", "a"),
+    196: ("n",) * 4 + ("p", "a"),
+    197: ("p", "p", "p"),
+    198: ("n", "p", "p", "p"),
+    199: ("n",) * 3 + ("p", "p", "a"),
+    200: ("n",) * 5 + ("p", "p"),
 }
 
-# MT ranges for discrete inelastic levels
-# MT 51-91: (x,n') to specific levels — all emit 1 neutron
-# MT 600-649: (x,p) to specific levels — all emit 1 proton
-# MT 650-699: (x,d) levels
-# MT 700-749: (x,t) levels
-# MT 750-799: (x,³He) levels
-# MT 800-849: (x,α) levels
-# MT 875-891: (x,2n) to specific levels
+# Discrete-level and continuum partials: one range of MTs, one emitted particle.
+#   MT 51-91:   (x,n') to specific levels, plus the n continuum at 91
+#   MT 600-649: (x,p) levels, 650-699 (x,d), 700-749 (x,t),
+#   MT 750-799: (x,³He), 800-849 (x,α), 875-891 (x,2n)
+LEVEL_RANGE_PARTICLES: dict[tuple[int, int], tuple[str, ...]] = {
+    (51, 91): ("n",),
+    (600, 649): ("p",),
+    (650, 699): ("d",),
+    (700, 749): ("t",),
+    (750, 799): ("h",),
+    (800, 849): ("a",),
+    (875, 891): ("n", "n"),
+}
 
+#: MT numbers that describe no single residual product, and so must never be
+#: given an entry above. Listed explicitly rather than left to fall through the
+#: table's `in` check, because "absent because it has no residual" and "absent
+#: because somebody forgot it" are different states and only one of them is a
+#: bug. `mt_to_residual` consults this first.
+#:
+#:   1 total, 3 nonelastic, 27 absorption, 101 disappearance — sums of other
+#:     channels; filing them as a product would double-count every one.
+#:   2 elastic — the projectile re-emerges and no isotope is produced. It also
+#:     collides with the (n,γ) residual (Z, A+1), where potential scattering
+#:     (~barns) would swamp the real capture (~mb).
+#:   5 "anything" — a catch-all whose product differs per evaluation. MF=10
+#:     names that product directly via IZAP; MT alone cannot.
+#:   18-21, 38 fission — many products, not one.
+#:   201-207 (x,Xn), (x,Xγ), (x,Xp) … (x,Xα) — particle-production yields
+#:     ("how many protons come out", summed over every channel), not channels.
+#:     201 and 202 are listed for the same reason as 203-207, but note that
+#:     `endf.reaction.REACTION_NAME` does not carry them, so the completeness
+#:     check in tests/test_mt_residuals.py cannot see them either way. They are
+#:     here because a reader needs the set to be the whole answer.
+#:   301, 444 heating and damage energy — not cross-sections of a channel.
+NO_RESIDUAL_MTS: frozenset[int] = frozenset(
+    {1, 2, 3, 5, 18, 19, 20, 21, 27, 38, 101, 201, 202, 203, 204, 205, 206, 207, 301, 444}
+)
+
+
+def emitted_za(particles: tuple[str, ...]) -> tuple[int, int]:
+    """Sum a list of emitted particles into the (Z, A) that leaves."""
+    return (
+        sum(PARTICLE_ZA[p][0] for p in particles),
+        sum(PARTICLE_ZA[p][1] for p in particles),
+    )
+
+
+#: MT -> (emitted_Z, emitted_A). Derived, never hand-written — see #351.
+MT_TO_EMISSION: dict[int, tuple[int, int]] = {
+    mt: emitted_za(particles) for mt, particles in MT_EMITTED_PARTICLES.items()
+}
+
+#: (mt_lo, mt_hi) -> (emitted_Z, emitted_A), derived the same way.
 LEVEL_RANGES: dict[tuple[int, int], tuple[int, int]] = {
-    (51, 91): (0, 1),  # n emission
-    (600, 649): (1, 1),  # p emission
-    (650, 699): (1, 2),  # d emission
-    (700, 749): (1, 3),  # t emission
-    (750, 799): (2, 3),  # ³He emission
-    (800, 849): (2, 4),  # α emission
-    (875, 891): (0, 2),  # 2n emission
+    mt_range: emitted_za(particles) for mt_range, particles in LEVEL_RANGE_PARTICLES.items()
 }
 
 
@@ -340,24 +464,26 @@ def mt_to_residual(
 ) -> tuple[int, int] | None:
     """Compute residual (Z, A) from MT number and target+projectile.
 
-    Returns None for reactions that don't produce a single residual (fission, etc)
-    or that don't transmute the nucleus — elastic (MT=2) and inelastic scattering
-    leave the target isotope unchanged (an excited state decays back to it), so
-    they must NOT populate a product channel. Elastic in particular collides with
-    the (n,γ) residual (Z, A+1) and would swamp the real capture with potential
-    scattering (~barns vs ~mb). Metastable products from inelastic are carried by
-    the MF=10 isomeric section instead — see `parse_mf10_rows`, which names the
-    product from ENDF's IZAP rather than deriving it from MT.
+    Returns None for reactions that don't produce a single residual (fission,
+    the summed and catch-all MTs — see NO_RESIDUAL_MTS) or that don't transmute
+    the nucleus: elastic (MT=2) and inelastic scattering leave the target
+    isotope unchanged (an excited state decays back to it), so they must NOT
+    populate a product channel. Elastic in particular collides with the (n,γ)
+    residual (Z, A+1) and would swamp the real capture with potential
+    scattering (~barns vs ~mb). Metastable products from inelastic are carried
+    by the MF=10 isomeric section instead — see `parse_mf10_rows`, which names
+    the product from ENDF's IZAP rather than deriving it from MT.
+
+    Also returns None for any MT with no entry in `MT_EMITTED_PARTICLES` or
+    `LEVEL_RANGE_PARTICLES`. That is a *skip*, so a missing entry is silent data
+    loss rather than a visible error — which is how MT=11, 30 and 114 went
+    unnoticed until #351. Add the channel rather than letting it fall through.
     """
-    if mt == 2:  # elastic — neutron re-emerges, no isotope produced
+    if mt in NO_RESIDUAL_MTS:
         return None
 
-    emit: tuple[int, int] | None = None
-    if mt in MT_TO_EMISSION:
-        if mt == 18:  # fission
-            return None
-        emit = MT_TO_EMISSION[mt]
-    else:
+    emit: tuple[int, int] | None = MT_TO_EMISSION.get(mt)
+    if emit is None:
         for (mt_lo, mt_hi), e in LEVEL_RANGES.items():
             if mt_lo <= mt <= mt_hi:
                 emit = e
@@ -370,7 +496,16 @@ def mt_to_residual(
     if res_z <= 0 or res_a <= 0:
         return None
     if (res_z, res_a) == (target_z, target_a):
-        return None  # inelastic / no transmutation — residual is the (stable) target
+        # No transmutation — the residual is the target, which decays back to
+        # it. MT=4 and MT=51-91 are what motivate this: they legitimately emit
+        # one neutron and legitimately produce nothing new.
+        #
+        # It is also belt-and-suspenders. A future entry whose emission summed
+        # to the projectile's own (Z, A) would be silently swallowed here
+        # rather than filed wrongly — quieter than it should be, but the MF=10
+        # IZAP oracle in tests/test_mt_residuals.py compares against the
+        # evaluator's own product and would fail on it.
+        return None
     return (res_z, res_a)
 
 

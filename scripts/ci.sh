@@ -62,6 +62,12 @@ uv sync --dev
 # test_data_signing: gates the minisign release-signing path (#289) — that the
 # workflow signs unconditionally, that the signature actually verifies, and that
 # tampering/replay/stripping are all rejected. Needs no data and no network.
+# test_mt_residuals: gates the MT -> residual-product mapping (#351), where 13 of
+# ~30 entries named the wrong nuclide and every affected row was misattributed
+# rather than dropped. Checks the table against two oracles it is not derived
+# from: ENDF-102's reaction names via the `endf` package, and MF=10's IZAP read
+# from committed excerpts of real evaluations. Offline — the fixtures are in
+# tests/fixtures/mf10/.
 # test_repo_layout: gates where data may live (#341) — no tracked parquet outside
 # data/, and the ingest scripts' --output defaults. This list is an allowlist, so
 # a gate that is not named here does not run in CI at all; #341's tests were
@@ -84,6 +90,7 @@ uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron
   tests/test_repo_layout.py \
   tests/test_fetch_endf_libs.py \
   tests/test_builder_staleness.py \
+  tests/test_mt_residuals.py \
   -m "not data and not network" -v
 
 # test_manifests: a second invocation, because its drift check is marked
