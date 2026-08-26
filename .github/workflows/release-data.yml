@@ -3,9 +3,15 @@ name: Release Data
 # Data releases follow CalVer (YYYY.MM.MICRO) on their own tag namespace,
 # decoupled from the code semver release pipeline (.github/workflows/release.yml).
 # Triggers:
-#   1. Tag push (manual `git push origin data-X.Y.Z`)
-#   2. workflow_dispatch from auto-tag-data.yml (GITHUB_TOKEN tags don't
-#      fire push events — this is the normal path after PR merge)
+#   1. Tag push. This is the normal path: auto-tag-data.yml pushes
+#      `data-X.Y.Z` with a GitHub App installation token when a merge to main
+#      changes `data/catalog.json::data_version`, and an App-token push (unlike
+#      a GITHUB_TOKEN one) fires this trigger. A hand-pushed tag works the same
+#      way. One operation, so there is no state where the tag exists and the
+#      release was never asked for (#344).
+#   2. workflow_dispatch — the recovery path, for a tag that exists with no
+#      release behind it:
+#        gh workflow run release-data.yml -f tag=data-X.Y.Z
 
 on:
   push:
