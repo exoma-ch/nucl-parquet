@@ -65,6 +65,18 @@ interface ViewDef {
 }
 
 interface Catalog {
+  /**
+   * The data release this server is serving, e.g. `2026.8.3`.
+   *
+   * Distinct from `Library.version`, which is the *evaluation's* version
+   * ("2023-iso"). They answer different questions, and conflating them would
+   * make a cross-server check silently wrong rather than merely absent (#348).
+   *
+   * Read from the catalog on disk, never compiled in — a build-time constant
+   * would be a second source of truth for the one fact whose whole job is to
+   * identify the data actually being read.
+   */
+  data_version: string;
   libraries: Record<string, Library>;
   views?: Record<string, ViewDef>;
   [key: string]: unknown;
@@ -75,9 +87,61 @@ let _catalog: Catalog | undefined;
 export function ensureCatalog(): Catalog {
   if (_catalog) return _catalog;
   const dataDir = resolveDataDir();
-  const raw = readFileSync(join(dataDir, "catalog.json"), "utf-8");
-  _catalog = JSON.parse(raw) as Catalog;
+  _catalog = parseCatalog(readFileSync(join(dataDir, "catalog.json"), "utf-8"), dataDir);
   return _catalog;
+}
+
+/**
+ * Parse and validate a catalog.
+ *
+ * Separate from {@link ensureCatalog} because that one memoises a module-level
+ * singleton, which a test cannot re-enter — so the validation below would be
+ * unreachable from a test and, in practice, unverified.
+ */
+export function parseCatalog(raw: string, dataDir: string): Catalog {
+  const parsed = JSON.parse(raw) as Catalog;
+  // `as Catalog` is a claim, not a check. `data_version` is required by
+  // data/catalog.schema.json, and the whole point of reporting it is that it
+  // identifies the tree actually being read — so an absent one must fail here
+  // rather than surface as `undefined` in a referral an agent is trying to
+  // verify (#348). The Rust server refuses the same catalog, for the same
+  // reason.
+  if (typeof parsed.data_version !== "string" || parsed.data_version === "") {
+    throw new Error(
+      `catalog.json at ${dataDir} has no 'data_version'. It is required by ` +
+        `data/catalog.schema.json and identifies the data release this server serves; ` +
+        `refusing to start rather than report an unknown release as if it were known.`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * The `list_libraries` payload: the data release, then the libraries.
+ *
+ * A named function rather than an inline object so a test can assert the shape
+ * the tool actually returns. Asserting only that the catalog *has* a
+ * data_version would pass while the tool still returned a bare array.
+ */
+export function libraryListPayload(cat: Catalog): {
+  data_version: string;
+  libraries: Array<Record<string, unknown>>;
+} {
+  return {
+    // Beside the array rather than on each entry, so the release and a
+    // library's evaluation `version` cannot be read as the same kind of thing.
+    data_version: cat.data_version,
+    libraries: Object.entries(cat.libraries)
+      .filter(([, lib]) => lib.projectiles)
+      .map(([id, lib]) => ({
+        id,
+        name: lib.name,
+        description: lib.description,
+        projectiles: lib.projectiles,
+        version: lib.version,
+        data_type: lib.data_type,
+      })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -229,10 +293,40 @@ async function query(
 // MCP Server
 // ---------------------------------------------------------------------------
 
-const server = new McpServer({
-  name: "nucl-parquet",
-  version: PKG_VERSION,
-});
+/**
+ * Server instructions, naming the data release in the client's context.
+ *
+ * The referral case #348 is about does not go through `list_libraries`:
+ * hyrr-mcp sends an agent straight to `get_cross_sections` for full σ(E)
+ * curves, having stated the release *it* computed against. Reporting the
+ * release only from a tool the agent has no reason to call would leave that
+ * claim as unverifiable as it was — so it is stated here too, where it reaches
+ * the model without a round trip, and in `list_libraries` where it can be read
+ * programmatically. Both read the same loaded catalog, so they cannot disagree.
+ *
+ * Kept word-for-word in step with the Rust server's `instructions()`; a test
+ * pins that the two do not drift.
+ */
+export function instructions(dataVersion: string): string {
+  return (
+    `Serving nucl-parquet data release ${dataVersion}. This identifies the *data*, ` +
+    `not this server's version — report it whenever you compare results with another ` +
+    `server or tool. If another source states a different release, say so: agreement ` +
+    `or disagreement computed across two releases is an artefact of the mismatch, not ` +
+    `a physics result. Call list_libraries to read the same value programmatically.`
+  );
+}
+
+const server = new McpServer(
+  {
+    name: "nucl-parquet",
+    // The package version — the software, not the data. Both are reported
+    // because they answer different questions, and only one of them changes
+    // when the data does.
+    version: PKG_VERSION,
+  },
+  { instructions: instructions(ensureCatalog().data_version) },
+);
 
 // ---------------------------------------------------------------------------
 // Library / cross-section tools
@@ -243,18 +337,14 @@ server.tool(
   "List all available nuclear data libraries with projectiles and descriptions",
   {},
   async () => {
-    const cat = ensureCatalog();
-    const libs = Object.entries(cat.libraries)
-      .filter(([, lib]) => lib.projectiles)
-      .map(([id, lib]) => ({
-        id,
-        name: lib.name,
-        description: lib.description,
-        projectiles: lib.projectiles,
-        version: lib.version,
-        data_type: lib.data_type,
-      }));
-    return { content: [{ type: "text" as const, text: safeStringify(libs, 2) }] };
+    // An envelope, not a bare array: `data_version` identifies the data
+    // *release* these libraries came out of, a different fact from any one
+    // library's evaluation `version`, and it has nowhere else to live (#348).
+    return {
+      content: [
+        { type: "text" as const, text: safeStringify(libraryListPayload(ensureCatalog()), 2) },
+      ],
+    };
   },
 );
 

@@ -36,6 +36,7 @@ Per-client verification lives with each client where it can be specific:
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -170,14 +171,30 @@ def test_no_client_reads_residual_z_without_a_documented_null_policy() -> None:
     reason it is not on this list — not because it handles nulls. If someone
     adds one, this fails and points them at the two implementations that do.
     """
+    # Git-tracked files only, rather than a walk with a denylist of directory
+    # names. The denylist version listed node_modules/target/dist and still
+    # scanned `clients/py/nucl-parquet-mcp/.venv/`, so simply running that
+    # package's tests locally installed a copy of `nucl_parquet` and turned this
+    # tripwire red on three vendored files. Asking git is not a longer denylist;
+    # it is the property actually wanted — only files this repository authors.
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "clients/"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\0")
+
     found = set()
-    for path in sorted(_CLIENTS.rglob("*")):
-        if path.suffix not in _SOURCE_SUFFIXES:
+    for rel in tracked:
+        if not rel:
             continue
-        if "node_modules" in path.parts or "target" in path.parts or "dist" in path.parts:
+        path = _REPO_ROOT / rel
+        if path.suffix not in _SOURCE_SUFFIXES or not path.is_file():
             continue
         if re.search(r"\bresidual_Z\b", path.read_text(encoding="utf-8", errors="ignore")):
             found.add(str(path.relative_to(_CLIENTS)))
+    assert found, "no client sources scanned — this test would otherwise assert nothing"
 
     assert found == _RESIDUAL_READERS, (
         f"the set of client files reading residual_Z changed.\n"
@@ -192,7 +209,17 @@ def test_no_client_reads_residual_z_without_a_documented_null_policy() -> None:
 
 def test_the_go_client_has_no_cross_section_reader() -> None:
     """States the reason Go is absent above, so it cannot be mistaken for an oversight."""
-    go_sources = list((_CLIENTS / "go").rglob("*.go"))
+    go_sources = [
+        _REPO_ROOT / rel
+        for rel in subprocess.run(
+            ["git", "ls-files", "-z", "clients/go/"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split("\0")
+        if rel.endswith(".go")
+    ]
     assert go_sources, "no Go sources found — this test would assert nothing"
     offenders = [
         str(p.relative_to(_CLIENTS))
