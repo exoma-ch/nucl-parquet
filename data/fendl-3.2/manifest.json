@@ -1,9 +1,7 @@
 {
   "library": "fendl-3.2",
-  "sublibrary": "n",
   "files": 61,
   "total_rows": 141559,
-  "source_files": 191,
   "projectiles": [
     "n"
   ],

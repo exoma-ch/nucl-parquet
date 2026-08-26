@@ -78,3 +78,90 @@ def test_manifests_match_the_data_on_disk() -> None:
             if recorded.get(field) != fresh[field]:
                 problems.append(f"{key}.{field}: manifest says {recorded.get(field)}, disk has {fresh[field]}")
     assert not problems, "manifest drift — run scripts/build_manifests.py:\n  " + "\n  ".join(problems)
+
+
+@pytest.mark.data
+def test_manifests_describe_every_projectile_they_ship() -> None:
+    """`projectiles` is the manifest's answer to "what is in this library".
+
+    It has to describe all of it. `tendl-2025` ships a/d/h/n/p/t; its manifest
+    carried `"sublibrary": "a"` — one projectile out of six — because each
+    `--sublibrary` run rewrote the file wholesale and the field kept whichever
+    ran last. The counts beside it were regenerated from disk and correct, which
+    is the worst combination: the file reads authoritative (#369).
+
+    Checked against the parquet `projectile` column rather than against
+    `catalog.json`, so this cannot be satisfied by two files agreeing with each
+    other while both disagree with the data.
+    """
+    from build_manifests import build_manifest
+
+    problems: list[str] = []
+    checked = 0
+    for key, pq_dir, manifest_path in _dirs():
+        if not manifest_path.exists():
+            continue
+        recorded = set(json.loads(manifest_path.read_text()).get("projectiles", []))
+        on_disk = set(build_manifest(key, pq_dir)["projectiles"])
+        if not on_disk:
+            continue  # meta-style library with no projectile column
+        checked += 1
+        if recorded != on_disk:
+            problems.append(
+                f"{key}: manifest says {sorted(recorded)}, the parquets carry {sorted(on_disk)}"
+                f" (missing {sorted(on_disk - recorded)}, spurious {sorted(recorded - on_disk)})"
+            )
+    assert checked >= 15, f"only {checked} libraries had a projectile column — is the check still reaching the data?"
+    assert not problems, "manifest projectiles disagree with the shipped files:\n  " + "\n  ".join(problems)
+
+
+@pytest.mark.data
+def test_no_manifest_carries_a_retired_per_run_field() -> None:
+    """Retired keys must not come back, in a manifest or in a builder.
+
+    Each held one `--sublibrary` run's value under a whole-library name.
+    `sublibrary` was the visible one; the ten diagnostic counters added in #354
+    and #376 have the same shape and had not reached committed data yet only
+    because no multi-projectile library has been re-ingested since. They live
+    under `ingest.<sublibrary>` now (#369).
+    """
+    from nucl_parquet.builder_stamp import RETIRED_MANIFEST_KEYS
+
+    offenders: dict[str, list[str]] = {}
+    for key, _pq_dir, manifest_path in _dirs():
+        if not manifest_path.exists():
+            continue
+        stale = sorted(set(json.loads(manifest_path.read_text())) & RETIRED_MANIFEST_KEYS)
+        if stale:
+            offenders[key] = stale
+    assert not offenders, (
+        "manifests still carry per-run fields under whole-library names — "
+        "run scripts/build_manifests.py:\n  " + "\n  ".join(f"{k}: {v}" for k, v in offenders.items())
+    )
+
+
+@pytest.mark.data
+def test_ingest_records_are_keyed_by_a_projectile_the_library_ships() -> None:
+    """`ingest` keys name sublibraries, so they must be sublibraries.
+
+    No committed manifest carries `ingest` yet — it arrives with the first
+    re-ingest after #369 (#345 is the issue that does them). The assertion is
+    written now so the first one to land is checked rather than trusted, and it
+    asserts a positive on the shape when the block is present.
+    """
+    problems: list[str] = []
+    for key, _pq_dir, manifest_path in _dirs():
+        if not manifest_path.exists():
+            continue
+        doc = json.loads(manifest_path.read_text())
+        ingest = doc.get("ingest")
+        if ingest is None:
+            continue
+        assert isinstance(ingest, dict), f"{key}: `ingest` must be an object keyed by sublibrary, got {type(ingest)}"
+        shipped = set(doc.get("projectiles", []))
+        for sub, record in ingest.items():
+            if sub not in shipped:
+                problems.append(f"{key}.ingest[{sub!r}]: not among the shipped projectiles {sorted(shipped)}")
+            if not isinstance(record, dict) or "source_files" not in record:
+                problems.append(f"{key}.ingest[{sub!r}]: expected the per-run counters, got {record!r}")
+    assert not problems, "malformed `ingest` records:\n  " + "\n  ".join(problems)

@@ -1,9 +1,7 @@
 {
   "library": "iaea-pd-2019",
-  "sublibrary": "g",
   "files": 72,
   "total_rows": 904924,
-  "source_files": 212,
   "projectiles": [
     "g"
   ],

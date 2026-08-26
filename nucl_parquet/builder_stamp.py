@@ -77,6 +77,37 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: Filename of the committed exemption ledger, relative to `data/`.
 EXEMPTIONS_FILE = "builder_stamp_exemptions.json"
 
+#: Manifest keys that once held a *per-sublibrary-run* value under a name that
+#: reads like a property of the whole library.
+#:
+#: `scripts/fetch_endf_libs.py` overwrote the manifest wholesale on every
+#: `--sublibrary` run, so on a library shipping six projectiles each of these
+#: described whichever run went last — `tendl-2025` claimed `"sublibrary": "a"`
+#: while shipping a/d/h/n/p/t. Worse than plain wrong: the surrounding counts
+#: *are* regenerated from disk and correct, so the file reads authoritative
+#: (#369).
+#:
+#: They are now filed under `ingest.<sublibrary>`, and `projectiles` — derived
+#: from the data, and already right — is the single answer to "what does this
+#: library ship". Both writers strip these on sight so a half-migrated manifest
+#: cannot survive.
+RETIRED_MANIFEST_KEYS: frozenset[str] = frozenset(
+    {
+        "sublibrary",
+        "source_files",
+        "mf3_sections",
+        "mf3_usable_sections",
+        "mf3_residual_sections",
+        "mf3_rows",
+        "mf10_sections",
+        "mf10_product_sections",
+        "mf10_rows",
+        "channel_rows",
+        "null_residual_rows",
+        "states",
+    }
+)
+
 #: What a `builder.sha256` must look like. Lowercase only, because that is what
 #: `hashlib.sha256().hexdigest()` emits — a hand-written uppercase digest is
 #: reported as a mismatch rather than accepted, which is the polarity that fails

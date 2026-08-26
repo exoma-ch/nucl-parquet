@@ -78,6 +78,45 @@
             ],
             "description": "Repo-relative path of the script that produced this library's parquets, or `null` if it was produced by a pipeline that is not in this repository (see #346). Required for every library that declares a `path`. Its digest is stamped into the library's manifest.json so a builder fix that never reached the data is detectable — see nucl_parquet/builder_stamp.py and #342."
           },
+          "provenance": {
+            "type": "object",
+            "description": "Required when `builder` is null: what actually produced this library, established by research rather than assumed. Its absence means nobody has looked, which is a different state from 'we looked and the pipeline is not recoverable' — recording only `builder: null` conflated the two (#346).",
+            "required": [
+              "status",
+              "summary",
+              "evidence",
+              "issue"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "unrecorded",
+                  "external-pipeline"
+                ],
+                "description": "`unrecorded`: no code that produces this library has ever been in this repository. `external-pipeline`: the producing pipeline is identified but runs outside it."
+              },
+              "summary": {
+                "type": "string",
+                "description": "One paragraph a reader can act on."
+              },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                },
+                "description": "Commit shas, file paths and line ranges backing every claim in `summary`."
+              },
+              "rebuild_path": {
+                "type": "string",
+                "description": "What it would take to bring this in-repo, and what is unverified about that."
+              },
+              "issue": {
+                "type": "integer",
+                "description": "The issue tracking the recovery."
+              }
+            }
+          },
           "rebuild_command": {
             "type": "string",
             "description": "The literal command that re-ingests this library, rendered in the staleness failure message. `<scratch>` is a throwaway output directory; copy the result over `data/<library>/` afterwards."

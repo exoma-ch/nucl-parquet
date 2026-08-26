@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pytest
 
+from nucl_parquet.builder_stamp import RETIRED_MANIFEST_KEYS
+
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -580,10 +582,10 @@ def test_guard_is_quiet_when_the_library_genuinely_has_no_mf10(monkeypatch, tmp_
     )
     m.fetch_library("cendl-3.2", "n", tmp_path, session=None)
     manifest = json.loads((tmp_path / "cendl-3.2" / "manifest.json").read_text())
-    assert manifest["mf10_sections"] == 0
-    assert manifest["mf3_rows"] == 1
-    assert manifest["states"] == {SUM: 2}  # the production row and the channel row
-    assert manifest["null_residual_rows"] == 1
+    assert manifest["ingest"]["n"]["mf10_sections"] == 0
+    assert manifest["ingest"]["n"]["mf3_rows"] == 1
+    assert manifest["ingest"]["n"]["states"] == {SUM: 2}  # the production row and the channel row
+    assert manifest["ingest"]["n"]["null_residual_rows"] == 1
 
 
 def test_the_signed_section_rule_is_one_function_both_readers_use():
@@ -724,11 +726,11 @@ def test_manifest_records_the_isomeric_yield(monkeypatch, tmp_path):
     m.fetch_library("irdff-2", "n", tmp_path, session=None)
 
     manifest = json.loads((tmp_path / "irdff-2" / "manifest.json").read_text())
-    assert manifest["mf10_sections"] == 4
-    assert manifest["mf10_rows"] == rows.mf10_rows > 0
-    assert manifest["states"]["m"] > 0
-    assert manifest["states"]["g"] > 0
-    assert sum(manifest["states"].values()) == manifest["total_rows"]
+    assert manifest["ingest"]["n"]["mf10_sections"] == 4
+    assert manifest["ingest"]["n"]["mf10_rows"] == rows.mf10_rows > 0
+    assert manifest["ingest"]["n"]["states"]["m"] > 0
+    assert manifest["ingest"]["n"]["states"]["g"] > 0
+    assert sum(manifest["ingest"]["n"]["states"].values()) == manifest["total_rows"]
 
 
 def test_written_parquet_carries_the_states(monkeypatch, tmp_path):
@@ -1002,10 +1004,10 @@ def test_a_library_whose_only_mf10_is_izap_minus_one_does_not_trip_the_guard(mon
     m.fetch_library("jeff-4.0", "p", tmp_path, session=None)  # must not raise
 
     manifest = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())
-    assert manifest["mf10_sections"] == 1
-    assert manifest["mf10_product_sections"] == 0
-    assert manifest["mf10_rows"] == 0
-    assert manifest["channel_rows"] > 0, "the MF=3 side still produced rows"
+    assert manifest["ingest"]["p"]["mf10_sections"] == 1
+    assert manifest["ingest"]["p"]["mf10_product_sections"] == 0
+    assert manifest["ingest"]["p"]["mf10_rows"] == 0
+    assert manifest["ingest"]["p"]["channel_rows"] > 0, "the MF=3 side still produced rows"
 
 
 def test_mf3_sections_naming_no_residual_are_counted_separately():
@@ -1032,10 +1034,10 @@ def test_a_library_with_no_residual_naming_mts_does_not_trip_the_guard(monkeypat
     m.fetch_library("jendl-5", "d", tmp_path, session=None)  # must not raise
 
     manifest = json.loads((tmp_path / "jendl-5" / "manifest.json").read_text())
-    assert manifest["mf3_sections"] == 2
-    assert manifest["mf3_residual_sections"] == 0
-    assert manifest["mf3_rows"] == 0
-    assert manifest["channel_rows"] > 0
+    assert manifest["ingest"]["d"]["mf3_sections"] == 2
+    assert manifest["ingest"]["d"]["mf3_residual_sections"] == 0
+    assert manifest["ingest"]["d"]["mf3_rows"] == 0
+    assert manifest["ingest"]["d"]["channel_rows"] > 0
 
 
 def test_an_all_negative_mf3_section_is_not_counted_as_usable():
@@ -1360,3 +1362,103 @@ def test_target_state_values_are_in_the_vocabulary():
     for marker in ("", "m", "m2"):
         value = _mod().parse_endf_file(synthetic_material(), 13, 27, "n", marker).rows[0]["target_state"]
         assert value in TARGET_STATES, f"marker {marker!r} produced {value!r}, outside {sorted(TARGET_STATES)}"
+def test_a_second_sublibrary_adds_to_the_manifest_instead_of_replacing_it(monkeypatch, tmp_path):
+    """Two `--sublibrary` runs must leave a manifest describing both.
+
+    The manifest used to be written flat and overwritten wholesale, so a library
+    built `--all-sublibs` kept only whichever projectile went last: `tendl-2025`
+    ships a/d/h/n/p/t and its manifest said `"sublibrary": "a"` with a
+    `source_files` count for that one run, sitting next to `files` and
+    `total_rows` that `build_manifests.py` had correctly regenerated from all six
+    (#369). The ten MF/state counters added in #354 and #376 had the same shape
+    and had simply not reached committed data yet.
+
+    Runs the real `fetch_library` twice against stubbed parse results — the only
+    way to exercise the merge without a multi-GB download.
+    """
+    m = _stub_library(
+        monkeypatch,
+        {
+            "n_013-Al-27_1325.zip": _mod().ParsedFile(
+                rows=[_MF3_ROW, _CHANNEL_ROW],
+                mf3_sections=3,
+                mf3_usable_sections=3,
+                mf3_residual_sections=3,
+                mf3_rows=1,
+                channel_rows=1,
+            )
+        },
+    )
+    m.fetch_library("jendl-5", "n", tmp_path, session=None)
+    manifest_path = tmp_path / "jendl-5" / "manifest.json"
+    after_first = json.loads(manifest_path.read_text())
+    assert set(after_first["ingest"]) == {"n"}
+    assert after_first["ingest"]["n"]["mf3_rows"] == 1
+
+    m = _stub_library(
+        monkeypatch,
+        {
+            "p_013-Al-27_1325.zip": _mod().ParsedFile(
+                rows=[_MF3_ROW, _MF10_ROW, _CHANNEL_ROW],
+                mf3_sections=7,
+                mf3_usable_sections=7,
+                mf3_residual_sections=7,
+                mf3_rows=1,
+                mf10_sections=2,
+                mf10_product_sections=2,
+                mf10_rows=1,
+                channel_rows=1,
+            )
+        },
+    )
+    m.fetch_library("jendl-5", "p", tmp_path, session=None)
+    after_second = json.loads(manifest_path.read_text())
+
+    # The neutron run survives the proton run, and each keeps its own counts.
+    assert set(after_second["ingest"]) == {"n", "p"}
+    assert after_second["ingest"]["n"] == after_first["ingest"]["n"]
+    assert after_second["ingest"]["p"]["mf3_sections"] == 7
+    assert after_second["ingest"]["p"]["mf10_rows"] == 1
+    # And no flat spelling of any of it came back.
+    assert not set(after_second) & RETIRED_MANIFEST_KEYS, sorted(set(after_second) & RETIRED_MANIFEST_KEYS)
+
+
+def test_the_ingest_record_survives_a_manifest_regeneration(monkeypatch, tmp_path):
+    """`build_manifests.py` must preserve what only a real ingest can know.
+
+    It derives `files`/`total_rows`/`projectiles`/`elements` from disk and knows
+    nothing about MF sections or source-file counts, so losing `ingest` on
+    regeneration would silently discard the diagnostics #354 and #376 added to
+    detect dropped data.
+    """
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+    from build_manifests import build_manifest
+
+    m = _stub_library(
+        monkeypatch,
+        {
+            "n_013-Al-27_1325.zip": _mod().ParsedFile(
+                rows=[_MF3_ROW, _CHANNEL_ROW],
+                mf3_sections=3,
+                mf3_usable_sections=3,
+                mf3_residual_sections=3,
+                mf3_rows=1,
+                channel_rows=1,
+            )
+        },
+    )
+    m.fetch_library("jendl-5", "n", tmp_path, session=None)
+    manifest_path = tmp_path / "jendl-5" / "manifest.json"
+    existing = json.loads(manifest_path.read_text())
+
+    # The exact merge build_manifests.py performs.
+    fresh = build_manifest("jendl-5", tmp_path / "jendl-5" / "xs")
+    merged = {k: v for k, v in existing.items() if k not in RETIRED_MANIFEST_KEYS}
+    merged.update(fresh)
+
+    assert merged["ingest"] == existing["ingest"]
+    assert merged["builder"] == existing["builder"]
+    assert merged["projectiles"] == ["n"]
+    assert merged["files"] == 1

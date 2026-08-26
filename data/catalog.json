@@ -20,6 +20,19 @@
       "data_type": "cross_sections",
       "version": "2023-iso",
       "builder": null,
+      "provenance": {
+        "status": "unrecorded",
+        "summary": "The ENDF-to-parquet conversion for this library has always happened outside the repository. A root-level build.py once existed, but its --import-xs flag was a staging tool, not a producer: it shutil.copy2'd parquets that had already been made elsewhere and wrote a manifest around them.",
+        "evidence": [
+          "a112b23e 'init: nucl-parquet' — shipped as `tendl-2024/` at the repo root, alongside build.py.",
+          "build.py::import_xs at e84ba665^, lines 200-239: `shutil.copy2(f, xs_dir / f.name)` over a source directory of finished parquets. It copies and counts; it does not read ENDF.",
+          "e84ba665 'feat: restructure as Python package for PyPI (#1)' deleted build.py.",
+          "Renamed tendl-2024 -> tendl-2023-iso inside e8510563, a commit titled 'feat(rs-client): ParquetStore ... (#210)' that says nothing about a rename — which is why tracing this library by commit subject finds nothing.",
+          "catalog.json::note records that this is not an official TENDL release but TENDL-2023 charged-particle data with the Aug-2024 isomeric correction applied, so a plain TENDL-2023 refetch would not reproduce it."
+        ],
+        "rebuild_path": "No in-repo path today, and not a simple LIBRARIES entry: the shipped data carries an upstream patch that a plain refetch would not reproduce. scripts/backfill_xs_nuclides.py on the open PR #339 repairs one dropout class for 7-8 light nuclides; it is a targeted patch, not a rebuild, and the other targets still have no producer here.",
+        "issue": 346
+      },
       "path": "tendl-2023-iso/xs/",
       "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release — it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: 'g' (ground), 'm' (metastable), and the total over states — spelled '' on the rows this library shipped before #357 retired that value, and 'sum' on rows written since. Both mean 'summed over every isomeric state' and both must be excluded when you add up the g/m split, or the total is counted twice. scripts/migrate_state_vocabulary.py collapses the '' rows onto 'sum'; the PENDING_MIGRATION entry in nucl_parquet/state_vocabulary.py tracks that debt. TENDL-2025 dropped the g/m split entirely.",
       "provenance_note": "The bulk of this library was cut from TENDL's residual-production tables (TALYS per-residual output on TALYS's standard energy grid). Those tables only exist where TALYS ran. For a few light nuclides TENDL-2023 adopts an older LANL evaluation (Young/Hale/Page/Arthur, 1988-2004) instead of running TALYS; those tapes express reactions as exclusive ENDF channels, carry no MF=3/MT=5 + MF=6/MT=5 residual-production block, and PSI publishes no tables/residual/ directory for them. The original ingest therefore produced no rows for them and dropped them silently (#335). Seven target nuclides — p+Be-9, p+C-13, p+Li-7, d+Li-6, d+Li-7, t+Li-6, h+Li-6 — were restored from the authoritative ENDF-6 tapes on the IAEA NDS TENDL-2023 mirror by scripts/backfill_xs_nuclides.py, which sums the exclusive MF=3 channels per residual. Those rows are the same quantity (kind='production') as the rest of the library but sit on the tape's own energy grid rather than TALYS's standard one, and they spell their state 'sum' rather than the retired '' the older rows use — see `note`. CAVEAT on p+Be-9: its tape puts most non-elastic strength in MT=5 (up to 700 mb, 0-113 MeV) and describes it only as light-ejectile yields, naming no heavy product, so that strength cannot be attributed to a residual. What is shipped is (p,n) production of B-9 summed over the discrete-level band MT=50-55 -- correct and complete for neutron production from a Be converter, but NOT the full residual set. Use tendl-2025 (ten residuals for p+Be-9) if you need the others. p+Li-6 is deliberately absent: its TENDL-2023 evaluation has only elastic and ⁶Li(p,³He)⁴He, whose products are both standard ejectiles, so it names no residual to tabulate."
@@ -194,6 +207,16 @@
       "data_type": "cross_sections",
       "version": "2017",
       "builder": null,
+      "provenance": {
+        "status": "unrecorded",
+        "summary": "Arrived as parquets in a data-only commit. No code that produces this library has ever been in this repository, and none was deleted — there is nothing to recover.",
+        "evidence": [
+          "b48a293b 'data: add JENDL-AD-2017, JENDL-DEU-2020, and IAEA-PD-2019 libraries' — 167 files: catalog.json, 3 manifest.json, the rest parquet. No .py, .sh or notebook in the commit.",
+          "Absent from scripts/fetch_endf_libs.py::LIBRARIES and from every other builder under scripts/ and nucl_parquet/."
+        ],
+        "rebuild_path": "Plausibly a LibraryDef(iaea_path='JENDL-AD-2017', sublibraries={'n': 'n', 'p': 'p'}) in scripts/fetch_endf_libs.py — both sublibraries are shapes the ingest already handles. UNVERIFIED: nothing in the repo confirms the IAEA NDS mirror serves it at that path, and source_url points at JAEA rather than the mirror. Probe before relying on it.",
+        "issue": 346
+      },
       "path": "jendl-ad-2017/xs/"
     },
     "jendl-deu-2020": {
@@ -206,6 +229,16 @@
       "data_type": "cross_sections",
       "version": "2020",
       "builder": null,
+      "provenance": {
+        "status": "unrecorded",
+        "summary": "Arrived as parquets in a data-only commit. No code that produces this library has ever been in this repository, and none was deleted — there is nothing to recover.",
+        "evidence": [
+          "b48a293b — same commit as jendl-ad-2017 and iaea-pd-2019; no .py in the diff.",
+          "Absent from scripts/fetch_endf_libs.py::LIBRARIES."
+        ],
+        "rebuild_path": "Plausibly a LibraryDef(iaea_path='JENDL-DEU-2020', sublibraries={'d': 'd'}); the deuteron sublibrary is already handled for endfb-8.1, jendl-5 and tendl-2025. UNVERIFIED: the mirror path is a guess, not a checked fact.",
+        "issue": 346
+      },
       "path": "jendl-deu-2020/xs/"
     },
     "iaea-pd-2019": {
@@ -218,6 +251,16 @@
       "data_type": "cross_sections",
       "version": "2019",
       "builder": null,
+      "provenance": {
+        "status": "unrecorded",
+        "summary": "Arrived as parquets in a data-only commit. No code that produces this library has ever been in this repository, and none was deleted — there is nothing to recover.",
+        "evidence": [
+          "b48a293b — same commit as the two JENDL libraries; no .py in the diff.",
+          "Absent from scripts/fetch_endf_libs.py::LIBRARIES."
+        ],
+        "rebuild_path": "Harder than the two JENDL libraries: this is photonuclear data (projectile 'g'), and scripts/fetch_endf_libs.py::PROJECTILE_ZA deliberately restricts fetchable sublibraries to n/p/d/t/h/a. A LibraryDef alone is not enough — 'g' needs admitting as a sublibrary first. UNVERIFIED mirror path.",
+        "issue": 346
+      },
       "path": "iaea-pd-2019/xs/"
     },
     "exfor": {
@@ -271,6 +314,17 @@
       "data_type": "production_cross_sections",
       "version": "geant4-11.3.2-inclxx",
       "builder": null,
+      "provenance": {
+        "status": "external-pipeline",
+        "summary": "Produced by a Geant4 simulation campaign run outside this repository. Unlike the other four the pipeline is identified, but it was never committed here and the run is not reproducible from what is recorded.",
+        "evidence": [
+          "e287295f 'feat(hi-xs-prod): add Geant4 INCL++/ABLA07 heavy-ion production XS library' — Geant4 11.3.2, FTFP_INCLXX (INCL++ cascade + ABLA07 de-excitation), 6 projectiles x 92 targets, 1-1000 MeV/u, sigma_prod = sigma_R(Tripathi) * count(Zf,Af) / n_reactions.",
+          "aa84d898 re-added the same 552 files from a `hi-xs-prod-tmp/` staging path; no .py accompanied either commit.",
+          "`git log -S INCL -S ABLA` finds no commit adding a producer; the strings appear only in descriptions (README, catalog, _schemas)."
+        ],
+        "rebuild_path": "Bring the Geant4 driver into the repository. What is recorded is not enough to reproduce the run: no random seed, no event count per (projectile, target, energy) point, no Geant4 macro or configuration, and no explicit energy grid. Re-running would produce different numbers within statistics.",
+        "issue": 346
+      },
       "path": "hi-xs-prod/xs/"
     },
     "hi-xs": {
@@ -330,6 +384,7 @@
       "description": "Clearance limit LL (Befreiungsgrenze, Bq/g), licensing limit LA (Bewilligungsgrenze, Bq), and guideline values for air CA (Bq/m3) and surface contamination CS (Bq/cm2), from Annex 3 of the Swiss Radiological Protection Ordinance (StSV, SR 814.501), consolidation 2026-07-01. Long format: one row per (nuclide identity, quantity). Jurisdiction-specific Swiss law, not evaluated physics. Values from the authoritative German text; labels from the official English translation, cross-checked cell-by-cell. Not copyrightable subject matter (URG Art. 5).",
       "data_type": "regulatory_limits",
       "builder": "scripts/fetch_stsv.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_stsv.py --out data/stsv",
       "path": "stsv/limits/"
     },
     "stsv-2026-dose-coefficients": {
@@ -339,6 +394,7 @@
       "description": "Committed effective dose per unit intake by inhalation (e_inh) and ingestion (e_ing) in Sv/Bq, plus external dose rate coefficients h_10, h_0.07 and skin-contamination h_c,0.07, from Annex 3 of the StSV (SR 814.501), consolidation 2026-07-01. Underlying sources are ICRP and Petoussi et al. (GSF-Bericht 7/93); the ordinance is the compilation. Long format: one row per (nuclide identity, quantity).",
       "data_type": "dose_coefficients",
       "builder": "scripts/fetch_stsv.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_stsv.py --out data/stsv",
       "path": "stsv/dose_coefficients/"
     }
   },
