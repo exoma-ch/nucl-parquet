@@ -66,6 +66,7 @@ sensible default via `nix-build` if they are missing (see `_ensure_native_libs`)
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import io
 import logging
 import re
@@ -207,6 +208,33 @@ def parse_nuclide_stem(stem: str) -> tuple[int, int, str] | None:
     if z is None:
         return None
     return z, a, sym
+
+
+def stem_skip_reason(stem: str) -> str:
+    """Why `parse_nuclide_stem` returned None — and whether that is acceptable.
+
+    It returns None for three unrelated reasons, and only one of them is a
+    correct outcome. Collapsing them is the #329 mistake one level down: a
+    metastable target genuinely has no shard slot, but a stem whose element
+    symbol is unknown means `_SYMBOL_TO_Z` has fallen behind the upstream
+    inventory, and a stem that does not match `_NUC_RE` at all means the naming
+    convention moved. Those two are data loss wearing a skip's clothing.
+
+    Returns 'metastable', 'unknown-symbol' or 'unparseable'. Callers treat only
+    the first as expected.
+
+    All 22 stems the VIII.0 inventory currently skips are metastable, so the
+    other two branches are latent today — which is exactly when to separate
+    them, rather than after an inventory refresh quietly drops an element.
+    """
+    m = _NUC_RE.match(stem)
+    if m is None:
+        return "unparseable"
+    if m.group(3):
+        return "metastable"
+    if _SYMBOL_TO_Z.get(m.group(1)) is None:
+        return "unknown-symbol"
+    return "metastable"  # pragma: no cover — parse_nuclide_stem would have succeeded
 
 
 def thin_pointwise(energy, xs, tol: float = 0.01):
@@ -407,7 +435,119 @@ def fetch_h5(session, stem: str, cache_dir: Path | None = None) -> bytes:
     return content
 
 
-def build(out_dir: Path, nuclides: list[str] | None, tol: float, cache_dir: Path | None = None) -> None:
+class LostNuclides(RuntimeError):
+    """A build was asked for nuclides it did not produce. Raised, not logged."""
+
+
+@dataclasses.dataclass
+class NuclideLedger:
+    """What a nuclide-by-nuclide build asked for, and what it actually got.
+
+    Both VIII.0 builders walk the same ~556-stem inventory, and both used to
+    collapse every non-outcome into one integer::
+
+        skipped += 1     # metastable target - correct
+        skipped += 1     # fetch raised      - a defect
+        skipped += 1     # produced no rows  - a defect
+
+    That integer is how ``endfb-8.0/channels/`` came to ship without plutonium
+    (#329). A throttle window during the #280 build hit fifteen *consecutive*
+    stems - Pu236-Pu246 and Ra223-Ra226, indices 356-370 of the build order,
+    with Pt198 present before and Rb85 present after. ``_get_with_retry``
+    exhausted its six attempts, the exception was caught and downgraded to a
+    warning, and the run logged ``"37 skipped"`` and exited 0. Twenty-two of
+    those thirty-seven were correct - a metastable target has no ``n_<Sym>``
+    slot - and fifteen were the defect. Nothing downstream could tell them
+    apart, so a *transient* failure became a *permanent* gap that outlived every
+    release since.
+
+    So the counter is replaced by a ledger that keeps the distinction the count
+    destroyed - the same "expected absence vs unexplained absence" split #383
+    made for provenance and #386 for band attribution:
+
+    * ``expected_skips`` - asked, correctly produced nothing.
+    * ``failed`` - asked, raised. Usually transient, and transient is exactly
+      the case that must not pass silently, because nothing retries it later.
+    * ``empty`` - asked, parsed, produced no rows. Either a real upstream gap or
+      a parser gone quiet; both need a human.
+
+    ``failed`` and ``empty`` are *losses*. A build with any of them that still
+    writes a stamped, apparently-complete library is the #334 defect wearing the
+    words "one bad nuclide must not sink the build".
+    """
+
+    #: Stems that legitimately produce nothing, with the reason.
+    expected_skips: list[tuple[str, str]] = dataclasses.field(default_factory=list)
+    #: Stems whose fetch or parse raised, with the error text.
+    failed: list[tuple[str, str]] = dataclasses.field(default_factory=list)
+    #: Stems that parsed cleanly and yielded no rows.
+    empty: list[str] = dataclasses.field(default_factory=list)
+    #: Stems that produced rows.
+    built: list[str] = dataclasses.field(default_factory=list)
+
+    def skip(self, stem: str, why: str) -> None:
+        self.expected_skips.append((stem, why))
+        logger.info("  skip (%s): %s", why, stem)
+
+    def fail(self, stem: str, error: object) -> None:
+        self.failed.append((stem, str(error)[:200]))
+        logger.error("  %s FAILED: %s", stem, error)
+
+    def nothing(self, stem: str) -> None:
+        self.empty.append(stem)
+        logger.warning("  %s produced no rows", stem)
+
+    def ok(self, stem: str) -> None:
+        self.built.append(stem)
+
+    @property
+    def lost(self) -> list[str]:
+        """Every stem that was asked for and did not arrive, by name."""
+        return sorted([s for s, _ in self.failed] + self.empty)
+
+    def summary(self) -> str:
+        return (
+            f"{len(self.built)} built, {len(self.expected_skips)} skipped as expected, "
+            f"{len(self.failed)} failed, {len(self.empty)} empty"
+        )
+
+    def check(self, library: str, allow_missing: bool) -> None:
+        """Report the run, then refuse it if anything asked-for went missing.
+
+        ``allow_missing`` surveys the whole run instead of stopping at the first
+        loss - and the caller still exits non-zero, exactly as
+        ``migrate_xs_schema.py --skip-unmigratable`` does. Surveying the damage
+        is not the same as accepting it.
+        """
+        logger.info("%s: %s", library, self.summary())
+        if not self.lost:
+            return
+        detail = "\n  ".join(
+            [f"{stem}: {err}" for stem, err in sorted(self.failed)]
+            + [f"{stem}: produced no rows" for stem in sorted(self.empty)]
+        )
+        message = (
+            f"{library}: {len(self.lost)} nuclide(s) were requested and did not arrive:\n  {detail}\n\n"
+            "Named rather than counted, because a count is what hid #329 for months: fifteen "
+            "throttled downloads and twenty-two legitimate metastable skips were identical "
+            "inside one 'skipped' integer, and endfb-8.0/channels shipped without plutonium. "
+            "A transient failure is fine; shipping a library that silently lacks an element is "
+            "not. Re-run - the --cache-dir makes a retry cheap - or, if the absence is real, "
+            "record it before shipping."
+        )
+        if allow_missing:
+            logger.error("%s", message)
+            return
+        raise LostNuclides(message)
+
+
+def build(
+    out_dir: Path,
+    nuclides: list[str] | None,
+    tol: float,
+    cache_dir: Path | None = None,
+    allow_missing: bool = False,
+) -> NuclideLedger:
     import requests
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -422,12 +562,18 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, cache_dir: Path
         logger.info("Found %d nuclide files", len(stems))
 
     by_element: dict[str, list[dict]] = {}
-    skipped = 0
+    ledger = NuclideLedger()
     for stem in stems:
         parsed = parse_nuclide_stem(stem)
         if parsed is None:
-            logger.info("skip (metastable/unknown): %s", stem)
-            skipped += 1
+            reason = stem_skip_reason(stem)
+            if reason == "metastable":
+                ledger.skip(stem, "metastable target — no n_<Sym> shard slot")
+            else:
+                # Not a skip. The inventory offered a nuclide this build cannot
+                # name, which means the symbol table or the upstream convention
+                # has moved and an element is about to go missing quietly (#329).
+                ledger.fail(stem, f"stem not understood ({reason}); _SYMBOL_TO_Z or _NUC_RE is behind the inventory")
             continue
         z, a, sym = parsed
         cache_hit = cache_dir is not None and (cache_dir / f"{stem}.h5").exists()
@@ -439,15 +585,19 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, cache_dir: Path
             content = fetch_h5(session, stem, cache_dir)
             rows = extract_nuclide(content, stem, z, a, tol)
         except Exception as e:  # noqa: BLE001
-            logger.error("%s: %s", stem, e)
-            skipped += 1
+            ledger.fail(stem, e)
             continue
         if not rows:
-            logger.warning("%s: no transmutation rows", stem)
-            skipped += 1
+            ledger.nothing(stem)
             continue
         by_element.setdefault(sym, []).extend(rows)
+        ledger.ok(stem)
         logger.info("%-8s: %d rows", stem, len(rows))
+
+    # Before anything is written. A stamped library that silently lacks an
+    # element is worse than no library, because the stamp says it is complete
+    # (#329) — so the refusal has to come first.
+    ledger.check("endfb-8.0", allow_missing)
 
     written = 0
     for sym, rows in sorted(by_element.items()):
@@ -459,12 +609,13 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, cache_dir: Path
     stamp_path = manifest_path_for(out_dir, "endfb-8.0")
     write_builder_stamp(stamp_path, Path(__file__), files_written=written)
     logger.info(
-        "Done: %d per-element files written, %d nuclides skipped, out=%s (stamped %s)",
+        "Done: %d per-element files written, %s, out=%s (stamped %s)",
         written,
-        skipped,
+        ledger.summary(),
         out_dir,
         stamp_path,
     )
+    return ledger
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -489,16 +640,28 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Cache raw HDF5 here to avoid re-fetching on a re-thin/rebuild (VIII.0 is frozen).",
     )
+    ap.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="survey the whole run instead of refusing at the end. The library is still written and the process still exits non-zero — this reports the damage, it does not accept it (same contract as migrate_xs_schema.py --skip-unmigratable).",
+    )
     return ap
 
 
-def main() -> None:
+def main() -> int:
     args = build_parser().parse_args()
 
     _ensure_native_libs()
     nuclides = [s.strip() for s in args.nuclides.split(",")] if args.nuclides else None
-    build(args.out, nuclides, args.tol, args.cache_dir)
+    try:
+        ledger = build(args.out, nuclides, args.tol, args.cache_dir, allow_missing=args.allow_missing)
+    except LostNuclides:
+        logger.exception("refusing to report success on an incomplete library")
+        return 1
+    # Reached only under --allow-missing, which writes the library anyway. The
+    # exit code is what stops a survey being mistaken for a clean build (#329).
+    return 1 if ledger.lost else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
