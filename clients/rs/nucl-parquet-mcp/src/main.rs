@@ -67,7 +67,11 @@ fn resolve_data_dir() -> Result<PathBuf, String> {
 // Catalog (loaded from disk)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// Deserialize only. Serializing a Catalog or Library would silently drop every
+// field this struct does not model — version, data_sha256, base_url, views —
+// which is a trap for the next reader who reaches for it. Nothing serialises
+// them today; the tool payloads are built explicitly.
+#[derive(Debug, Clone, Deserialize)]
 struct Library {
     name: String,
     description: String,
@@ -81,8 +85,25 @@ struct Library {
     path: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct Catalog {
+    /// The data release this server is serving, e.g. `2026.8.3`.
+    ///
+    /// Distinct from `Library::version`, which is the *evaluation's* version
+    /// ("2023-iso"). They answer different questions and conflating them would
+    /// make a cross-server check silently wrong rather than merely absent
+    /// (#348).
+    ///
+    /// Read from the catalog on disk, never compiled in. A constant baked at
+    /// build time would be a second source of truth for the one fact whose
+    /// entire job is to identify the data actually being read — it could
+    /// disagree with the tree the server is pointed at, which is the failure
+    /// this reports its way out of.
+    ///
+    /// Required, not `#[serde(default)]`: `data/catalog.schema.json` lists it
+    /// as required, and an empty string here would be a claim that the server
+    /// is serving nothing rather than an admission that it does not know.
+    data_version: String,
     libraries: HashMap<String, Library>,
 }
 
@@ -163,6 +184,25 @@ fn format_result(
     serde_json::json!({
         "content": [{ "type": "text", "text": serde_json::to_string_pretty(&result).unwrap() }]
     })
+}
+
+/// Server instructions, naming the data release in the client's context.
+///
+/// The referral case #348 is about does not go through `list_libraries`: hyrr-mcp
+/// sends an agent straight to `get_cross_sections` for full σ(E) curves, having
+/// stated the release *it* computed against. Reporting the release only from a
+/// tool the agent has no reason to call would leave that claim as unverifiable
+/// as it was — so it is stated here too, where it reaches the model without a
+/// round trip, and in `list_libraries` where it can be read programmatically.
+/// Both read the same loaded catalog, so they cannot disagree.
+fn instructions(data_version: &str) -> String {
+    format!(
+        "Serving nucl-parquet data release {data_version}. This identifies the *data*, \
+         not this server's version — report it whenever you compare results with another \
+         server or tool. If another source states a different release, say so: agreement \
+         or disagreement computed across two releases is an artefact of the mismatch, not \
+         a physics result. Call list_libraries to read the same value programmatically."
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -367,8 +407,17 @@ fn handle_tool_call(
                     })
                 })
                 .collect();
+            // An envelope, not a bare array: `data_version` identifies the data
+            // *release* these libraries came out of, which is a different fact
+            // from any one library's evaluation `version` and has nowhere else
+            // to live (#348). Keeping it beside the array rather than on each
+            // entry is what stops the two being read as the same thing.
+            let payload = serde_json::json!({
+                "data_version": catalog.data_version,
+                "libraries": libs,
+            });
             Ok(
-                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&libs).unwrap() }] }),
+                serde_json::json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&payload).unwrap() }] }),
             )
         }
         "list_isotopes" => {
@@ -781,7 +830,11 @@ fn handle_request(
             serde_json::json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "nucl-parquet", "version": env!("CARGO_PKG_VERSION") }
+                // `serverInfo.version` is this crate's version — the software,
+                // not the data. Both are reported because they answer different
+                // questions and only one of them changes when the data does.
+                "serverInfo": { "name": "nucl-parquet", "version": env!("CARGO_PKG_VERSION") },
+                "instructions": instructions(&catalog.data_version),
             }),
         )),
         "tools/list" => Some(JsonRpcResponse::success(id, tool_definitions())),
@@ -1004,6 +1057,187 @@ mod tests {
         let content = resp.result.unwrap();
         let text = content["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("TENDL-2023"));
+    }
+
+    /// The envelope reports the data release, and reports it as its own key.
+    ///
+    /// #348: `list_libraries` named each *evaluation's* version and never the
+    /// release the whole tree came from, so an agent handed a cross-server
+    /// referral ("this used 2026.8.3, confirm the other server matches") had
+    /// nothing to confirm against.
+    #[test]
+    fn list_libraries_reports_the_data_version() {
+        let data_dir = test_data_dir();
+        let catalog = load_catalog(&data_dir).unwrap();
+        let store = ParquetStore::new(&data_dir);
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".into(),
+            params: serde_json::json!({ "name": "list_libraries", "arguments": {} }),
+        };
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
+        let content = resp.result.unwrap();
+        let text = content["content"][0]["text"].as_str().unwrap();
+        let payload: serde_json::Value = serde_json::from_str(text).unwrap();
+
+        let reported = payload["data_version"]
+            .as_str()
+            .expect("data_version is present");
+        assert!(
+            !reported.is_empty(),
+            "an empty data_version claims to serve nothing rather than admitting ignorance"
+        );
+
+        // It must be the version on disk, not a build-time constant. Read the
+        // catalog independently rather than comparing against the same struct
+        // the handler used, so a hardcoded value cannot satisfy both sides.
+        let raw = std::fs::read_to_string(data_dir.join("catalog.json")).unwrap();
+        let on_disk: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            reported,
+            on_disk["data_version"].as_str().unwrap(),
+            "reported data_version must come from the catalog this server actually read"
+        );
+
+        // And it must stay distinct from the per-library evaluation version.
+        let libs = payload["libraries"]
+            .as_array()
+            .expect("libraries is an array");
+        assert!(!libs.is_empty());
+        assert!(
+            libs.iter()
+                .any(|l| l["version"].as_str() == Some("2023-iso")),
+            "per-library evaluation versions are still reported"
+        );
+        assert!(
+            libs.iter().all(|l| l.get("data_version").is_none()),
+            "the release belongs on the envelope, not repeated on every entry where it \
+             would be read as a peer of the evaluation version"
+        );
+    }
+
+    /// `initialize` names the release without requiring any tool call.
+    ///
+    /// The referral in #348 sends an agent to `get_cross_sections`, not to
+    /// `list_libraries` — so a release reported only by the latter would still
+    /// be unreachable on the path that actually goes wrong.
+    #[test]
+    fn initialize_reports_the_data_version_in_instructions() {
+        let data_dir = test_data_dir();
+        let catalog = load_catalog(&data_dir).unwrap();
+        let store = ParquetStore::new(&data_dir);
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: Some(serde_json::json!(1)),
+            method: "initialize".into(),
+            params: serde_json::json!({}),
+        };
+        let resp = handle_request(&data_dir, &catalog, &store, req).unwrap();
+        let result = resp.result.unwrap();
+
+        let text = result["instructions"]
+            .as_str()
+            .expect("instructions are present");
+        assert!(
+            text.contains(&catalog.data_version),
+            "instructions must name the data release; got {text:?}"
+        );
+
+        // The crate version is still reported, and is a different fact.
+        assert_eq!(
+            result["serverInfo"]["version"].as_str().unwrap(),
+            env!("CARGO_PKG_VERSION")
+        );
+        assert_ne!(
+            result["serverInfo"]["version"].as_str().unwrap(),
+            catalog.data_version,
+            "the software version and the data release must not be confused for each other"
+        );
+    }
+
+    /// The reported release follows the catalog the server was pointed at.
+    ///
+    /// The requirement behind #348 is not "report a version" but "report the
+    /// version of the data being read". A build-time constant would satisfy
+    /// every other test in this file while being wrong precisely when it
+    /// matters — a server pointed at a different tree than it was built beside.
+    /// So: load a catalog claiming a release that no build could have baked in,
+    /// and check that is what comes back.
+    #[test]
+    fn the_reported_release_follows_the_catalog_on_disk() {
+        let dir = std::env::temp_dir().join(format!("nucl-mcp-tracks-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("catalog.json"),
+            r#"{"data_version": "1999.1.1",
+                "libraries": {"x": {"name": "X", "description": "d",
+                                    "projectiles": ["n"], "version": "eval-7", "data_type": "cross_sections"}}}"#,
+        )
+        .unwrap();
+
+        let catalog = load_catalog(&dir).unwrap();
+        let store = ParquetStore::new(&dir);
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: Some(serde_json::json!(1)),
+            method: "tools/call".into(),
+            params: serde_json::json!({ "name": "list_libraries", "arguments": {} }),
+        };
+        let resp = handle_request(&dir, &catalog, &store, req).unwrap();
+        let text = resp.result.unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let init = JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: Some(serde_json::json!(2)),
+            method: "initialize".into(),
+            params: serde_json::json!({}),
+        };
+        let init_resp = handle_request(&dir, &catalog, &store, init).unwrap();
+        let instructions_text = init_resp.result.unwrap()["instructions"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        std::fs::remove_dir_all(&dir).ok();
+
+        let payload: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(payload["data_version"].as_str().unwrap(), "1999.1.1");
+        assert!(
+            instructions_text.contains("1999.1.1"),
+            "instructions must follow the same catalog; got {instructions_text:?}"
+        );
+        // The evaluation version is reported separately and is not the release.
+        // Found by id rather than indexed: `Catalog::libraries` is a HashMap, so
+        // `[0]` would start passing or failing on iteration order the moment
+        // this fixture gains a second library.
+        let x = payload["libraries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|l| l["id"].as_str() == Some("x"))
+            .expect("library 'x' is reported");
+        assert_eq!(x["version"].as_str().unwrap(), "eval-7");
+    }
+
+    /// A catalog without `data_version` must fail to load, not default to "".
+    #[test]
+    fn a_catalog_without_a_data_version_is_refused() {
+        let dir = std::env::temp_dir().join(format!("nucl-mcp-no-dv-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("catalog.json"),
+            r#"{"libraries": {"x": {"name": "X", "description": "d"}}}"#,
+        )
+        .unwrap();
+        let err = load_catalog(&dir).unwrap_err();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            err.contains("data_version"),
+            "the error must name the missing field; got {err:?}"
+        );
     }
 
     #[test]

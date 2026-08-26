@@ -83,7 +83,15 @@ endgroup
 
 # ---------------------------------------------------------------------------
 group "typescript (tsc + vitest)"
-(cd clients/ts/nucl-parquet && npm ci && npx tsc --noEmit && npx vitest run)
+# Both TS packages. `clients/ts/nucl-parquet-mcp` was absent from this line, so
+# its 25 tests and its typecheck never ran here — the same allowlist shape #355
+# removed from the Python section, one directory up. It is one of the three MCP
+# servers, and #348's whole point is that a claim nothing checks is weaker than
+# one that can be checked; shipping the data-release fix into a package CI does
+# not build would have reproduced that inside the fix.
+for pkg in nucl-parquet nucl-parquet-mcp; do
+  (cd "clients/ts/${pkg}" && npm ci && npx tsc --noEmit && npx vitest run)
+done
 ok "typescript passed"
 endgroup
 

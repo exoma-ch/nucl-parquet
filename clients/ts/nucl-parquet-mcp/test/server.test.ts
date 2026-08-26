@@ -6,7 +6,16 @@
 
 import { createRequire } from "node:module";
 import { describe, it, expect } from "vitest";
-import { ensureCatalog, getDb, PKG_VERSION } from "../src/index.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  ensureCatalog,
+  getDb,
+  instructions,
+  libraryListPayload,
+  parseCatalog,
+  PKG_VERSION,
+} from "../src/index.js";
 
 const require = createRequire(import.meta.url);
 
@@ -304,5 +313,120 @@ describe("SQL security", () => {
     const firstWord = sql.trim().split(/\s/)[0].toUpperCase();
     const allowed = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
     expect(allowed.has(firstWord)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Data release reporting (#348)
+// ---------------------------------------------------------------------------
+
+describe("data_version", () => {
+  it("comes from the catalog on disk, not a build-time constant", () => {
+    // The one fact whose entire job is to identify the tree actually being
+    // read. Compared against an independent read of catalog.json rather than
+    // against the same object the server loaded, so a hardcoded value cannot
+    // satisfy both sides.
+    const cat = ensureCatalog();
+    const dataDir = process.env.NUCL_PARQUET_DATA ?? join(import.meta.dirname, "../../../../data");
+    const onDisk = JSON.parse(readFileSync(join(dataDir, "catalog.json"), "utf-8")) as {
+      data_version: string;
+    };
+    expect(cat.data_version).toBe(onDisk.data_version);
+    expect(cat.data_version).toBeTruthy();
+  });
+
+  it("is a different fact from the server version", () => {
+    // serverInfo.version is the npm package; data_version is the data release.
+    // #348 exists because only the first was reachable.
+    expect(ensureCatalog().data_version).not.toBe(PKG_VERSION);
+  });
+
+  it("is a different fact from any library's evaluation version", () => {
+    // Conflating the release with an evaluation's version would make a
+    // cross-server check silently wrong rather than merely absent.
+    const cat = ensureCatalog();
+    const evaluationVersions = Object.values(cat.libraries).map((l) => l.version);
+    expect(evaluationVersions.length).toBeGreaterThan(0);
+    expect(evaluationVersions).not.toContain(cat.data_version);
+  });
+
+  it("is named in the server instructions, so no tool call is needed", () => {
+    // The referral this closes sends an agent to get_cross_sections, not to
+    // list_libraries — a release reported only by the latter would be missing
+    // from the path that actually goes wrong.
+    const text = instructions(ensureCatalog().data_version);
+    expect(text).toContain(ensureCatalog().data_version);
+    expect(text.toLowerCase()).toContain("release");
+  });
+
+  it("instructions match the Rust server's wording, in both directions", () => {
+    // Three implementations, one claim. A one-directional check ("every TS
+    // clause appears in the Rust source") would miss Rust *adding* a sentence
+    // or rewording a span this test does not name — so reconstruct the Rust
+    // string and compare it whole.
+    const rust = readFileSync(
+      join(import.meta.dirname, "../../../rs/nucl-parquet-mcp/src/main.rs"),
+      "utf-8",
+    );
+    // The literal is a rustfmt-wrapped format! string: `\` at end of line eats
+    // the newline and the following indentation.
+    const literal = rust.slice(rust.indexOf('"Serving nucl-parquet data release'));
+    const raw = literal.slice(1, literal.indexOf('"\n', 1));
+    const rustText = raw
+      .replace(/\\\s*\n\s*/g, "")
+      .replace("{data_version}", "X.Y.Z");
+
+    expect(rustText).toBe(instructions("X.Y.Z"));
+  });
+});
+
+describe("list_libraries payload (#348)", () => {
+  it("is an envelope carrying the release, not a bare array", () => {
+    // The shape the tool returns, not merely the shape of the catalog: an
+    // assertion on ensureCatalog() alone passes while the tool still emits a
+    // bare array with the release nowhere in it.
+    const payload = libraryListPayload(ensureCatalog());
+    expect(Array.isArray(payload)).toBe(false);
+    expect(Object.keys(payload).sort()).toEqual(["data_version", "libraries"]);
+    expect(payload.data_version).toBe(ensureCatalog().data_version);
+    expect(payload.libraries.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the release off the individual entries", () => {
+    // Repeating it per entry would sit it next to the evaluation `version` and
+    // invite exactly the conflation that makes the check silently wrong.
+    const payload = libraryListPayload(ensureCatalog());
+    for (const lib of payload.libraries) {
+      expect(lib.data_version).toBeUndefined();
+      expect(lib.version).toBeDefined();
+    }
+  });
+
+  it("refuses a catalog with no data_version", () => {
+    // An undefined release reported as if it were known is worse than the gap
+    // #348 describes: the agent gets an answer it cannot tell is empty.
+    expect(() => parseCatalog('{"libraries": {}}', "/nowhere")).toThrow(/data_version/);
+    expect(() => parseCatalog('{"data_version": "", "libraries": {}}', "/nowhere")).toThrow(
+      /data_version/,
+    );
+    expect(() =>
+      parseCatalog('{"data_version": "2026.8.3", "libraries": {}}', "/nowhere"),
+    ).not.toThrow();
+  });
+
+  it("reports whatever release the catalog it was handed claims", () => {
+    // The requirement is not "report a version" but "report the version of the
+    // data being read". A build-time constant passes every other test here.
+    const cat = parseCatalog(
+      JSON.stringify({
+        data_version: "1999.1.1",
+        libraries: { x: { name: "X", description: "d", projectiles: ["n"], version: "eval-7" } },
+      }),
+      "/nowhere",
+    );
+    const payload = libraryListPayload(cat);
+    expect(payload.data_version).toBe("1999.1.1");
+    expect(instructions(cat.data_version)).toContain("1999.1.1");
+    expect(payload.libraries[0].version).toBe("eval-7");
   });
 });
