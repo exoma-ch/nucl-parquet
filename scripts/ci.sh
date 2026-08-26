@@ -48,78 +48,26 @@ endgroup
 # ---------------------------------------------------------------------------
 group "python tests"
 uv sync --dev
-# test_loader: loader/auto-wiring. test_data_release: gates data_version + data_sha256
-# against the on-disk parquets (the "PR that changes data IS the data-release PR"
-# guard) — must run in CI so a data re-release can't ship an inconsistent hash.
-# `-m "not data and not network"` also runs the pure builder/thinning unit tests
-# while skipping the ones that need the full data tree or network.
-# test_release_config: gates the cross-crate version invariant that broke #281 —
-# nucl-parquet-mcp declares its sibling's version for crates.io, and nothing
-# enforced that the two move together.
-# test_stsv: gates the Swiss StSV Annex 3 ingest (#294) — upper-bound handling,
-# the H-3 chemical-form collision, footnote provenance, and the HTTP-200-HTML
-# trap in the Fedlex fetch.
-# test_data_signing: gates the minisign release-signing path (#289) — that the
-# workflow signs unconditionally, that the signature actually verifies, and that
-# tampering/replay/stripping are all rejected. Needs no data and no network.
-# test_mt_residuals: gates the MT -> residual-product mapping (#351), where 13 of
-# ~30 entries named the wrong nuclide and every affected row was misattributed
-# rather than dropped. Checks the table against two oracles it is not derived
-# from: ENDF-102's reaction names via the `endf` package, and MF=10's IZAP read
-# from committed excerpts of real evaluations. Offline — the fixtures are in
-# tests/fixtures/mf10/.
-# test_library_registry: gates LIBRARIES against catalog.json (#356) — that
-# everything shipped can still be refetched, and that a declared sublibrary the
-# repo does not ship says why. iaea-medical declared a neutron sublibrary that
-# 404s, and the ingest logged it and exited 0. Deliberately offline: a mirror
-# reachability check fails in PR CI and on a train, and a test that cannot run
-# is not a check (#355).
-# test_repo_layout: gates where data may live (#341) — no tracked parquet outside
-# data/, and the ingest scripts' --output defaults. This list is an allowlist, so
-# a gate that is not named here does not run in CI at all; #341's tests were
-# written to stop a 623-file stale tree coming back and would have been silent.
-# Needs only a git checkout — no data tree, no network.
-# test_fetch_endf_libs: gates the ENDF ingest's MF=10 isomeric read (#340) —
-# pins the shape the `endf` package returns, so a version bump fails here rather
-# than silently emptying every ground/metastable split again, and asserts the
-# ingest raises instead of exiting 0 when it drops data. Builds its own ENDF-6
-# material, so it needs no data and no network.
-# test_builder_staleness: gates the committed parquets against the builder that
-# produced them (#342). Between #260 and #334 those drifted apart for thirteen
-# months with CI green, because nothing related a library to its builder. Reads
-# manifests and script digests only — no download, no git history, so it works
-# in the depth-1 clone actions/checkout gives us.
-# test_migrate_xs_schema: gates the legacy -> canonical lift, including that a
-# file it cannot handle now *raises* rather than being tallied into a counter
-# nobody branched on (#361). It was absent from this list, so neither the new
-# gates nor the pre-existing parse_stem cases ran in CI at all — the same
-# allowlist gap #341's tests hit, on a file whose whole subject is silent
-# non-execution. Pure unit tests: no data tree, no network.
-uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
-  tests/test_data_signing.py \
-  tests/test_stsv.py \
-  tests/test_release_config.py \
-  tests/test_repo_layout.py \
-  tests/test_fetch_endf_libs.py \
-  tests/test_builder_staleness.py \
-  tests/test_mt_residuals.py \
-  tests/test_library_registry.py \
-  tests/test_migrate_xs_schema.py \
-  -m "not data and not network" -v
-
-# test_manifests: a second invocation, because its drift check is marked
-# `@pytest.mark.data` and the `-m "not data"` above deselects it. That marker
-# exists so the suite degrades gracefully when the data tree is *absent*
-# (conftest.py already skips those tests in that case) — but the data tree is
-# committed, so here it was only suppressing a check that had something to say.
-# It did: `exfor-channels` claimed 4,228,412 rows against 4,228,409 on disk from
-# #334 until this PR, and nothing in CI could see it. Same failure shape as #342,
-# one level down — a guard that exists but never runs.
+# The whole directory, not a list of files. A list is an allowlist: a test file
+# that is not named on it never runs, silently, with a green tick. 40 of 54 test
+# files were in exactly that state — including tests/test_readme_drift.py, which
+# CLAUDE.md promises will fail the suite if you skip the regeneration, and which
+# did not run here at all. It bit two PRs on one day: #341's stale-tree gate and
+# #340's ingest tests were both dead on arrival until their authors noticed by
+# hand. `pyproject.toml` already sets `testpaths = ["tests"]`; explicit paths on
+# the command line overrode it. See #355.
 #
-# The second invocation is a local fix for a general problem: this list is an
-# allowlist, so a gate not named here never runs at all. #355 replaces the
-# allowlist wholesale and supersedes this line.
-uv run pytest tests/test_manifests.py -m "not network" -v
+# `-m "not network"`, and deliberately nothing else. The `data` marker is not a
+# CI filter — it exists so the suite degrades gracefully when the data tree is
+# *absent*, and tests/conftest.py already skips those tests in that case. The
+# data tree is committed, so deselecting them here only suppressed checks that
+# had something to say: data/exfor-channels/manifest.json disagreed with its own
+# parquets from #334 until #358, and nothing in CI could see it.
+#
+# Why each suite matters now lives in that suite's module docstring, where the
+# next reader is already looking, rather than in a shell comment they will never
+# open. tests/test_ci_runs_everything.py keeps the allowlist from coming back.
+uv run pytest tests/ -m "not network" -v
 ok "python tests passed"
 endgroup
 

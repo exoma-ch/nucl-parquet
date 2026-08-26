@@ -310,7 +310,11 @@
         "nuclear/radioactive_decay.parquet",
         "em/estar_basic.parquet",
         "em/estar_long.parquet",
-        "em/density_effect.parquet"
+        "em/density_effect.parquet",
+        "em/brem_sb_dcs.parquet",
+        "nuclear/nudex_shellcor_ms.parquet",
+        "nuclear/nudex_special_inputs.parquet",
+        "nuclear/nudex_general_stat.parquet"
       ],
       "upstream_g4_versions": {
         "G4ENSDFSTATE": "3.0",

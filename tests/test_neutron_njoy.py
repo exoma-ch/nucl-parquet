@@ -5,6 +5,9 @@ Design: the NJOY shards are a normal in-repo cross-section library — same 6-co
 schema as jendl/tendl/endfb-8.1 — so they auto-wire into the loader's `xs` view with
 no client code. These tests assert that wiring, the physics, and that the superseded
 reconstruction (and endfb-8.1 neutron) are gone.
+
+The thinning and shard-schema tests are pure unit tests over synthetic curves;
+the physics spot checks read the committed shards. No network either way.
 """
 
 from __future__ import annotations

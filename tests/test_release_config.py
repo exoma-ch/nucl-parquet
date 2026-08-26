@@ -24,6 +24,9 @@ config that caused it.
 unit-tested — release tooling is only exercised by running the bot — so these
 tests are the detector: if it silently stops working, the release PR fails
 *here*, naming both versions, rather than as a cargo resolution error.
+
+Reads `Cargo.toml` and the release config from the checkout — no data tree, no
+network.
 """
 
 from __future__ import annotations

@@ -18,6 +18,10 @@ written to fail loudly on the *specific* thing that broke:
 
 Everything asserts a positive value — a row count, a cross-section, a state
 string. A test that passes because it found nothing is what let #340 ship.
+
+Builds its own ENDF-6 material in-process, so it needs no data tree and no
+network — the point is that a version bump of the `endf` package fails *here*
+rather than silently emptying every ground/metastable split again.
 """
 
 from __future__ import annotations

@@ -66,10 +66,20 @@ def test_element_symbols(data_dir_path: Path) -> None:
 
 @pytest.mark.data
 def test_cu63_xs_tendl(data_dir_path: Path) -> None:
-    """TENDL-2024 should have cross-section data for Cu-63(p,n)Zn-63."""
-    xs_path = data_dir_path / "tendl-2024" / "xs" / "p_Cu.parquet"
-    if not xs_path.exists():
-        pytest.skip("TENDL-2024 p_Cu.parquet not present")
+    """TENDL should have cross-section data for Cu-63(p,n)Zn-63.
+
+    Retargeted from `tendl-2024`, which was renamed to `tendl-2023-iso` in
+    e8510563 — the same data under its correct name. The old key meant this
+    skipped on every run, for years, and would have gone on skipping forever:
+    a test that can only skip is not a test. It was invisible because nothing
+    ran this file in CI either (#355).
+
+    The path is no longer guarded by a skip. If `tendl-2023-iso/xs/p_Cu.parquet`
+    is missing, that is a library that stopped shipping a file it declares, and
+    this should say so.
+    """
+    xs_path = data_dir_path / "tendl-2023-iso" / "xs" / "p_Cu.parquet"
+    assert xs_path.exists(), f"{xs_path} is missing — tendl-2023-iso declares projectile 'p'"
     db = duckdb.connect()
     result = db.sql(
         f"SELECT COUNT(*), MAX(xs_mb) FROM read_parquet('{xs_path}') "

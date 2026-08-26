@@ -8,6 +8,11 @@ a diff.
 
 `scripts/build_manifests.py --check` is the same code path that writes them, so
 these tests fail exactly when a regeneration would change something.
+
+Reads the committed parquets' footers, so it needs the data tree but no network.
+The `data` marker is for the case where that tree is absent; it is not a reason
+to skip these in CI, and while it was used as one `exfor-channels` shipped a
+manifest that disagreed with its own parquets from #334 until #358 (#355).
 """
 
 from __future__ import annotations

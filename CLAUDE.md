@@ -52,6 +52,15 @@ self-describing.
   release trigger it is.
 - After changing anything under `data/`, recompute `catalog.json::data_sha256`
   (`nucl_parquet.download.compute_data_sha256`) and regenerate the README
-  (`scripts/build_readme.py --write`) or the suite fails.
-- Pre-existing test failures unrelated to your change: `test_fetch_strata.py`
-  and the `test_g4_gammas.py` errors (missing local data files).
+  (`scripts/build_readme.py --write`) or the suite fails. This is now true in CI
+  as well as locally — `test_readme_drift.py` was one of the 40 files CI never
+  ran before #355.
+- **There are no known pre-existing failures.** `nix develop -c ./scripts/ci.sh`
+  is green on the whole tree; a red suite is yours. The two long-standing
+  exceptions were both real and are fixed in #355: `test_fetch_strata.py` was
+  genuine drift between the fetcher's `FILES` and `catalog.json` (four files
+  added in #118/#77 that the catalog never learned about), not missing local
+  data; and the `test_g4_gammas.py` errors were a fixture guarding on the wrong
+  precondition — it checked that the data tree existed when what it needed was
+  the gitignored `data/g4_raw/` download cache, so it raised at setup instead of
+  skipping. Those five now skip, with the fetch command in the skip reason.
