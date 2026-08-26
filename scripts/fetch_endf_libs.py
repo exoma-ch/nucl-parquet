@@ -31,6 +31,7 @@ import sys
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import polars as pl
@@ -180,6 +181,45 @@ UNSHIPPED_SUBLIBRARIES: dict[tuple[str, str], str] = {
     ),
     ("iaea-medical", "h"): "Served by the mirror (2 evaluations), never ingested.",
     ("iaea-medical", "a"): "Served by the mirror (3 evaluations), never ingested.",
+}
+
+
+class UpstreamTargetGap(NamedTuple):
+    """A target range the upstream library does not evaluate, and the evidence."""
+
+    #: Lowest target Z the upstream library evaluates. Every shipped row must be
+    #: at or above it, and a row below it means the gap has closed.
+    min_target_Z: int
+    reason: str
+
+
+#: Libraries whose *target* coverage is narrower than their peers', and why.
+#:
+#: A different claim from `UNSHIPPED_SUBLIBRARIES`, and the distinction is the
+#: point (#331). That table says "the mirror serves this and we choose not to
+#: ingest it" — a decision of ours. This one says "there is nothing to ingest" —
+#: a fact about upstream. Both look identical from inside the repository: a
+#: library that simply lacks hydrogen. Only one of them is ours to fix.
+#:
+#: Checked offline against the shipped parquets by
+#: `tests/test_library_registry.py`, and self-cleaning: if the gap ever closes,
+#: the test fails on the leftover entry rather than letting a stale note outlive
+#: the fact it records.
+UPSTREAM_TARGET_GAPS: dict[str, UpstreamTargetGap] = {
+    "tendl-2025": UpstreamTargetGap(
+        min_target_Z=3,
+        reason=(
+            "TENDL is TALYS-generated, and TALYS is an optical/statistical-model "
+            "code: it needs a compound nucleus and a level density, neither of "
+            "which n+H or n+He-4 provides. Upstream evaluates nothing below "
+            "lithium. Verified against the IAEA mirror on 2026-08-26 — all six "
+            "sublibraries (n/p/d/t/he3/he4) serve 2,847-2,850 files each, every "
+            "one Z>=003, and zero files matching Z=001 or Z=002 under any "
+            "spelling. Peers do ship them: ENDF/B-VIII.1, JEFF-4.0, JENDL-5 and "
+            "CENDL-3.2 each serve H-1/2/3 and He-3/4. So this is upstream's "
+            "coverage, not an ingest that lost them (#331)."
+        ),
+    ),
 }
 
 
