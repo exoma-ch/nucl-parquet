@@ -115,3 +115,10 @@ If a version is tagged but has no release — the #344 failure — re-run **Auto
 ```console
 $ gh workflow run release-data.yml -f tag=data-YYYY.MM.MICRO
 ```
+
+You should not normally be the one to notice. `.github/workflows/reconcile-data-release.yml` runs weekly and checks the invariant directly — that the version `data/catalog.json` claims has a tag, a published release, all four assets, and a tarball signature that verifies against the committed public key. When it does not, it **opens or updates an issue** labelled `release-reconciliation` rather than only going red, because a red scheduled run is itself something nobody looks at. Run the same check yourself any time:
+
+```console
+$ nix develop -c ./scripts/reconcile_data_release.sh                   # the full check
+$ nix develop -c ./scripts/reconcile_data_release.sh --skip-signature  # structural only, no ~730 MB download
+```
