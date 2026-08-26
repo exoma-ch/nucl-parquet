@@ -129,13 +129,13 @@
     },
     "fendl-3.2": {
       "name": "FENDL-3.2",
-      "description": "Fusion Evaluated Nuclear Data Library (IAEA)",
+      "description": "Fusion Evaluated Nuclear Data Library (IAEA). Ships FENDL-3.2c (the IAEA's ITER-recommended release): the builder has always fetched the 3.2c path, and the 2026.8.3 re-ingest pulled it, so tungsten, Th-232 and Li-7 carry the 3.2c evaluations.",
       "source_url": "https://www-nds.iaea.org/fendl/",
       "projectiles": [
         "n"
       ],
       "data_type": "cross_sections",
-      "version": "3.2",
+      "version": "3.2c",
       "path": "fendl-3.2/xs/"
     },
     "irdff-2": {
