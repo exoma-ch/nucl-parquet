@@ -325,6 +325,21 @@ jobs:
     # while pushing nothing. The card is what keeps the published licence from
     # drifting (#234), so "mirror silently did nothing" must never be
     # indistinguishable from "mirror is current". Skipped says that; green lies.
+    #
+    # CURRENT STATE, as of 2026-08-26 — the mirror is DORMANT and deliberately so.
+    # Neither `vars.HF_MIRROR_ENABLED` nor `secrets.HF_TOKEN` is set on this
+    # repository, so this job has been skipped on every release since the gate
+    # landed, and the Hugging Face dataset at gerchowl/nucl-parquet-data is stale
+    # against `data/catalog.json`. Nothing is broken; this is parked work.
+    #
+    # It is written down here because it was previously only inferable from the
+    # gap between a workflow that names HF_TOKEN and a secret store that does not
+    # have it — and a skipped job emits no log to say so. Whoever revives the
+    # mirror needs both: add HF_TOKEN with write scope on
+    # gerchowl/nucl-parquet-data, then set the HF_MIRROR_ENABLED variable to
+    # 'true'. Setting the variable alone fails the release loudly, by design.
+    # To retire the mirror instead, drop this job and the catalog's HF URLs
+    # together, so consumers stop being pointed at something nobody updates.
     if: ${{ github.repository == 'exoma-ch/nucl-parquet' && vars.HF_MIRROR_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v7

@@ -1,0 +1,160 @@
+name: Reconcile data release
+
+# Weekly: does the version data/catalog.json claims actually exist, complete and
+# signed, as a published release? (#364)
+#
+# #350 made the tag push and the release trigger one operation and added a
+# `Confirm release-data.yml started` step. That closes the *merge* path, and only
+# the merge path. It does not cover a tag pushed by hand (release-data.yml still
+# accepts those), release-data.yml failing after it starts, a release or asset
+# deleted afterwards, or the confirmation step being edited into uselessness.
+# Every one of those lands back in #344's state — catalog claims a version that
+# consumers resolving "latest" cannot get — with nothing watching.
+#
+# So this asserts the invariant rather than the mechanism meant to maintain it.
+# A check that fails for the same reasons as the thing it checks is not a check.
+#
+# **Failure opens or updates an issue, not just a red run.** A red scheduled run
+# is itself something nobody looks at, which is the exact failure mode #344,
+# #274 and #308 share: something downstream did not happen and nobody was told.
+# Going red as well is belt and braces, and deliberately second.
+
+on:
+  schedule:
+    # Mondays 06:17 UTC. Off the hour on purpose — GitHub drops scheduled runs
+    # when too many fire at once, and :00 is where everyone puts them.
+    - cron: "17 6 * * 1"
+  workflow_dispatch: {}
+
+# The App token is NOT used here, and that is deliberate. The pattern #350
+# established is "confirm the credential actually holds the permission", not
+# "reach for the App token". The nucl-parquet-release-bot installation carries
+# {contents: write, metadata: read, pull_requests: write} and no `issues` scope,
+# so an App token could not file the issue this job exists to file. GITHUB_TOKEN
+# can, and needs nothing else here.
+permissions:
+  contents: read
+  issues: write
+
+# One reconciliation at a time, so a dispatch racing the schedule cannot file
+# the same issue twice.
+concurrency:
+  group: reconcile-data-release
+  cancel-in-progress: false
+
+env:
+  # Dedupe handle. The issue is found by this label rather than by title or body
+  # text: titles carry the version and change, and GitHub's body search is
+  # indexed asynchronously, so both would file duplicates.
+  TRACKING_LABEL: release-reconciliation
+
+jobs:
+  reconcile:
+    name: Reconcile catalog.json against the published release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # minisign is what makes the signature check real; the reconcile script
+      # delegates to scripts/verify_data_release.sh, which needs it.
+      - name: Install minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      - id: check
+        name: Reconcile
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          ./scripts/reconcile_data_release.sh --report "${RUNNER_TEMP}/report.md"
+
+      - name: Ensure the tracking label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "${TRACKING_LABEL}" \
+            --description "Automated: catalog.json vs the published data release (#364)" \
+            --color "b60205" 2>/dev/null || true
+
+      - id: tracking
+        name: Find any open reconciliation issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # Deliberately not `set -e`, and deliberately tolerant of a failed
+          # lookup. If this step exits non-zero, the filing step below is
+          # suppressed by its `success()` gate and a real finding is swallowed
+          # by a transient API error — this workflow's own failure mode, one
+          # layer out. Not knowing whether an issue is open is survivable: it
+          # risks a duplicate. Not filing is not.
+          NUM=$(gh issue list --label "${TRACKING_LABEL}" --state open \
+                  --limit 1 --json number --jq '.[0].number // empty' 2>/dev/null || true)
+          [[ "${NUM}" =~ ^[0-9]+$ ]] || NUM=""
+          echo "number=${NUM}" >> "$GITHUB_OUTPUT"
+          echo "open reconciliation issue: ${NUM:-none}"
+
+      # Failure path. Update the existing issue rather than opening another —
+      # a new issue every Monday for the same unfixed problem is how a detector
+      # trains people to ignore it.
+      #
+      # `always()` is load-bearing. Without it this step carries an implicit
+      # `success()` gate, so any earlier step failing — an apt hiccup, an API
+      # blip in the lookup — suppresses the filing while the job still goes red.
+      # That is precisely "the run was red and nobody looked", which is the
+      # thing #364 exists to stop, so the one step that reaches a person must
+      # not be gated on everything before it having gone perfectly.
+      - name: Open or update the tracking issue
+        if: always() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXISTING: ${{ steps.tracking.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          BODY="${RUNNER_TEMP}/issue.md"
+          # A report file that is missing or empty means the script died before
+          # it could say why — emit something honest rather than an empty issue.
+          if [ -s "${RUNNER_TEMP}/report.md" ]; then
+            cat "${RUNNER_TEMP}/report.md" > "${BODY}"
+          else
+            echo "The reconciliation script exited non-zero without writing a report," \
+                 "so it failed before it could diagnose anything. Check the run log." > "${BODY}"
+          fi
+          printf '\n---\nDetected by [Reconcile data release](%s) on %s.\n' \
+            "${RUN_URL}" "$(date -u +%Y-%m-%d)" >> "${BODY}"
+
+          if [ -n "${EXISTING}" ]; then
+            gh issue comment "${EXISTING}" --body-file "${BODY}"
+            echo "updated #${EXISTING}"
+          else
+            gh issue create \
+              --title "release: data/catalog.json claims a version that is not published" \
+              --label "${TRACKING_LABEL}" \
+              --body-file "${BODY}"
+          fi
+
+      # Recovery path. Close the issue when the invariant holds again, otherwise
+      # a fixed problem leaves a stale open issue behind and the label stops
+      # meaning "currently broken" — which is the only thing that makes the
+      # dedupe above correct.
+      - name: Close the tracking issue once the invariant holds
+        if: steps.check.outcome == 'success' && steps.tracking.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXISTING: ${{ steps.tracking.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh issue close "${EXISTING}" --comment \
+            "Resolved: \`data/catalog.json\`'s version is published, carries all expected assets, and its signature verifies against \`docs/security/data-signing-key.pub\`. ([run](${RUN_URL}))"
+
+      # Red as well as filed. Second on purpose: the issue is the signal that
+      # actually reaches someone, and it must be filed even if this fails.
+      - name: Fail the run if the invariant is broken
+        if: always() && steps.check.outcome == 'failure'
+        run: |
+          echo "::error::data/catalog.json claims a version that is not correctly published." \
+               "See the tracking issue labelled '${TRACKING_LABEL}'."
+          exit 1
