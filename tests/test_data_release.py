@@ -20,6 +20,7 @@ CI regardless of whether `--no-data` is passed.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import subprocess
@@ -314,38 +315,215 @@ def test_no_negative_energies_anywhere() -> None:
     assert not offenders, f"rows with negative energy_MeV: {offenders} — see #330"
 
 
-def test_thermal_au197_capture_is_physically_plausible() -> None:
-    """Au-197(n,γ) at thermal is 98.7 b — the reference dosimetry standard.
+@dataclasses.dataclass(frozen=True)
+class Anchor:
+    """One well-known reaction, checked across every library that ships it.
 
-    Any library carrying a point there should be within a factor of a few.
+    Two halves, and both are load-bearing:
 
-    This gate was written against a real failure: `cendl-3.2` reported
-    **1.0002e-14 mb**, off by ~19 orders of magnitude, because MT=2 elastic was
-    mislabelled as (n,γ) and CENDL's real capture tabulation does not reach
-    thermal at all (#328, #287). The 2026.8.3 re-ingest fixed it; the gate stays
-    so it cannot come back.
+    `libraries` is the set that **must** produce a value. Without it a spot-check
+    can match nothing and report success — which is not hypothetical. The first
+    version of the Au-197 capture gate asserted `xs_mb == 0`, found no rows, and
+    passed while `cendl-3.2` was wrong by nineteen orders of magnitude. It is a
+    lower bound, not an equality: a library added later that does not tabulate
+    this point is not a failure, but one that stops tabulating it is (IRDFF's
+    Li/B/F had simply never been ingested, and nothing noticed — #334).
 
-    Deliberately a magnitude band rather than an equality-to-zero check. The
-    first version of this test asserted `xs_mb = 0`, found nothing, and passed
-    while cendl was wrong by 1e19 — a test that looks for the wrong thing is
-    worse than no test, because it reports success. The 1e-14 only became
-    visible when the value was printed unrounded.
-
-    Libraries with no thermal point are skipped rather than failed: not
-    sampling thermal is a scope choice for production-kind data, and failing
-    them here would conflate absence with wrongness.
+    `witness` is a value the band must reject, so the assertion is proved to have
+    teeth rather than assumed to. Where a real regression exists, `witness` is
+    the number the shipped data actually had.
     """
+
+    name: str
+    element: str
+    #: SQL predicate selecting the channel. Identity is (target, residual) —
+    #: `MT` is present in the canonical schema but null throughout the evaluated
+    #: libraries (#347), so it cannot be used to select here.
+    where: str
+    expected_mb: float
+    #: Multiplicative half-width. A magnitude band, never equality: evaluations
+    #: legitimately disagree at the few-percent-to-tens-of-percent level.
+    factor: float
+    libraries: frozenset[str]
+    witness: float
+    witness_note: str
+
+    def in_band(self, xs: float) -> bool:
+        return self.expected_mb / self.factor < xs < self.expected_mb * self.factor
+
+
+_ALL_ENDF = frozenset(
+    {
+        "brond-3.1",
+        "cendl-3.2",
+        "endfb-8.0",
+        "fendl-3.2",
+        "irdff-2",
+        "jeff-4.0",
+        "jendl-5",
+        "jendl-ad-2017",
+        "tendl-2025",
+    }
+)
+
+#: The spot-checks. Cheap — eight grouped scans over the committed parquets —
+#: and between them they reject every published defect in this repository's
+#: history that a single number could have caught.
+PHYSICAL_ANCHORS: tuple[Anchor, ...] = (
+    Anchor(
+        name="Au-197(n,g) thermal",
+        element="Au",
+        where="target_Z=79 AND target_A=197 AND residual_Z=79 AND residual_A=198 "
+        "AND energy_MeV BETWEEN 2.0e-8 AND 3.0e-8",
+        expected_mb=98_700.0,  # the reference dosimetry standard, 98.7 b
+        factor=5.0,
+        # Most evaluated libraries do not tabulate down to thermal at all; not
+        # sampling thermal is a scope choice, and failing it here would conflate
+        # absence with wrongness. Only the three that reach it are required.
+        libraries=frozenset({"endfb-8.0", "irdff-2", "jendl-ad-2017"}),
+        witness=1.0002e-14,
+        witness_note="what cendl-3.2 actually shipped (#328, #287) — MT=2 elastic mislabelled "
+        "as (n,g), and CENDL's real capture tabulation does not reach thermal",
+    ),
+    Anchor(
+        name="Au-197(n,g) @ 1 MeV",
+        element="Au",
+        where="target_Z=79 AND target_A=197 AND residual_Z=79 AND residual_A=198 AND energy_MeV BETWEEN 0.9 AND 1.1",
+        expected_mb=82.7,
+        factor=3.0,
+        # Every neutron library tabulates 1 MeV, which is what makes this the
+        # broadest of the capture anchors.
+        libraries=_ALL_ENDF,
+        witness=3952.6,
+        witness_note="what brond-3.1, fendl-3.2 and jeff-4.0 all shipped for thirteen months "
+        "before #334 — potential scattering (~barns) swamping real capture (~mb)",
+    ),
+    Anchor(
+        name="Fe-56(n,g)Fe-57 @ 1 MeV",
+        element="Fe",
+        where="target_Z=26 AND target_A=56 AND residual_Z=26 AND residual_A=57 AND energy_MeV BETWEEN 0.9 AND 1.1",
+        expected_mb=2.9,
+        factor=3.0,
+        libraries=_ALL_ENDF - {"irdff-2"},
+        witness=2056.9,
+        witness_note="what fendl-3.2 and jeff-4.0 shipped before #334 — a factor of 700, the "
+        "sharpest of the elastic-as-capture signatures",
+    ),
+    Anchor(
+        name="H-1(n,g)D thermal",
+        element="H",
+        where="target_Z=1 AND target_A=1 AND residual_Z=1 AND residual_A=2 AND energy_MeV BETWEEN 2.0e-8 AND 3.0e-8",
+        expected_mb=332.0,
+        factor=2.0,
+        libraries=frozenset({"brond-3.1", "cendl-3.2", "endfb-8.0", "fendl-3.2", "jeff-4.0", "jendl-5"}),
+        witness=20_436.33,
+        witness_note="what brond-3.1 and fendl-3.2 shipped before #334 — H-1's free-atom "
+        "elastic cross section, 20.4 b, in the capture channel",
+    ),
+    Anchor(
+        name="Fe-56(n,p)Mn-56 @ 14 MeV",
+        element="Fe",
+        where="target_Z=26 AND target_A=56 AND residual_Z=25 AND residual_A=56 AND energy_MeV BETWEEN 13.5 AND 14.5",
+        expected_mb=113.0,
+        factor=2.0,
+        libraries=_ALL_ENDF,
+        witness=0.1143,
+        witness_note="what fendl-3.2 shipped (#326) — a `unique(subset=…)` collapsing the "
+        "MT-partials that share a residual down to a single one",
+    ),
+    Anchor(
+        name="Au-197(n,2n)Au-196 @ 14 MeV",
+        element="Au",
+        where="target_Z=79 AND target_A=197 AND residual_Z=79 AND residual_A=196 AND energy_MeV BETWEEN 13.5 AND 14.5",
+        expected_mb=2120.0,
+        factor=2.0,
+        libraries=_ALL_ENDF,
+        witness=212.0,
+        witness_note="no historical regression — a 10x error, the shape a mb/b confusion takes",
+    ),
+    Anchor(
+        name="Ni-58(n,p)Co-58 @ 14.5 MeV",
+        element="Ni",
+        where="target_Z=28 AND target_A=58 AND residual_Z=27 AND residual_A=58 AND energy_MeV BETWEEN 14.2 AND 14.8",
+        expected_mb=310.0,
+        factor=2.0,
+        libraries=_ALL_ENDF,
+        witness=31.0,
+        witness_note="no historical regression — a 10x error",
+    ),
+    Anchor(
+        name="Al-27(n,a)Na-24 @ 14.5 MeV",
+        element="Al",
+        where="target_Z=13 AND target_A=27 AND residual_Z=11 AND residual_A=24 AND energy_MeV BETWEEN 14.2 AND 14.8",
+        expected_mb=116.0,
+        factor=2.0,
+        libraries=frozenset({"cendl-3.2", "irdff-2", "jeff-4.0", "jendl-5", "jendl-ad-2017", "tendl-2025"}),
+        witness=1160.0,
+        witness_note="no historical regression — a 10x error",
+    ),
+    # U-235(n,f) thermal (585 b) and U-235 total thermal are the obvious
+    # additions and cannot be written: `mt_to_residual` returns None for
+    # fission, total, elastic and inelastic, and the caller drops the row rather
+    # than emitting it with a null residual. Across 17.3M evaluated rows there
+    # are zero null-residual rows and zero MT values. Tracked in #347; add both
+    # anchors here when the ingest carries those channels.
+)
+
+
+def _anchor_rows(anchor: Anchor) -> list[tuple[str, float]]:
     import duckdb
 
-    expected = 98_700.0  # mb
-    rows = duckdb.sql(f"""
-        SELECT library, avg(xs_mb) FROM read_parquet('{_DATA_DIR}/*/xs/n_Au.parquet', union_by_name=true)
-        WHERE target_Z=79 AND target_A=197 AND residual_Z=79 AND residual_A=198
-          AND energy_MeV BETWEEN 2.0e-8 AND 3.0e-8
+    return duckdb.sql(f"""
+        SELECT library, avg(xs_mb)
+        FROM read_parquet('{_DATA_DIR}/*/xs/n_{anchor.element}.parquet', union_by_name=true)
+        WHERE {anchor.where}
         GROUP BY library
     """).fetchall()
-    bad = {lib: xs for lib, xs in rows if xs is not None and not (expected / 5 < xs < expected * 5)}
+
+
+@pytest.mark.parametrize("anchor", PHYSICAL_ANCHORS, ids=lambda a: a.name)
+def test_well_known_reactions_are_physically_plausible(anchor: Anchor) -> None:
+    """Every library shipping this reaction must agree with the textbook value.
+
+    This is the cheap half of #342: a full rebuild-and-compare is a multi-GB
+    download per library and cannot run in PR CI, but a handful of reactions
+    whose magnitude is not in dispute can be checked on the committed parquets
+    in under a second — and *would* have caught the thirteen-month gap on day
+    one. See `Anchor` for why both halves of each entry matter.
+    """
+    rows = _anchor_rows(anchor)
+    present = {lib for lib, xs in rows if xs is not None}
+
+    missing = anchor.libraries - present
+    assert not missing, (
+        f"{anchor.name}: no rows from {sorted(missing)}, which ship this reaction. "
+        f"Found {sorted(present)}. A library that stops tabulating a channel it used to "
+        "carry is a silent ingest failure (#334) — and a spot-check that matches nothing "
+        "and passes is the failure mode #342 exists to prevent."
+    )
+
+    bad = {lib: xs for lib, xs in rows if xs is not None and not anchor.in_band(xs)}
     assert not bad, (
-        f"Au-197(n,g) at thermal is implausible in {bad} — expected ~{expected:,.0f} mb "
-        f"(libraries checked: {sorted(lib for lib, _ in rows)}). See #328."
+        f"{anchor.name} is implausible in {bad} — expected ~{anchor.expected_mb:,.4g} mb "
+        f"within a factor of {anchor.factor:g} (libraries checked: {sorted(present)})."
+    )
+
+
+@pytest.mark.parametrize("anchor", PHYSICAL_ANCHORS, ids=lambda a: a.name)
+def test_every_anchor_rejects_the_value_it_was_written_against(anchor: Anchor) -> None:
+    """Prove the bands have teeth instead of assuming it.
+
+    #342's whole premise is that a check which quietly matches nothing reports
+    success. The same is true of a band so wide it accepts the bug: the first
+    Au-197 gate asserted `xs_mb == 0` and passed against data that was wrong by
+    1e19. So each anchor carries a `witness` — for five of the eight, the number
+    the published data actually had — and this asserts the band rejects it.
+
+    If widening a `factor` ever makes this fail, the band has stopped being a
+    check and the anchor should be dropped rather than kept as decoration.
+    """
+    assert not anchor.in_band(anchor.witness), (
+        f"{anchor.name}: factor {anchor.factor:g} around {anchor.expected_mb:,.4g} mb still "
+        f"accepts {anchor.witness:,.4g} mb ({anchor.witness_note}). The band is too wide to "
+        "catch the defect it was written for."
     )

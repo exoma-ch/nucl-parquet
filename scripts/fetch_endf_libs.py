@@ -38,7 +38,11 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _paths import DATA_DIR  # noqa: E402
+from _paths import DATA_DIR, ROOT  # noqa: E402
+
+sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
+
+from nucl_parquet.builder_stamp import write_builder_stamp  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -826,6 +830,14 @@ def fetch_library(
     # the same condition above it, so the raise was unreachable and the guard
     # never fired. Warn-and-return *is* the silent success it was written to
     # stop; there is one check now, and it raises.
+    #
+    # #342 found the same dead guard independently and proposed the same fix.
+    # Both placements were compared rather than deferred to: identical position,
+    # and this one additionally guards MF=3 and MF=10 going dark on their own,
+    # so #342 keeps none of its own. The half it does keep is in
+    # `tests/test_builder_staleness.py` — that an empty ingest leaves *no
+    # artefact*, which is what a provenance stamp rests on and what
+    # `test_empty_ingest_guard_raises_rather_than_returning` does not assert.
     if not element_rows:
         raise RuntimeError(
             f"{lib_key}/{sublib_code} produced 0 elements from {len(filenames)} source files. "
@@ -903,6 +915,14 @@ def fetch_library(
     # Write manifest. `mf10_sections` / `states` are recorded so the next reader
     # can tell "this library ships no isomeric data" from "this library's
     # isomeric data was dropped on the floor" without re-running the ingest.
+    #
+    # Then stamp it with this script's digest (#342). Without the stamp, a
+    # correctness fix here and the parquets it should have regenerated can
+    # diverge indefinitely with CI green — which is exactly what happened
+    # between #260 and #334, for thirteen months. Routed through
+    # `write_builder_stamp` rather than inlining the stamp, so every builder in
+    # the repo passes the one guard that refuses to stamp a run that wrote
+    # nothing.
     manifest = {
         "library": lib_key,
         "sublibrary": sublib_code,
@@ -919,6 +939,7 @@ def fetch_library(
     }
     manifest_path = output_dir / lib_key / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    write_builder_stamp(manifest_path, Path(__file__), files_written=len(element_rows))
 
     logger.info(
         "  Done: %d elements, %d source files, %d total rows (%d MF=10 sections → %d isomeric rows; states %s) → %s/",

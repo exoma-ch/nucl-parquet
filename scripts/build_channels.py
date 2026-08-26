@@ -76,6 +76,7 @@ from build_neutron_njoy import (  # noqa: E402
 from fetch_endf_libs import mt_to_residual  # noqa: E402
 
 from nucl_parquet._schemas import CANONICAL_XS_SCHEMA  # noqa: E402
+from nucl_parquet.builder_stamp import manifest_path_for, write_builder_stamp  # noqa: E402
 
 LIBRARY = "endfb-8.0-channels"
 
@@ -271,12 +272,17 @@ def build(
         total_rows += len(rows)
         logger.info("wrote %s (%d rows)", path.name, len(rows))
 
+    # Record which builder produced this, so a fix here that never reached the
+    # data is detectable without re-downloading anything (#342).
+    stamp_path = manifest_path_for(out_dir, LIBRARY)
+    write_builder_stamp(stamp_path, Path(__file__), files_written=len(by_element))
     logger.info(
-        "Done: %d elements, %d rows, %d skipped -> %s",
+        "Done: %d elements, %d rows, %d skipped -> %s (stamped %s)",
         len(by_element),
         total_rows,
         skipped,
         out_dir,
+        stamp_path,
     )
 
 

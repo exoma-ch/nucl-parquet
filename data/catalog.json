@@ -19,6 +19,7 @@
       ],
       "data_type": "cross_sections",
       "version": "2023-iso",
+      "builder": null,
       "path": "tendl-2023-iso/xs/",
       "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release — it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
     },
@@ -35,6 +36,8 @@
       ],
       "data_type": "cross_sections",
       "version": "VIII.1",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library endfb-8.1 --all-sublibs",
       "path": "endfb-8.1/xs/"
     },
     "endfb-8.0": {
@@ -48,6 +51,7 @@
       "version": "VIII.0",
       "temperature_K": 294,
       "builder": "scripts/build_neutron_njoy.py",
+      "rebuild_command": "nix develop -c uv run python scripts/build_neutron_njoy.py",
       "path": "endfb-8.0/xs/"
     },
     "endfb-8.0-channels": {
@@ -61,6 +65,7 @@
       "version": "VIII.0",
       "temperature_K": 294,
       "builder": "scripts/build_channels.py",
+      "rebuild_command": "nix develop -c uv run python scripts/build_channels.py",
       "path": "endfb-8.0/channels/"
     },
     "jeff-4.0": {
@@ -73,6 +78,8 @@
       ],
       "data_type": "cross_sections",
       "version": "4.0",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library jeff-4.0 --all-sublibs",
       "path": "jeff-4.0/xs/"
     },
     "jendl-5": {
@@ -87,6 +94,8 @@
       ],
       "data_type": "cross_sections",
       "version": "5",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library jendl-5 --all-sublibs",
       "path": "jendl-5/xs/"
     },
     "tendl-2025": {
@@ -103,6 +112,8 @@
       ],
       "data_type": "cross_sections",
       "version": "2025",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library tendl-2025 --all-sublibs",
       "path": "tendl-2025/xs/"
     },
     "cendl-3.2": {
@@ -114,6 +125,8 @@
       ],
       "data_type": "cross_sections",
       "version": "3.2",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library cendl-3.2 --all-sublibs",
       "path": "cendl-3.2/xs/"
     },
     "brond-3.1": {
@@ -125,6 +138,8 @@
       ],
       "data_type": "cross_sections",
       "version": "3.1",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library brond-3.1 --all-sublibs",
       "path": "brond-3.1/xs/"
     },
     "fendl-3.2": {
@@ -136,6 +151,8 @@
       ],
       "data_type": "cross_sections",
       "version": "3.2c",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library fendl-3.2 --all-sublibs",
       "path": "fendl-3.2/xs/"
     },
     "irdff-2": {
@@ -147,6 +164,8 @@
       ],
       "data_type": "cross_sections",
       "version": "II",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library irdff-2 --all-sublibs",
       "path": "irdff-2/xs/"
     },
     "iaea-medical": {
@@ -159,6 +178,8 @@
       ],
       "data_type": "cross_sections",
       "version": "latest",
+      "builder": "scripts/fetch_endf_libs.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library iaea-medical --all-sublibs",
       "path": "iaea-medical/xs/"
     },
     "jendl-ad-2017": {
@@ -171,6 +192,7 @@
       ],
       "data_type": "cross_sections",
       "version": "2017",
+      "builder": null,
       "path": "jendl-ad-2017/xs/"
     },
     "jendl-deu-2020": {
@@ -182,6 +204,7 @@
       ],
       "data_type": "cross_sections",
       "version": "2020",
+      "builder": null,
       "path": "jendl-deu-2020/xs/"
     },
     "iaea-pd-2019": {
@@ -193,6 +216,7 @@
       ],
       "data_type": "cross_sections",
       "version": "2019",
+      "builder": null,
       "path": "iaea-pd-2019/xs/"
     },
     "exfor": {
@@ -210,6 +234,7 @@
       "data_type": "experimental_cross_sections",
       "version": "Backup-2026-06-29",
       "builder": "scripts/fetch_exfor_master.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_exfor_master.py <exforall-dir> data",
       "path": "exfor/"
     },
     "exfor-channels": {
@@ -227,6 +252,7 @@
       "data_type": "experimental_cross_sections",
       "version": "Backup-2026-06-29",
       "builder": "scripts/fetch_exfor_master.py",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_exfor_master.py <exforall-dir> data",
       "path": "exfor-channels/"
     },
     "hi-xs-prod": {
@@ -243,6 +269,7 @@
       ],
       "data_type": "production_cross_sections",
       "version": "geant4-11.3.2-inclxx",
+      "builder": null,
       "path": "hi-xs-prod/xs/"
     },
     "hi-xs": {
@@ -265,6 +292,8 @@
       ],
       "data_type": "total_reaction_cross_sections",
       "version": "tripathi-1997",
+      "builder": "nucl_parquet/build_hi_xs.py",
+      "rebuild_command": "nix develop -c uv run python -m nucl_parquet.build_hi_xs --data-dir data",
       "path": "hi-xs/xs/"
     },
     "strata-data-nuclear": {
@@ -295,6 +324,7 @@
       "name": "Swiss StSV Annex 3 — regulatory limits (LL, LA, CA, CS)",
       "description": "Clearance limit LL (Befreiungsgrenze, Bq/g), licensing limit LA (Bewilligungsgrenze, Bq), and guideline values for air CA (Bq/m3) and surface contamination CS (Bq/cm2), from Annex 3 of the Swiss Radiological Protection Ordinance (StSV, SR 814.501), consolidation 2026-07-01. Long format: one row per (nuclide identity, quantity). Jurisdiction-specific Swiss law, not evaluated physics. Values from the authoritative German text; labels from the official English translation, cross-checked cell-by-cell. Not copyrightable subject matter (URG Art. 5).",
       "data_type": "regulatory_limits",
+      "builder": "scripts/fetch_stsv.py",
       "path": "stsv/limits/"
     },
     "stsv-2026-dose-coefficients": {
@@ -303,6 +333,7 @@
       "name": "Swiss StSV Annex 3 — dose coefficients",
       "description": "Committed effective dose per unit intake by inhalation (e_inh) and ingestion (e_ing) in Sv/Bq, plus external dose rate coefficients h_10, h_0.07 and skin-contamination h_c,0.07, from Annex 3 of the StSV (SR 814.501), consolidation 2026-07-01. Underlying sources are ICRP and Petoussi et al. (GSF-Bericht 7/93); the ordinance is the compilation. Long format: one row per (nuclide identity, quantity).",
       "data_type": "dose_coefficients",
+      "builder": "scripts/fetch_stsv.py",
       "path": "stsv/dose_coefficients/"
     }
   },

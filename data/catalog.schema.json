@@ -71,6 +71,17 @@
           "version": {
             "type": "string"
           },
+          "builder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Repo-relative path of the script that produced this library's parquets, or `null` if it was produced by a pipeline that is not in this repository (see #346). Required for every library that declares a `path`. Its digest is stamped into the library's manifest.json so a builder fix that never reached the data is detectable — see nucl_parquet/builder_stamp.py and #342."
+          },
+          "rebuild_command": {
+            "type": "string",
+            "description": "The literal command that re-ingests this library, rendered in the staleness failure message. `<scratch>` is a throwaway output directory; copy the result over `data/<library>/` afterwards."
+          },
           "path": {
             "type": "string"
           }

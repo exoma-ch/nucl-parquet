@@ -72,13 +72,33 @@ uv sync --dev
 # than silently emptying every ground/metastable split again, and asserts the
 # ingest raises instead of exiting 0 when it drops data. Builds its own ENDF-6
 # material, so it needs no data and no network.
+# test_builder_staleness: gates the committed parquets against the builder that
+# produced them (#342). Between #260 and #334 those drifted apart for thirteen
+# months with CI green, because nothing related a library to its builder. Reads
+# manifests and script digests only — no download, no git history, so it works
+# in the depth-1 clone actions/checkout gives us.
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
   tests/test_data_signing.py \
   tests/test_stsv.py \
   tests/test_release_config.py \
   tests/test_repo_layout.py \
   tests/test_fetch_endf_libs.py \
+  tests/test_builder_staleness.py \
   -m "not data and not network" -v
+
+# test_manifests: a second invocation, because its drift check is marked
+# `@pytest.mark.data` and the `-m "not data"` above deselects it. That marker
+# exists so the suite degrades gracefully when the data tree is *absent*
+# (conftest.py already skips those tests in that case) — but the data tree is
+# committed, so here it was only suppressing a check that had something to say.
+# It did: `exfor-channels` claimed 4,228,412 rows against 4,228,409 on disk from
+# #334 until this PR, and nothing in CI could see it. Same failure shape as #342,
+# one level down — a guard that exists but never runs.
+#
+# The second invocation is a local fix for a general problem: this list is an
+# allowlist, so a gate not named here never runs at all. #355 replaces the
+# allowlist wholesale and supersedes this line.
+uv run pytest tests/test_manifests.py -m "not network" -v
 ok "python tests passed"
 endgroup
 
