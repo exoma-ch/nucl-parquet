@@ -1,8 +1,8 @@
 {
   "$schema": "./catalog.schema.json",
   "version": 1,
-  "data_version": "2026.8.3",
-  "data_sha256": "d6f38283d6ede9ffc678cc11c87584e10ebbf29807f0cb1b688482973819696d",
+  "data_version": "2026.8.4",
+  "data_sha256": "4ad9fa1ee4cdba34f57491f2f9ca66158e84a36883ba3be863a7b8e285947616",
   "base_url": "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
   "description": "Registry of available nuclear data libraries",
   "libraries": {
@@ -21,7 +21,8 @@
       "version": "2023-iso",
       "builder": null,
       "path": "tendl-2023-iso/xs/",
-      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release — it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: '' (total), 'g' (ground), 'm' (metastable). TENDL-2025 dropped the g/m split entirely."
+      "note": "Previously mislabeled as tendl-2024. This is NOT an official TENDL release — it is the TENDL-2023 charged-particle sublibrary with the Aug 2024 isomeric correction applied. States: 'g' (ground), 'm' (metastable), and the total over states — spelled '' on the rows this library shipped before #357 retired that value, and 'sum' on rows written since. Both mean 'summed over every isomeric state' and both must be excluded when you add up the g/m split, or the total is counted twice. scripts/migrate_state_vocabulary.py collapses the '' rows onto 'sum'; the PENDING_MIGRATION entry in nucl_parquet/state_vocabulary.py tracks that debt. TENDL-2025 dropped the g/m split entirely.",
+      "provenance_note": "The bulk of this library was cut from TENDL's residual-production tables (TALYS per-residual output on TALYS's standard energy grid). Those tables only exist where TALYS ran. For a few light nuclides TENDL-2023 adopts an older LANL evaluation (Young/Hale/Page/Arthur, 1988-2004) instead of running TALYS; those tapes express reactions as exclusive ENDF channels, carry no MF=3/MT=5 + MF=6/MT=5 residual-production block, and PSI publishes no tables/residual/ directory for them. The original ingest therefore produced no rows for them and dropped them silently (#335). Seven target nuclides — p+Be-9, p+C-13, p+Li-7, d+Li-6, d+Li-7, t+Li-6, h+Li-6 — were restored from the authoritative ENDF-6 tapes on the IAEA NDS TENDL-2023 mirror by scripts/backfill_xs_nuclides.py, which sums the exclusive MF=3 channels per residual. Those rows are the same quantity (kind='production') as the rest of the library but sit on the tape's own energy grid rather than TALYS's standard one, and they spell their state 'sum' rather than the retired '' the older rows use — see `note`. CAVEAT on p+Be-9: its tape puts most non-elastic strength in MT=5 (up to 700 mb, 0-113 MeV) and describes it only as light-ejectile yields, naming no heavy product, so that strength cannot be attributed to a residual. What is shipped is (p,n) production of B-9 summed over the discrete-level band MT=50-55 -- correct and complete for neutron production from a Be converter, but NOT the full residual set. Use tendl-2025 (ten residuals for p+Be-9) if you need the others. p+Li-6 is deliberately absent: its TENDL-2023 evaluation has only elastic and ⁶Li(p,³He)⁴He, whose products are both standard ejectiles, so it names no residual to tabulate."
     },
     "endfb-8.1": {
       "name": "ENDF/B-VIII.1",
