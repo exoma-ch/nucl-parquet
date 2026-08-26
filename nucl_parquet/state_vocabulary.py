@@ -133,6 +133,72 @@ MEASURED_XS_STATES: frozenset[str] = frozenset({GROUND, UNRESOLVED, *ISOMERS})
 NUCLIDE_STATES: frozenset[str] = frozenset({GROUND, *ISOMERS})
 
 
+# ---------------------------------------------------------------------------
+# The *target's* state (#353)
+# ---------------------------------------------------------------------------
+#
+# `state` names the state of the *residual* — what comes out. `target_state`
+# names the state of the nuclide that went in, and it is the same vocabulary,
+# deliberately: Br-80m is one nuclide, and which side of a reaction it appears on
+# does not change how this repository spells it. A second set of values for the
+# target side would undo exactly what #357/#380 collapsed.
+#
+# The allowed *subsets* differ, because the two sides can say different things:
+
+#: What an evaluated library's `target_state` may hold.
+#:
+#: An evaluation is *of one nuclide*, so it names a real state. Notably absent:
+#:
+#:   'sum' — an evaluation is never summed over target states. Two targets are
+#:           two evaluations in two files (`n_035-Br-80` and `n_035-Br-80M`),
+#:           which is the whole of #353. `'sum'` on the target side would assert
+#:           an aggregate nobody computed, and would re-introduce the merge as a
+#:           *value* right after the column was added to end it.
+#:   'l'   — ENDF cannot express "some isomer, unresolved" about its own target.
+TARGET_STATES: frozenset[str] = frozenset({GROUND, *ISOMERS})
+
+#: What a measured table's `target_state` may hold.
+#:
+#: EXFOR *can* say `'l'`: a sample irradiated as a mixed isomeric target, with the
+#: measurement unable to resolve which. That is a real datum and distinct from
+#: NULL. Same argument as `MEASURED_XS_STATES` on the residual side.
+MEASURED_TARGET_STATES: frozenset[str] = frozenset({GROUND, UNRESOLVED, *ISOMERS})
+
+
+def target_state_for_natural_element() -> None:
+    """A natural-element target (`target_A = 0`) has `target_state = NULL`.
+
+    Written as a function because it is a *decision*, and decisions in this
+    module get argued for where they are made rather than in a commit message.
+
+    A natural element is not a nuclide: it is an abundance-weighted mixture of
+    isotopes. "Which isomeric state" is not a question with an answer, so the
+    answer is the absence of one — NULL, per CLAUDE.md principle 3.
+
+    It is emphatically **not** `'sum'`. `'sum'` already means *summed over the
+    isomeric states of one nuclide*, and a natural element is an aggregate over
+    *isotopes*. Reusing the word for a second kind of aggregate is precisely the
+    one-name-two-meanings collision #357 spent 26.5 M rows undoing, and it would
+    make `WHERE target_state = 'sum'` return a mixture again.
+
+    Nor is it `'g'`. Natural chlorine is not "chlorine in its ground state" — the
+    claim would be false, and false in a way that joins: `JOIN nuclides USING
+    (Z, A, state)` would attach Cl-0's non-existent ground state to something.
+    """
+    return None
+
+
+#: ENDF filename isomer markers -> isomer rank. Used only to cross-check the
+#: authoritative `LISO`, never as the primary source (see
+#: `scripts/fetch_endf_libs.py::target_state_from_material`).
+#:
+#: Deliberately does not include `'n'`, which appears in some mirror listings.
+#: Guessing that it means the second isomer is exactly the kind of invention
+#: #334/#340/#351 were each caused by; `LISO` states the rank outright, so there
+#: is nothing to guess.
+ENDF_TARGET_MARKERS: dict[str, int] = {"": 0, "g": 0, "m": 1, "m1": 1, "m2": 2, "m3": 3}
+
+
 #: The retired spelling itself: the empty string that meant three different
 #: things depending on which table you read.
 LEGACY_UNSPECIFIED = ""
@@ -262,6 +328,34 @@ PENDING_COLUMN_RENAME: dict[str, str] = {
 
 #: The directories those files live in, for checks that work per table.
 PENDING_RENAME_TABLES: frozenset[str] = frozenset(f.rsplit("/", 1)[0] for f in PENDING_COLUMN_RENAME)
+
+
+#: Every shipped table carrying a `target_state` column, and what it may hold.
+#:
+#: Derived from `TABLE_STATES` rather than retyped: a table's *kind* — evaluated,
+#: measured, nuclide-identity — decides both vocabularies, so writing the list
+#: twice would let the two drift into disagreeing about what a table is. The
+#: nuclide-identity tables have no target at all and are excluded.
+TABLE_TARGET_STATES: dict[str, frozenset[str]] = {
+    table: (MEASURED_TARGET_STATES if states is MEASURED_XS_STATES else TARGET_STATES)
+    for table, states in TABLE_STATES.items()
+    if states is not NUCLIDE_STATES
+}
+
+
+def allowed_target_states(table: str) -> frozenset[str]:
+    """The values `table.target_state` may hold.
+
+    Raises for a table that has not declared itself, for the same reason
+    `allowed_states` does: a new column arriving with an undeclared vocabulary is
+    how a second spelling gets in.
+    """
+    if table not in TABLE_TARGET_STATES:
+        raise KeyError(
+            f"{table!r} has a `target_state` column but no entry in TABLE_TARGET_STATES. "
+            "Declare what its target states mean before shipping it."
+        )
+    return TABLE_TARGET_STATES[table]
 
 
 def allowed_states(table: str) -> frozenset[str]:

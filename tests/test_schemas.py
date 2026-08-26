@@ -16,6 +16,7 @@ from nucl_parquet._schemas import (
     CANONICAL_XS_SCHEMA,
     DECAY_SCHEMA,
     ELEMENTS_SCHEMA,
+    PENDING_COLUMN_ADDITION,
     STOPPING_SCHEMA,
 )
 
@@ -39,11 +40,19 @@ _DTYPE_MAP = {
 
 
 def _check_schema(path: Path, expected: dict[str, str]) -> None:
-    """Assert parquet file columns match expected schema."""
+    """Assert parquet file columns match expected schema.
+
+    Columns in `PENDING_COLUMN_ADDITION` are skipped: the builders write them but
+    the shipped parquets predate the rebuild that fills them. Read from the one
+    ledger rather than listed here, so there is a single place an exemption
+    exists and a single place it is cleaned up (`_schemas.py`).
+    """
     db = duckdb.connect()
     cols = db.sql(f"SELECT name, duckdb_type FROM parquet_schema('{path}') WHERE name != 'root'").fetchall()
     col_map = {name: dtype for name, dtype in cols}
     for col_name, expected_type in expected.items():
+        if col_name in PENDING_COLUMN_ADDITION:
+            continue
         assert col_name in col_map, f"Missing column '{col_name}' in {path.name}"
         duckdb_type = _DTYPE_MAP.get(expected_type, expected_type)
         assert col_map[col_name] == duckdb_type, (
