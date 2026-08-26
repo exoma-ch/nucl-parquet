@@ -38,6 +38,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _canonical import canonical_frame, element_stem, parse_stem  # noqa: E402
 from _paths import DATA_DIR, ROOT  # noqa: E402
 
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
@@ -172,107 +173,10 @@ UNSHIPPED_SUBLIBRARIES: dict[tuple[str, str], str] = {
 # Element data
 # ---------------------------------------------------------------------------
 
-_ELEMENT_SYMBOLS: dict[int, str] = {
-    1: "H",
-    2: "He",
-    3: "Li",
-    4: "Be",
-    5: "B",
-    6: "C",
-    7: "N",
-    8: "O",
-    9: "F",
-    10: "Ne",
-    11: "Na",
-    12: "Mg",
-    13: "Al",
-    14: "Si",
-    15: "P",
-    16: "S",
-    17: "Cl",
-    18: "Ar",
-    19: "K",
-    20: "Ca",
-    21: "Sc",
-    22: "Ti",
-    23: "V",
-    24: "Cr",
-    25: "Mn",
-    26: "Fe",
-    27: "Co",
-    28: "Ni",
-    29: "Cu",
-    30: "Zn",
-    31: "Ga",
-    32: "Ge",
-    33: "As",
-    34: "Se",
-    35: "Br",
-    36: "Kr",
-    37: "Rb",
-    38: "Sr",
-    39: "Y",
-    40: "Zr",
-    41: "Nb",
-    42: "Mo",
-    43: "Tc",
-    44: "Ru",
-    45: "Rh",
-    46: "Pd",
-    47: "Ag",
-    48: "Cd",
-    49: "In",
-    50: "Sn",
-    51: "Sb",
-    52: "Te",
-    53: "I",
-    54: "Xe",
-    55: "Cs",
-    56: "Ba",
-    57: "La",
-    58: "Ce",
-    59: "Pr",
-    60: "Nd",
-    61: "Pm",
-    62: "Sm",
-    63: "Eu",
-    64: "Gd",
-    65: "Tb",
-    66: "Dy",
-    67: "Ho",
-    68: "Er",
-    69: "Tm",
-    70: "Yb",
-    71: "Lu",
-    72: "Hf",
-    73: "Ta",
-    74: "W",
-    75: "Re",
-    76: "Os",
-    77: "Ir",
-    78: "Pt",
-    79: "Au",
-    80: "Hg",
-    81: "Tl",
-    82: "Pb",
-    83: "Bi",
-    84: "Po",
-    85: "At",
-    86: "Rn",
-    87: "Fr",
-    88: "Ra",
-    89: "Ac",
-    90: "Th",
-    91: "Pa",
-    92: "U",
-    93: "Np",
-    94: "Pu",
-    95: "Am",
-    96: "Cm",
-    97: "Bk",
-    98: "Cf",
-    99: "Es",
-}
+# The 99-entry element-symbol table that used to live here is gone: file stems
+# come from `_canonical.element_stem`, which is the same table
+# `migrate_xs_schema.py` parses them back with. Two copies meant two chances to
+# disagree about what `Z61` is called.
 
 # Light-particle (Z, A), for mass/charge balance.
 #
@@ -599,6 +503,11 @@ class ParsedFile:
     mf3_rows: int = 0
     mf10_sections: int = 0
     mf10_rows: int = 0
+    #: `kind='channel'` rows — one per MF=3 MT, carrying MT itself (#347).
+    channel_rows: int = 0
+    #: Channel rows whose MT names no single product: total, elastic,
+    #: inelastic, fission. Zero of these is the #347 signature.
+    null_residual_rows: int = 0
 
 
 def sum_on_union_grid(
@@ -728,6 +637,10 @@ def parse_mf10_rows(
         rows.extend(
             {
                 "target_A": target_a,
+                # Summed across every MT reaching this product, so no single MT
+                # identifies it — a production row, exactly like the MF=3 sums.
+                "kind": "production",
+                "MT": None,
                 "residual_Z": prod_z,
                 "residual_A": prod_a,
                 "state": state,
@@ -798,15 +711,11 @@ def parse_endf_file(
 
     # (residual_Z, residual_A) -> list[(energies_ev: np.ndarray, xs_barns: np.ndarray)]
     by_residual: dict[tuple[int, int], list[tuple[np.ndarray, np.ndarray]]] = {}
+    channel_rows: list[dict] = []
+    null_residual_rows = 0
 
     for (mf, mt), section in material.section_data.items():
         if mf != 3:
-            continue
-        if mt in skip_partials:
-            continue
-
-        residual = mt_to_residual(mt, target_z, target_a, proj_z, proj_a)
-        if residual is None:
             continue
 
         try:
@@ -823,30 +732,69 @@ def parse_endf_file(
         good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
         if not good.any():
             continue
-        by_residual.setdefault(residual, []).append((energies_ev[good], xs_barns[good]))
+        e_good, xs_good = energies_ev[good], xs_barns[good]
+
+        residual = mt_to_residual(mt, target_z, target_a, proj_z, proj_a)
+
+        # --- kind='channel': the ENDF datum as ENDF states it -----------------
+        # One row set per MT, carrying MT itself. `residual` is null wherever the
+        # channel names no single product — total, elastic, inelastic, fission.
+        # Those four used to be dropped outright, because the caller treated
+        # `mt_to_residual() is None` as "skip" rather than "no residual", so the
+        # evaluated half of the repository shipped only transmutation channels
+        # and U-235(n,f) could not be queried at all (#347). MT is the primitive:
+        # MT -> residual is derivable, residual -> MT is not.
+        res_z, res_a = residual if residual is not None else (None, None)
+        if residual is None:
+            null_residual_rows += len(e_good)
+        channel_rows.extend(
+            {
+                "target_A": target_a,
+                "kind": "channel",
+                "MT": mt,
+                "residual_Z": res_z,
+                "residual_A": res_a,
+                "state": "",
+                "energy_MeV": float(e_ev) * 1e-6,
+                "xs_mb": float(xs_b) * 1e3,
+            }
+            for e_ev, xs_b in zip(e_good, xs_good)
+        )
+
+        # --- kind='production': our sum over the channels reaching a residual --
+        if residual is None or mt in skip_partials:
+            continue
+        by_residual.setdefault(residual, []).append((e_good, xs_good))
 
     for (res_z, res_a), contribs in by_residual.items():
         e_union, xs_total = sum_on_union_grid(contribs)
-        for e_ev, xs_b in zip(e_union, xs_total):
-            rows.append(
-                {
-                    "target_A": target_a,
-                    "residual_Z": res_z,
-                    "residual_A": res_a,
-                    # '' is "summed over whatever states this channel populates",
-                    # which MF=10 spells 'g'/'m'/'m2' — see lfs_to_state.
-                    "state": "",
-                    "energy_MeV": float(e_ev) * 1e-6,
-                    "xs_mb": float(xs_b) * 1e3,
-                }
-            )
+        rows.extend(
+            {
+                "target_A": target_a,
+                # A sum over several MTs names no single one, so MT stays null —
+                # that is what tells the two kinds apart in a union.
+                "kind": "production",
+                "MT": None,
+                "residual_Z": res_z,
+                "residual_A": res_a,
+                # '' is "summed over whatever states this channel populates",
+                # which MF=10 spells 'g'/'m'/'m2' — see lfs_to_state.
+                "state": "",
+                "energy_MeV": float(e_ev) * 1e-6,
+                "xs_mb": float(xs_b) * 1e3,
+            }
+            for e_ev, xs_b in zip(e_union, xs_total)
+        )
 
     mf3_rows = len(rows)
     mf10_rows, mf10_sections = parse_mf10_rows(material, target_a)
     rows.extend(mf10_rows)
+    rows.extend(channel_rows)
 
     return ParsedFile(
         rows=rows,
+        channel_rows=len(channel_rows),
+        null_residual_rows=null_residual_rows,
         mf3_sections=len(mf3_mts),
         mf3_rows=mf3_rows,
         mf10_sections=mf10_sections,
@@ -967,6 +915,8 @@ def fetch_library(
     mf3_rows = 0
     mf10_sections = 0
     mf10_rows = 0
+    channel_rows = 0
+    null_residual_rows = 0
 
     for i, fname in enumerate(filenames):
         if (i + 1) % 50 == 0:
@@ -975,6 +925,8 @@ def fetch_library(
         parsed_file = download_and_parse(lib, sublib_code, fname, session)
         mf3_sections += parsed_file.mf3_sections
         mf3_rows += parsed_file.mf3_rows
+        channel_rows += parsed_file.channel_rows
+        null_residual_rows += parsed_file.null_residual_rows
         mf10_sections += parsed_file.mf10_sections
         mf10_rows += parsed_file.mf10_rows
         if not parsed_file.rows:
@@ -985,7 +937,7 @@ def fetch_library(
             continue
 
         target_z = parsed[0]
-        elem = _ELEMENT_SYMBOLS.get(target_z, f"Z{target_z}")
+        elem = element_stem(target_z)
         element_rows.setdefault(elem, []).extend(parsed_file.rows)
         total_files += 1
         total_rows += len(parsed_file.rows)
@@ -1046,6 +998,17 @@ def fetch_library(
             "a library with no channel cross-sections."
         )
 
+    # Channel rows, symmetrically again (#347). MF=3 sections that name no
+    # residual — total, elastic, inelastic, fission — were dropped by the caller
+    # for the whole life of this script, and neither guard above can see it:
+    # production rows keep flowing from the transmutation channels.
+    if mf3_sections and not channel_rows:
+        raise RuntimeError(
+            f"{lib_key}/{sublib_code}: {mf3_sections} MF=3 sections produced 0 "
+            "kind='channel' rows. Every evaluated row would then carry a null MT, "
+            "which is the #347 state this ingest exists to leave behind."
+        )
+
     state_counts: dict[str, int] = {}
     for rows in element_rows.values():
         for row in rows:
@@ -1058,16 +1021,40 @@ def fetch_library(
     xs_dir.mkdir(parents=True, exist_ok=True)
 
     for elem, rows in element_rows.items():
+        stem = f"{sublib_code}_{elem}"
+        parsed_stem = parse_stem(stem)
+        if parsed_stem is None:  # pragma: no cover — element_stem builds it
+            raise RuntimeError(f"{lib_key}: built an unparseable file stem {stem!r}")
+        projectile, proj_z, proj_a, target_z = parsed_stem
+
         df = pl.DataFrame(
             rows,
             schema={
                 "target_A": pl.Int32,
+                "kind": pl.Utf8,
+                "MT": pl.Int32,
                 "residual_Z": pl.Int32,
                 "residual_A": pl.Int32,
                 "state": pl.Utf8,
                 "energy_MeV": pl.Float64,
                 "xs_mb": pl.Float64,
             },
+        )
+        # Write CANONICAL_XS_SCHEMA directly (#359). This script used to emit the
+        # 6-column legacy form and rely on migrate_xs_schema.py being run
+        # afterwards, so a plain re-ingest silently dropped twelve of eighteen
+        # columns — library, kind, projectile, proj_Z/A, target_Z, MT and the
+        # error/provenance columns — and put identity back in the file path that
+        # CLAUDE.md principle 5 exists to get it out of. `kind` and `MT` come
+        # from the rows; the rest is per-file identity from the stem.
+        df = canonical_frame(
+            df,
+            library=lib_key,
+            kind="production",
+            projectile=projectile,
+            proj_z=proj_z,
+            proj_a=proj_a,
+            target_z=target_z,
         )
         # parse_endf_file has already summed contributions per (residual, state)
         # on the union energy grid — for MF=3 partial MTs and, since #340, for
@@ -1078,9 +1065,9 @@ def fetch_library(
         # under different keys, which is what they are. A bare unique(subset=…)
         # here would silently drop MT-partials that share a residual (Fe-56(n,p)
         # collapsed to 0.1 mb; #326) — sort only.
-        df = df.sort("target_A", "residual_Z", "residual_A", "state", "energy_MeV")
+        df = df.sort("target_A", "kind", "MT", "residual_Z", "residual_A", "state", "energy_MeV")
 
-        out_path = xs_dir / f"{sublib_code}_{elem}.parquet"
+        out_path = xs_dir / f"{stem}.parquet"
         df.write_parquet(out_path, compression=COMPRESSION)
 
     # Write manifest. `mf10_sections` / `states` are recorded so the next reader
@@ -1106,6 +1093,8 @@ def fetch_library(
         "mf3_rows": mf3_rows,
         "mf10_sections": mf10_sections,
         "mf10_rows": mf10_rows,
+        "channel_rows": channel_rows,
+        "null_residual_rows": null_residual_rows,
         "states": dict(sorted(state_counts.items())),
     }
     manifest_path = output_dir / lib_key / "manifest.json"
@@ -1113,10 +1102,13 @@ def fetch_library(
     write_builder_stamp(manifest_path, Path(__file__), files_written=len(element_rows))
 
     logger.info(
-        "  Done: %d elements, %d source files, %d total rows (%d MF=10 sections → %d isomeric rows; states %s) → %s/",
+        "  Done: %d elements, %d source files, %d total rows "
+        "(%d channel rows, %d of them null-residual; %d MF=10 sections → %d isomeric rows; states %s) → %s/",
         len(element_rows),
         total_files,
         total_rows,
+        channel_rows,
+        null_residual_rows,
         mf10_sections,
         mf10_rows,
         dict(sorted(state_counts.items())),

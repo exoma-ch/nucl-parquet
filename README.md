@@ -204,6 +204,34 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 > `state <> ''` for the split. Match isomers with `state LIKE 'm%'` — EXFOR also
 > uses `"m1"` for `"m"`, and a bare `"l"`.
 
+> **`kind` is not a partition either.** `production` rows are our sum over every
+> channel reaching a residual (`MT` null); `channel` rows are one ENDF MT (`MT`
+> set). Both describe the same evaluation, so always filter one or the other:
+>
+> ```sql
+> -- what produces Fe-55?
+> SELECT * FROM xs WHERE kind='production' AND residual_Z=26 AND residual_A=55
+> -- what is U-235 fission?
+> SELECT * FROM xs WHERE kind='channel' AND MT=18 AND target_Z=92 AND target_A=235
+> ```
+>
+> Channels that name no single product — total (MT=1), elastic (2), inelastic (4),
+> fission (18) — carry `residual_Z`/`residual_A` as **NULL**, not `0`. `WHERE
+> residual_Z IS NULL` is the query for them.
+>
+> Within `kind='channel'`, ENDF's own redundancy applies: MT=1 already contains
+> MT=2, MT=4 contains MT=51–91, MT=18 contains MT=19–21. The `endf_mt` view says
+> which MTs are sums and what they sum over, so summing is checkable rather than
+> folklore:
+>
+> ```sql
+> SELECT * FROM xs JOIN endf_mt USING (MT)
+> WHERE kind='channel' AND NOT endf_mt.redundant AND NOT endf_mt.particle_production
+> ```
+>
+> `endf_mt` is built from `nucl_parquet/endf_mt.py`, not from a parquet — it is
+> available on a plain checkout with no data download.
+
 **EXFOR experimental** (`exfor/*.parquet`):
 
 | Column | Type | Description |
