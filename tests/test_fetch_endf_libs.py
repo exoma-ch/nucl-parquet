@@ -651,34 +651,6 @@ def test_guard_is_quiet_when_the_library_genuinely_has_no_mf10(monkeypatch, tmp_
     assert manifest["ingest"]["n"]["null_residual_rows"] == 1
 
 
-def test_the_signed_section_rule_is_one_function_both_readers_use():
-    """#377's rule must not be re-implemented by the second MF=3 reader.
-
-    `scripts/backfill_xs_nuclides.py` also parses MF=3 straight off a tape, and
-    it had its own point-wise `xs > 0` filter — which is exactly the half-fix
-    #379 rejected, because it keeps the positive lobe of a mixed-sign curve. The
-    predicate is a named function so there is one spelling of "this section is
-    not a sigma", and this asserts the backfill imports *that* one rather than
-    growing a second.
-    """
-    import backfill_xs_nuclides as bf
-    import numpy as np
-
-    m = _mod()
-    assert bf.is_signed_section is m.is_signed_section, "the backfill has its own copy of the rule"
-
-    # Mixed sign is the load-bearing case: an all-negative section fails safe
-    # under a point-wise filter too, so a test built only on that would pass
-    # against the half-fix.
-    assert m.is_signed_section(np.array([-257.4, 172.2, 12604.5])), "mixed-sign section must be rejected whole"
-    assert m.is_signed_section(np.array([-1.0, -2.0]))
-    assert not m.is_signed_section(np.array([0.3, 0.02, 0.001]))
-    assert not m.is_signed_section(np.array([0.0, 0.5])), "zero is not negative"
-    # NaNs must not make a clean section look signed, nor mask a real negative.
-    assert not m.is_signed_section(np.array([np.nan, 1.0]))
-    assert m.is_signed_section(np.array([np.nan, -1.0]))
-
-
 def test_a_tape_that_yields_nothing_is_named_in_the_log(monkeypatch, tmp_path, caplog):
     """#335 / #336: dropping a nuclide is allowed; doing it silently is not.
 
@@ -1043,6 +1015,10 @@ def deuteron_material() -> str:
             "".ljust(66) + "TPID\n",
             mf3_section(za, 2, [(2.0e5, -0.004948), (4.0e5, -0.013521), (6.0e7, 0.030008)]),
             mf3_section(za, 5, [(2.0e5, 0.0301), (4.0e5, 0.5), (6.0e7, 0.9789)]),
+            # The real d+Li-6 carries MF=6 MT=2 LAW=5 — that is what makes its
+            # MF=3 MT=2 the interference term rather than a blemished elastic
+            # curve, and it is 78% positive so nothing about its sign says so.
+            mf6_law5_section(za, 2),
             _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
             f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
         ]
@@ -1078,8 +1054,8 @@ def test_mf3_sections_naming_no_residual_are_counted_separately():
     zero of them is the right answer — the jendl-5/d false positive."""
     parsed = _mod().parse_endf_file(deuteron_material(), 3, 6, "d")
     assert parsed.mf3_sections == 2
-    # MT=2 is mixed-sign here, as it really is in jendl-5/d, so since #377 it is
-    # dropped whole and only MT=5 is usable.
+    # MT=2 carries MF=6 LAW=5 here, as it really does in jendl-5/d, so it is the
+    # interference term and is dropped whole (#377/#394); only MT=5 is usable.
     assert parsed.signed_sections == {2: 1}
     assert parsed.mf3_usable_sections == 1, "only MT=5 survives"
     assert parsed.mf3_residual_sections == 0, "and MT=5 names no residual"
@@ -1115,173 +1091,198 @@ def test_an_all_negative_mf3_section_is_not_counted_as_usable():
 
 
 # ---------------------------------------------------------------------------
-# Signed MF=3 sections are dropped whole, not half-kept (#377)
+# Structurally signed vs incidentally negative MF=3 sections (#377, #394)
 # ---------------------------------------------------------------------------
+#
+# #379 dropped any MF=3 section carrying a negative value. That is the wrong
+# predicate: it discarded 69 real cross-sections across the corpus, including
+# JEFF-4.0's Au-197 capture, whose MT=102 is 4.6% negative and sound otherwise.
+#
+# Measured over 620 evaluations, the negative *fraction* of a structurally
+# signed section runs 0.0294..1.0000, and of an ordinary section with bad points
+# 0.0008..1.0000. The ranges overlap almost entirely, so no threshold on sign can
+# separate them and none is used. The signal is structural instead: MF=6 MT=X
+# carrying LAW=5 means MF=3 MT=X is the Rutherford interference term.
 
 
-def mixed_sign_material() -> str:
-    """A charged-particle evaluation whose MT=2 is the interference term.
+def _tab2(params: list, mf: int, mt: int, seq: int) -> tuple[str, int]:
+    """A TAB2 record: 6 head fields then one NBT/INT pair."""
+    out = _line("".join(params) + _endf_int(1) + _endf_int(1), mf, mt, seq)
+    seq += 1
+    return out + _line(_endf_int(1) + _endf_int(2), mf, mt, seq), seq + 1
 
-    MT=2 mixed sign (the defect), MT=5 a genuine positive cross-section (the
-    control that must survive), MT=102 naming a residual so production rows are
-    still exercised.
+
+def _list_record(params: list, values: list[float], mf: int, mt: int, seq: int) -> tuple[str, int]:
+    out = _line("".join(params) + _endf_int(len(values)) + _endf_int(0), mf, mt, seq)
+    seq += 1
+    for i in range(0, len(values), 6):
+        out += _line("".join(_endf_float(v) for v in values[i : i + 6]), mf, mt, seq)
+        seq += 1
+    return out, seq
+
+
+def mf6_law5_section(za: float, mt: int) -> str:
+    """A minimal MF=6 section whose product carries LAW=5.
+
+    LAW=5 is ENDF's charged-particle elastic law. Its presence at MT=X is the
+    structural statement that MF=3 MT=X holds the interference term — the signal
+    #394 uses in place of #379's sign test.
     """
+    head = _endf_float(za) + _endf_float(26.75) + _endf_int(0) + _endf_int(1) + _endf_int(1) + _endf_int(0)
+    out = _line(head, 6, mt, 1)
+    body, seq = _tab1(
+        [_endf_float(1001.0), _endf_float(1.0), _endf_int(0), _endf_int(5)],
+        [(1.0e5, 1.0), (2.0e7, 1.0)],
+        6,
+        mt,
+        2,
+    )
+    out += body
+    body, seq = _tab2([_endf_float(0.5), _endf_float(0.0), _endf_int(1), _endf_int(0)], 6, mt, seq)
+    out += body
+    body, seq = _list_record([_endf_float(0.0), _endf_float(1.0e5), _endf_int(1), _endf_int(0)], [0.0, 0.0], 6, mt, seq)
+    return out + body + _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 6, 0, 99999)
+
+
+# The p+Cu-65 shape from #377: mixed sign, and structurally signed.
+CP_ELASTIC_MIXED = [(1.0e6, -0.2574), (5.0e6, 0.172235), (1.5e7, 4.0), (3.0e7, 12.6045)]
+CP_ANYTHING = [(2.5e5, 0.5), (4.0e6, 1.2), (5.0e6, 1.859)]
+# The JEFF-4.0 Au-197 shape from #394: isolated negatives in a real capture curve.
+AU_CAPTURE_WITH_BLEMISH = [(1.0e5, 0.32), (5.0e5, -0.011), (1.0e6, 0.083), (1.4e7, 0.0012)]
+
+
+def structurally_signed_material() -> str:
+    """MF=3 MT=2 mixed-sign *and* MF=6 MT=2 LAW=5 — the #377 case."""
     za = 29065.0
     return "".join(
         [
             "".ljust(66) + "TPID\n",
             mf3_section(za, 2, CP_ELASTIC_MIXED),
             mf3_section(za, 5, CP_ANYTHING),
-            mf3_section(za, 102, CAPTURE),
+            mf6_law5_section(za, 2),
             _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
             f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
         ]
     )
 
 
-def test_a_mixed_sign_section_is_dropped_whole_not_partially_kept():
-    """The #377 defect exactly.
+def blemished_capture_material() -> str:
+    """MF=3 MT=102 with one negative point and no LAW=5 anywhere — the #394 case."""
+    za = 79197.0
+    return "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 102, AU_CAPTURE_WITH_BLEMISH),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
 
-    Under `xs > 0` the three positive points of MT=2 survived and were written as
-    `kind='channel'`, `MT=2`, `xs_mb` — the positive lobe of an interference term
-    relabelled as sigma, in a column whose units say millibarns. Nothing marked
-    it, and the curve looked entirely plausible.
-    """
-    parsed = _mod().parse_endf_file(mixed_sign_material(), 29, 65, "p")
 
-    kept = _channel(parsed, 2)
-    assert kept == [], f"the positive lobe of a signed section was kept: {kept}"
-    assert not [r for r in parsed.rows if r["MT"] == 2], "no row of any kind may carry MT=2 here"
+def test_law5_marks_the_structurally_signed_section():
+    """The signal, read straight off the material."""
+    import endf
 
-    # And specifically: none of the positive values leaked through.
+    m = _mod()
+    assert m.charged_particle_elastic_mts(endf.Material(io.StringIO(structurally_signed_material()))) == {2}
+    assert m.charged_particle_elastic_mts(endf.Material(io.StringIO(blemished_capture_material()))) == set()
+
+
+def test_a_law5_marked_section_is_dropped_whole_even_when_mostly_positive():
+    """#377 must keep working. This curve is 75% positive and still not a sigma,
+    so a sign-based test would keep three of its four points."""
+    parsed = _mod().parse_endf_file(structurally_signed_material(), 29, 65, "p")
+    assert not _channel(parsed, 2), "the interference term must not reach the data"
+    assert parsed.signed_sections == {2: 1}
     positives = {xs * 1e3 for _e, xs in CP_ELASTIC_MIXED if xs > 0}
-    shipped = {r["xs_mb"] for r in parsed.rows}
-    assert not (positives & shipped), f"interference-term values shipped as xs_mb: {positives & shipped}"
+    assert not (positives & {r["xs_mb"] for r in parsed.rows}), "positive lobe leaked through"
+    assert _channel(parsed, 5), "the ordinary section in the same file survives"
 
 
-def test_the_drop_is_recorded_not_silent():
-    parsed = _mod().parse_endf_file(mixed_sign_material(), 29, 65, "p")
-    assert parsed.signed_sections == {2: 1}
-    assert parsed.mf3_sections == 3, "the section is still counted as present"
-    assert parsed.mf3_usable_sections == 2, "but not as usable"
+def test_a_blemished_curve_is_repaired_not_discarded():
+    """The #394 regression, in the shape that caused it.
+
+    JEFF-4.0's Au-197 MT=102 is 4.6% negative and lost all 350 of its rows.
+    Keep the section, drop the bad point, and record how many.
+    """
+    parsed = _mod().parse_endf_file(blemished_capture_material(), 79, 197, "n")
+    kept = _channel(parsed, 102)
+    assert kept, "a capture curve with one bad point is still a capture curve"
+    assert [xs for _e, xs in kept] == pytest.approx([320.0, 83.0, 1.2])
+    assert parsed.signed_sections == {}, "not a structural drop"
+    assert parsed.negative_points_dropped == {102: 1}, "the repair must be recorded"
+    assert _rows(parsed, 79, 198, SUM), "and the production row is back"
 
 
-def test_genuine_cross_sections_in_the_same_file_survive():
-    """The control. A fix that dropped the whole file, or every MT=2 everywhere,
-    would pass the test above and be wrong."""
-    parsed = _mod().parse_endf_file(mixed_sign_material(), 29, 65, "p")
-    assert _channel(parsed, 5), "MT=5 is positive throughout and must survive"
-    assert _channel(parsed, 102), "MT=102 likewise"
-    assert _rows(parsed, 30, 66, SUM), "p + Cu-65 -> Zn-66: MT=102 still produces its production row"
-
-
-def test_an_all_negative_section_is_dropped_the_same_way():
-    """All-negative already vanished under `xs > 0`; it must now go down the same
-    path, so the two cases are reported identically rather than one silently."""
-    parsed = _mod().parse_endf_file(charged_particle_material(), 72, 180, "p")
-    assert parsed.signed_sections == {2: 1}
+def test_a_wholly_negative_section_needs_no_special_case():
+    """It has no good points, so it emits nothing anyway — but is counted as
+    signed, so 'not a cross-section' stays distinct from 'a curve we repaired'."""
+    za = 68156.0
+    material = "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 2, [(1.0e6, -0.4756), (2.0e7, -7.074e-07)]),
+            mf3_section(za, 102, CAPTURE),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+    parsed = _mod().parse_endf_file(material, 68, 156, "h")
     assert not _channel(parsed, 2)
-    assert _channel(parsed, 5), "the positive section is unaffected"
+    assert parsed.signed_sections == {2: 1}
+    assert _channel(parsed, 102), "the sound section is untouched"
 
 
-def test_neutron_sections_are_untouched(parsed):
-    """The audit found no negative MF=3 value in any neutron evaluation. The
-    main fixture must therefore drop nothing — a rule that quietly ate neutron
-    data would be far worse than the defect it fixes."""
+@pytest.mark.parametrize("mt", [1, 18, 102, 91, 600, 649])
+def test_negatives_outside_mt_2_are_repaired_not_discarded(mt):
+    """The 69 sections #379 destroyed spanned MT=1, 3, 18, 91, 102, 600 and 649.
+    None carried LAW=5; all are real cross-sections with a defect in them."""
+    za = 79197.0
+    material = "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, mt, AU_CAPTURE_WITH_BLEMISH),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+    parsed = _mod().parse_endf_file(material, 79, 197, "n")
+    assert _channel(parsed, mt), f"MT={mt} was discarded for a single bad point"
+    assert parsed.negative_points_dropped == {mt: 1}
     assert parsed.signed_sections == {}
-    assert _channel(parsed, 2), "neutron elastic is a real cross-section and stays"
 
 
-def test_manifest_distinguishes_not_represented_from_not_measured(monkeypatch, tmp_path):
-    """`charged_particle_elastic` must say so out loud. Absence with no
-    explanation reads as "this library has none", which is a different claim."""
+def test_the_rule_is_not_projectile_conditional():
+    """LAW=5 decides, not the sublibrary code — a neutron file carrying it would
+    still be structurally signed, and a charged-particle file without it repaired."""
+    parsed = _mod().parse_endf_file(structurally_signed_material(), 29, 65, "n")
+    assert parsed.signed_sections == {2: 1}
+    parsed = _mod().parse_endf_file(blemished_capture_material(), 79, 197, "a")
+    assert parsed.signed_sections == {}
+    assert parsed.negative_points_dropped == {102: 1}
+
+
+def test_both_mf3_readers_share_the_structural_rule():
+    """`scripts/backfill_xs_nuclides.py` parses MF=3 off a tape too. One spelling
+    of "this section is not a sigma", imported rather than re-implemented."""
+    import backfill_xs_nuclides as bf
+
+    m = _mod()
+    assert bf.charged_particle_elastic_mts is m.charged_particle_elastic_mts
+    assert "is_signed_section" not in bf.__dict__, "the backfill must not carry the retired rule"
+
+
+def test_manifest_separates_structural_drops_from_repairs(monkeypatch, tmp_path):
+    """Two different decisions, two different fields. #379 blurred them."""
     m = _stub_library(
         monkeypatch,
-        {"p_029-Cu-65_2931.zip": _mod().parse_endf_file(mixed_sign_material(), 29, 65, "p")},
+        {"p_029-Cu-65_2931.zip": _mod().parse_endf_file(structurally_signed_material(), 29, 65, "p")},
     )
     m.fetch_library("jeff-4.0", "p", tmp_path, session=None)
-
-    manifest = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())
-    assert manifest["ingest"]["p"]["signed_sections_dropped"] == {"2": 1}
-    assert "not represented" in manifest["ingest"]["p"]["charged_particle_elastic"]
-    assert "MF=6 LAW=5" in manifest["ingest"]["p"]["charged_particle_elastic"]
-
-
-def test_a_library_with_nothing_signed_says_nothing(monkeypatch, tmp_path):
-    """The neutron case: no drops, so no claim about charged-particle elastic."""
-    rows = _mod().parse_endf_file(synthetic_material(), 13, 27, "n")
-    m = _stub_library(monkeypatch, {"n_013-Al-27_1325.zip": rows})
-    m.fetch_library("irdff-2", "n", tmp_path, session=None)
-
-    manifest = json.loads((tmp_path / "irdff-2" / "manifest.json").read_text())
-    assert manifest["ingest"]["n"]["signed_sections_dropped"] == {}
-    assert manifest["ingest"]["n"]["charged_particle_elastic"] is None
-
-
-def test_the_manifest_records_sums_that_lost_their_law(monkeypatch, tmp_path):
-    """`summed_without_law` belongs beside `signed_sections_dropped` for the same
-    reason (#338/#383): it keeps "this library states no interpolation law for
-    these rows" apart from "nobody looked", without re-running a multi-GB ingest.
-
-    The synthetic material's residual sums all come from lin-lin sections, so the
-    honest answer is 0 — and asserting the 0 is the point. A counter that only
-    ever appeared when non-zero could not be distinguished from one that was
-    never wired up.
-    """
-    rows = _mod().parse_endf_file(synthetic_material(), 13, 27, "n")
-    assert rows.summed_without_law == 0
-    m = _stub_library(monkeypatch, {"n_013-Al-27_1325.zip": rows})
-    m.fetch_library("irdff-2", "n", tmp_path, session=None)
-
-    manifest = json.loads((tmp_path / "irdff-2" / "manifest.json").read_text())
-    assert manifest["ingest"]["n"]["summed_without_law"] == 0
-
-
-def test_the_rule_is_on_the_data_not_on_mt_2():
-    """A signed section is dropped whichever MT it is.
-
-    The audit behind #377 — 165 evaluations, five charged-particle sublibraries
-    and three neutron ones — found MT=2 to be the only signed MF=3 section in
-    the wild today. This asserts the rule that makes that a *finding* rather
-    than an assumption: hardcoding `MT == 2 and projectile != 'n'` would behave
-    identically on every real file and leave the class open, so it is pinned
-    here with an MT that has no business being signed.
-    """
-    za = 29065.0
-    material = "".join(
-        [
-            "".ljust(66) + "TPID\n",
-            # MT=5 signed — not something the mirror serves, which is the point.
-            mf3_section(za, 5, CP_ELASTIC_MIXED),
-            mf3_section(za, 102, CAPTURE),
-            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
-            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
-        ]
-    )
-    parsed = _mod().parse_endf_file(material, 29, 65, "p")
-    assert parsed.signed_sections == {5: 1}, "a signed MT=5 must be dropped like a signed MT=2"
-    assert not _channel(parsed, 5)
-    assert _channel(parsed, 102), "and the unsigned section is still kept"
-
-
-def test_a_signed_section_is_dropped_for_neutrons_too():
-    """Not projectile-conditional either. No neutron evaluation carries a
-    negative MF=3 value today, but if one did it would not be a cross-section
-    for being a neutron's."""
-    za = 13027.0
-    material = "".join(
-        [
-            "".ljust(66) + "TPID\n",
-            mf3_section(za, 16, CP_ELASTIC_MIXED),
-            mf3_section(za, 102, CAPTURE),
-            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
-            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
-        ]
-    )
-    parsed = _mod().parse_endf_file(material, 13, 27, "n")
-    assert parsed.signed_sections == {16: 1}
-    assert not _channel(parsed, 16)
-    assert _channel(parsed, 102)
+    record = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())["ingest"]["p"]
+    assert record["signed_sections_dropped"] == {"2": 1}
+    assert record["negative_points_dropped"] == {}
+    assert "not represented" in record["charged_particle_elastic"]
 
 
 # ---------------------------------------------------------------------------
@@ -1767,3 +1768,56 @@ def test_manifest_records_the_yield_rows(monkeypatch, tmp_path):
     assert record["mf9_product_sections"] == 1
     assert record["mf9_rows"] == len(CAPTURE) * 2
     assert record["mf9_yield_overshoots"] == {}
+
+
+def test_a_run_that_discards_more_sections_than_the_last_one_raises(monkeypatch, tmp_path):
+    """The general form of #394 (#394).
+
+    The anchors caught Au-197 because someone had listed that reaction; the other
+    68 sections were invisible because nobody had. This asks "did this run throw
+    away sections the last one kept?" and so covers every MT.
+    """
+    m = _mod()
+    parsed = m.parse_endf_file(blemished_capture_material(), 79, 197, "n")
+    stub = _stub_library(monkeypatch, {"n_079-Au-197_7925.zip": parsed})
+    stub.fetch_library("jeff-4.0", "n", tmp_path, session=None)
+
+    record = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())["ingest"]["n"]
+    assert record["signed_sections_dropped"] == {}, "baseline: nothing discarded whole"
+
+    # Now a run that discards the section instead of repairing it — the regression.
+    regressed = m.ParsedFile(
+        rows=list(parsed.rows),
+        mf3_sections=1,
+        mf3_usable_sections=1,
+        mf3_residual_sections=1,
+        mf3_rows=parsed.mf3_rows,
+        channel_rows=parsed.channel_rows,
+        signed_sections={102: 1},
+    )
+    stub = _stub_library(monkeypatch, {"n_079-Au-197_7925.zip": regressed})
+    with pytest.raises(RuntimeError, match="discards 1 MF=3 section"):
+        stub.fetch_library("jeff-4.0", "n", tmp_path, session=None)
+
+
+def test_dropping_fewer_sections_than_before_is_fine(monkeypatch, tmp_path):
+    """A fix looks like a decrease. Only an increase is alarming."""
+    m = _mod()
+    before = m.ParsedFile(
+        rows=[_MF3_ROW, _CHANNEL_ROW],
+        mf3_sections=3,
+        mf3_usable_sections=3,
+        mf3_residual_sections=3,
+        mf3_rows=1,
+        channel_rows=1,
+        signed_sections={102: 3},
+    )
+    stub = _stub_library(monkeypatch, {"n_079-Au-197_7925.zip": before})
+    stub.fetch_library("jeff-4.0", "n", tmp_path, session=None)
+
+    after = m.parse_endf_file(blemished_capture_material(), 79, 197, "n")
+    stub = _stub_library(monkeypatch, {"n_079-Au-197_7925.zip": after})
+    stub.fetch_library("jeff-4.0", "n", tmp_path, session=None)  # must not raise
+    record = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())["ingest"]["n"]
+    assert record["signed_sections_dropped"] == {}
+    assert record["negative_points_dropped"] == {"102": 1}

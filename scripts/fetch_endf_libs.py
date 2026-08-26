@@ -525,39 +525,54 @@ def parse_endf_filename(filename: str) -> tuple[int, int, str] | None:
 _XS_MAX_BARNS = 1e30
 
 
+def charged_particle_elastic_mts(material) -> set[int]:  # noqa: ANN001 — endf.Material
+    """MTs whose MF=6 carries LAW=5, i.e. charged-particle elastic scattering.
+
+    This is the *structural* marker that an MF=3 section is not a cross-section.
+    Where MF=6 MT=X holds LAW=5, the elastic distribution lives there and
+    diverges (Rutherford), so there is no finite total to tabulate and MF=3 MT=X
+    holds the nuclear-interference term relative to it instead — a signed
+    quantity in sigma's units.
+
+    Sign-independent, which is the whole point: #379 used "carries a negative"
+    as the test and that is a different predicate. Measured across 620
+    evaluations, the negative *fraction* of an interference section ranges
+    0.0294 to 1.0000, and of an ordinary section with bad points 0.0008 to
+    1.0000. The two ranges overlap almost entirely, so no threshold on sign can
+    separate them and none is used (#394).
+    """
+    mts = set()
+    for (mf, mt), sec in material.section_data.items():
+        if mf != 6:
+            continue
+        for product in sec.get("products", []):
+            if product.get("LAW") == 5:
+                mts.add(mt)
+    return mts
+
+
 def is_signed_section(xs_barns: np.ndarray) -> bool:
-    """True if this MF=3 curve carries a negative value, and so is not a sigma.
+    """True if nothing in this MF=3 curve is usable as a cross-section.
 
-    A signed quantity is not a cross-section, so none of it is usable — not even
-    the positive part (#377).
+    Only a *wholly* non-positive curve qualifies. A curve with some positive
+    points is a cross-section with bad points in it, and the bad points are
+    dropped individually by the caller's positivity filter.
 
-    For charged-particle projectiles, MF=3 MT=2 does not hold elastic sigma.
-    Charged-particle elastic lives in MF=6 MT=2 under LAW=5 and diverges
-    (Rutherford), so there is no finite total to tabulate; MF=3 MT=2 holds the
-    *nuclear-interference term* relative to it, which is signed by construction.
+    #379 answered this question with "does it contain a negative", dropped the
+    whole section on that, and destroyed 69 real cross-sections across the
+    corpus — including JEFF-4.0's Au-197 capture, whose MT=102 is 4.6% negative
+    and whose MT=2 elastic is 43.6% negative, both otherwise sound. `state`
+    the rule on the data, yes, but "contains a negative" is not the same
+    predicate as "is a signed quantity" (#394).
 
-    Filtering to `xs > 0` handles the all-negative sections correctly by
-    accident — the whole section vanishes. The mixed-sign ones are the defect:
-    p+Cu-65 has 44 points, 25 of them positive, and keeping those writes a
-    172 mb → 12.6 b curve over 1–30 MeV as `kind='channel'`, `MT=2`, `xs_mb`.
-    That is a different physical quantity wearing sigma's units, and it looks
-    entirely reasonable — the #326 and #351 failure shape, where the number is
-    plausible so nothing questions it.
-
-    The rule is stated on the data, not on (projectile, MT): any negative value
-    means the section is not sigma. An audit of 165 evaluations across five
-    charged-particle sublibraries and three neutron ones found MT=2 to be the
-    *only* signed MF=3 section, and no negatives at all under neutrons — so this
-    is not broader than the class it describes, and it stays right if another MT
-    joins it.
-
-    A function rather than an inline test because `scripts/backfill_xs_nuclides.py`
-    reads MF=3 sections too, straight off a tape, and had its own point-wise
-    `xs > 0` filter — i.e. the half-fix this rule exists to reject. One spelling,
-    imported (CLAUDE.md principle 1).
+    The structurally signed case is caught by `charged_particle_elastic_mts`
+    instead, which is sign-independent and does not need a threshold. A wholly
+    negative section needs no separate rule either: dropping its points leaves
+    nothing, so it emits no rows regardless. This predicate exists to *report*
+    that case distinctly rather than to decide it.
     """
     finite = np.isfinite(xs_barns)
-    return bool(finite.any() and (xs_barns[finite] < 0).any())
+    return bool(finite.any() and not (xs_barns[finite] > 0).any())
 
 
 @dataclass
@@ -611,6 +626,10 @@ class ParsedFile:
     #: merely skipped: "this library represents no charged-particle elastic"
     #: and "this library was never asked" must stay distinguishable.
     signed_sections: dict[int, int] = field(default_factory=dict)
+    #: MT -> points dropped from a section that was otherwise kept. A curve with
+    #: a bad point is still a cross-section; this records the repair so the
+    #: choice stays visible (#394).
+    negative_points_dropped: dict[int, int] = field(default_factory=dict)
 
     #: Residual sums whose contributing MF=3 sections disagreed about their
     #: interpolation law, so `interp_law` is NULL on those production rows
@@ -1157,6 +1176,8 @@ def parse_endf_file(
     mf3_usable_sections = 0
     mf3_residual_sections = 0
     signed_sections: dict[int, int] = {}
+    negative_points_dropped: dict[int, int] = {}
+    elastic_mts = charged_particle_elastic_mts(material)
     mf3_by_mt: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     # Residual sums whose contributions disagreed about interpolation, so the
     # summed rows carry no law (#338). Expected to stay 0 on real evaluations.
@@ -1181,16 +1202,30 @@ def parse_endf_file(
             logger.debug("  Skipping MF=%d MT=%d: %s", mf, mt, e)
             continue
 
-        # Drop TALYS overflow sentinels (~1.99e35 b) and non-positive values,
-        # and drop a signed section whole — see `is_signed_section` (#377).
-        if is_signed_section(xs_barns):
+        # Structurally signed: MF=6 MT=X carries LAW=5, so MF=3 MT=X is the
+        # Rutherford interference term and no part of it is a cross-section.
+        # Dropped whole, sign-independently — this is what #377 was for, and it
+        # is the only case that warrants discarding valid-looking points
+        # (JEFF-4.0's d+Li-6 MT=2 is 78% *positive* and still not a sigma).
+        if mt in elastic_mts:
             signed_sections[mt] = signed_sections.get(mt, 0) + 1
             continue
 
+        # Everything else keeps its good points. A negative in a capture curve
+        # is a defect in the curve, not evidence the quantity is something else;
+        # #379 conflated the two and discarded 69 real cross-sections (#394).
+        # A wholly non-positive section needs no special case — it simply has no
+        # good points — but it is counted separately so "not a cross-section"
+        # and "a cross-section we thinned" stay distinguishable.
         good = np.isfinite(xs_barns) & (xs_barns > 0) & (xs_barns <= _XS_MAX_BARNS)
         if not good.any():
+            if is_signed_section(xs_barns):
+                signed_sections[mt] = signed_sections.get(mt, 0) + 1
             logger.debug("  MF=3 MT=%d: no positive in-range points, skipping", mt)
             continue
+        dropped = int((~good).sum())
+        if dropped:
+            negative_points_dropped[mt] = negative_points_dropped.get(mt, 0) + dropped
         mf3_usable_sections += 1
         e_good, xs_good, laws_good = energies_ev[good], xs_barns[good], laws[good]
         # Keep the curve for MF=9 to multiply its yields by. Stored before the
@@ -1295,6 +1330,7 @@ def parse_endf_file(
         mf3_usable_sections=mf3_usable_sections,
         mf3_residual_sections=mf3_residual_sections,
         signed_sections=signed_sections,
+        negative_points_dropped=negative_points_dropped,
         mf10_product_sections=mf10_product_sections,
         mf9_sections=mf9_sections,
         mf9_product_sections=mf9_product_sections,
@@ -1430,6 +1466,7 @@ def fetch_library(
     mf9_yield_overshoots: dict[tuple[int, int], float] = {}
     summed_without_law = 0
     signed_sections: dict[int, int] = {}
+    negative_points_dropped: dict[int, int] = {}
     # Every upstream tape that yielded nothing. Skipping one silently is how a
     # single natural target (p+Be-9, n+Ho-165) disappears from a release with no
     # diff to notice and ~100% coverage everywhere else — see #335 / #336.
@@ -1460,6 +1497,8 @@ def fetch_library(
         summed_without_law += parsed_file.summed_without_law
         for mt, n in parsed_file.signed_sections.items():
             signed_sections[mt] = signed_sections.get(mt, 0) + n
+        for mt, n in parsed_file.negative_points_dropped.items():
+            negative_points_dropped[mt] = negative_points_dropped.get(mt, 0) + n
         mf10_sections += parsed_file.mf10_sections
         mf10_rows += parsed_file.mf10_rows
         if not parsed_file.rows:
@@ -1639,6 +1678,47 @@ def fetch_library(
             dict(sorted(signed_sections.items())),
         )
 
+    # Section-count regression guard (#394). The physical anchors caught the
+    # Au-197 case because someone had listed that reaction; the other 68 sections
+    # #379 destroyed were invisible because nobody had. This asks the general
+    # question instead — "did this run discard sections the last one kept?" — and
+    # answers it against the manifest the previous run left behind, so it needs
+    # no baseline file and covers every MT rather than the nine hand-picked ones.
+    #
+    # An increase is the alarming direction: dropping *fewer* sections is what a
+    # fix looks like. Raised before anything is written.
+    previous = {}
+    manifest_path = output_dir / lib_key / "manifest.json"
+    if manifest_path.exists():
+        try:
+            previous = json.loads(manifest_path.read_text()).get("ingest", {}).get(sublib_code, {})
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+    was = previous.get("signed_sections_dropped")
+    if was is not None:
+        before, now = sum(int(v) for v in was.values()), sum(signed_sections.values())
+        if now > before:
+            raise RuntimeError(
+                f"{lib_key}/{sublib_code}: this run discards {now} MF=3 section(s) whole, "
+                f"where the previous run discarded {before} (by MT now: "
+                f"{dict(sorted(signed_sections.items()))}, before: {dict(sorted(was.items()))}). "
+                "Sections that used to be ingested are being thrown away. If that is "
+                "intended, re-run after deleting the stale manifest record; if not, this is "
+                "#394 again — check that the drop rule still keys on MF=6 LAW=5 and not on "
+                "the presence of a negative value."
+            )
+
+    if negative_points_dropped:
+        logger.info(
+            "  %s/%s: dropped %d individual non-positive point(s) from sections that were "
+            "otherwise kept (by MT: %s). A negative in a capture curve is a defect in the "
+            "curve, not evidence the quantity is something else (#394).",
+            lib_key,
+            sublib_code,
+            sum(negative_points_dropped.values()),
+            dict(sorted(negative_points_dropped.items())),
+        )
+
     if mf3_sections and not mf3_usable_sections:
         logger.info(
             "  %s/%s: none of the %d MF=3 sections carry a positive in-range point. "
@@ -1753,6 +1833,10 @@ def fetch_library(
         # this a reader cannot tell a library that ships no charged-particle
         # elastic from one nobody asked (#377).
         "signed_sections_dropped": dict(sorted(signed_sections.items())),
+        # Points removed from sections that were kept. Recorded next to the
+        # whole-section drops so the two decisions never blur back together —
+        # #379 blurred them and cost 69 cross-sections (#394).
+        "negative_points_dropped": dict(sorted(negative_points_dropped.items())),
         "charged_particle_elastic": (
             "not represented — MF=3 MT=2 is the Rutherford interference term, not "
             "sigma; the elastic distribution is in MF=6 LAW=5, which this ingest "
