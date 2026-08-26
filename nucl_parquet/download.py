@@ -29,7 +29,7 @@ _DATA_VERSION_RE = re.compile(r"^\d{4}\.\d+\.\d+$")
 
 
 def data_dir() -> Path:
-    """Resolve the nucl-parquet data directory.
+    """Resolve the nucl-parquet data directory **for reading**.
 
     Resolution order:
         1. $NUCL_PARQUET_DATA environment variable (should point to the data/ subdir)
@@ -41,6 +41,18 @@ def data_dir() -> Path:
 
     Raises:
         FileNotFoundError: If no data directory is found.
+
+    Warning:
+        Do not use this to decide where to **write**. Step 3 is a consumer's
+        download cache: outside a checkout this silently resolves to
+        `~/.nucl-parquet/`, so an ingest defaulting to it would populate the
+        cache of whoever ran it rather than failing. That is correct for a
+        reader — "find me the data, wherever it is" — and wrong for a writer,
+        which means one specific tree.
+
+        Ingest scripts take their default from `scripts/_paths.DATA_DIR`, the
+        plain checkout path, and `tests/test_repo_layout.py` enforces that none
+        of them import this function (#341, #363).
     """
     env = os.environ.get("NUCL_PARQUET_DATA")
     if env:

@@ -70,15 +70,20 @@ def build_manifest(key: str, pq_dir: Path) -> dict:
     }
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363)."""
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--data-dir", type=Path, default=DATA_DIR)
     ap.add_argument(
         "--check",
         action="store_true",
         help="report drift without writing (for CI)",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     drift: list[str] = []
     for key, pq_dir, manifest_path in library_dirs(args.data_dir):

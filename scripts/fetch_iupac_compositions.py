@@ -7,14 +7,19 @@ ASCII table wrapped in HTML; we extract the <pre>-block and parse it.
 Plugs the second G4 gap: G4 data files don't include natural isotopic
 abundances or standard atomic weights. CIAAW is the canonical compilation.
 
-Output: data/auxiliary/iupac_compositions.parquet (gitignored — regenerate via this script).
+Output: `<output>/auxiliary/iupac_compositions.parquet`, a **tracked** file — it is
+covered by `catalog.json::data_sha256`, so rewriting it is a data change. (An
+earlier version of this docstring called it gitignored. It never was.)
 
 Usage:
     python scripts/fetch_iupac_compositions.py
+    python scripts/fetch_iupac_compositions.py --dry-run          # fetch, parse, write nothing
+    python scripts/fetch_iupac_compositions.py --output /tmp/out  # write somewhere else
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
 import re
 import sys
@@ -31,8 +36,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(mes
 logger = logging.getLogger(__name__)
 
 SRC_URL = "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=&ascii=ascii&isotype=some"
-RAW_PATH = DATA_DIR / "g4_raw" / "iupac" / "compositions.txt"
-OUT_PATH = DATA_DIR / "auxiliary" / "iupac_compositions.parquet"
+# Relative to the chosen output directory, so `--output` moves both the download
+# cache and the product. They used to be absolute module constants, which is why
+# importing this module and calling main() could only ever write into the checkout.
+RAW_REL = Path("g4_raw") / "iupac" / "compositions.txt"
+OUT_REL = Path("auxiliary") / "iupac_compositions.parquet"
 
 # `1.00782503223(9)`: leading float, then optional uncertainty in parens.
 _VAL_RE = re.compile(r"^([\d.]+)\s*(?:\(([^)]+)\))?$")
@@ -40,16 +48,16 @@ _VAL_RE = re.compile(r"^([\d.]+)\s*(?:\(([^)]+)\))?$")
 _RANGE_RE = re.compile(r"^\[([\d.]+),\s*([\d.]+)\]$")
 
 
-def _fetch() -> Path:
-    if RAW_PATH.exists():
-        logger.info("IUPAC compositions cached at %s", RAW_PATH)
-        return RAW_PATH
-    RAW_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _fetch(raw_path: Path) -> Path:
+    if raw_path.exists():
+        logger.info("IUPAC compositions cached at %s", raw_path)
+        return raw_path
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("Downloading %s", SRC_URL)
     resp = requests.get(SRC_URL, timeout=30)
     resp.raise_for_status()
-    RAW_PATH.write_bytes(resp.content)
-    return RAW_PATH
+    raw_path.write_bytes(resp.content)
+    return raw_path
 
 
 def _parse_value(s: str) -> tuple[float | None, float | None]:
@@ -194,13 +202,51 @@ def _parse(path: Path) -> pl.DataFrame:
     return pl.DataFrame(rows).sort("Z", "A")
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it.
+
+    This script had no argparse at all (#363): `main()` was a parameterless side
+    effect that hit NIST and overwrote a tracked parquet, with no `--output` and
+    no `--dry-run`. It fired by accident during #349, when a probe called `main()`
+    on every ingest module to compare path constants — every sibling exposed
+    `build_parser()` and was inspected without side effects; this one ran.
+
+    No damage that time, because the builder is deterministic and the bytes came
+    out identical. That was a property of the *data*, not of the script: a
+    transient NIST response or an upstream revision would have committed itself
+    into a tracked file during what was meant to be a read-only inspection.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument(
+        "--output",
+        type=Path,
+        default=DATA_DIR,
+        help=f"Output directory (default: {DATA_DIR.name}/)",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and parse, report what would be written, then write nothing.",
+    )
+    return ap
+
+
 def main() -> None:
-    raw = _fetch()
+    args = build_parser().parse_args()
+
+    raw = _fetch(args.output / RAW_REL)
     df = _parse(raw)
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.write_parquet(OUT_PATH, compression="zstd")
-    logger.info("Wrote %d isotope rows to %s", len(df), OUT_PATH)
+    out_path = args.output / OUT_REL
     n_with_composition = df.filter(pl.col("isotopic_composition").is_not_null()).height
+
+    if args.dry_run:
+        logger.info("dry run: would write %d isotope rows to %s", len(df), out_path)
+        logger.info("  with measured composition: %d", n_with_composition)
+        return
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(out_path, compression="zstd")
+    logger.info("Wrote %d isotope rows to %s", len(df), out_path)
     logger.info("  with measured composition: %d", n_with_composition)
 
 

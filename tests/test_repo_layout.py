@@ -30,8 +30,12 @@ fail the suite by name, not disappear from `git status`.
 from __future__ import annotations
 
 import argparse
+import ast
+import io
+import re
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 
 import pytest
@@ -161,6 +165,46 @@ def test_output_help_names_the_default(module_name: str) -> None:
     )
 
 
+def _prose_lines(source: str) -> set[int]:
+    """Line numbers occupied by comments or docstrings.
+
+    The matcher below is textual, so a docstring that *describes* the retired
+    spelling reads exactly like the spelling itself — this very file's
+    explanation of the bug tripped its own guard. Excluding prose keeps the
+    check on code without weakening it.
+    """
+    prose: set[int] = set()
+    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        if tok.type == tokenize.COMMENT:
+            prose.update(range(tok.start[0], tok.end[0] + 1))
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            doc = ast.get_docstring(node, clean=False)
+            if doc is None:
+                continue
+            expr = node.body[0]
+            prose.update(range(expr.lineno, (expr.end_lineno or expr.lineno) + 1))
+    return prose
+
+
+def _re_derives_a_repo_path(line: str) -> bool:
+    """Does this source line reconstruct the checkout root or the data dir itself?
+
+    Three spellings, because the first version of this matcher only knew the
+    first two and two scripts were quietly using the third.
+    """
+    stripped = line.lstrip()
+    return (
+        stripped.startswith(("ROOT = Path(", "ROOT=Path("))
+        or 'ROOT / "data"' in line
+        # `Path(__file__).parent.parent / "data"` inline, and `repo_root / "data"`
+        # — same derivation, no variable named ROOT anywhere in sight.
+        or re.search(r'Path\(__file__\)(\.parent){2,}\s*/\s*"data"', line) is not None
+        or re.search(r'\brepo_root\s*/\s*"data"', line) is not None
+    )
+
+
 def test_scripts_do_not_re_derive_the_data_dir() -> None:
     """`scripts/_paths.py` must remain the only place that spells `ROOT / "data"`.
 
@@ -178,10 +222,12 @@ def test_scripts_do_not_re_derive_the_data_dir() -> None:
     for script in sorted((ROOT / "scripts").glob("*.py")):
         if script.name == "_paths.py":  # the one legitimate definition
             continue
+        source = script.read_text()
+        prose = _prose_lines(source)
         hits = [
             f"{script.name}:{n}: {line.strip()}"
-            for n, line in enumerate(script.read_text().splitlines(), 1)
-            if line.lstrip().startswith(("ROOT = Path(", "ROOT=Path(")) or 'ROOT / "data"' in line
+            for n, line in enumerate(source.splitlines(), 1)
+            if n not in prose and _re_derives_a_repo_path(line)
         ]
         if hits:
             offenders[script.name] = hits
@@ -195,14 +241,212 @@ def test_scripts_do_not_re_derive_the_data_dir() -> None:
 
 
 def test_the_data_dir_guard_can_actually_fail() -> None:
-    """The matcher above must reject the pattern it was written to retire.
+    """The matcher above must reject every spelling it was written to retire.
 
     Same reasoning as `test_the_guard_can_actually_fail`: now that every script
     is clean, a broken matcher and a clean directory look identical.
+
+    The last two entries are the ones the original matcher **missed**. It keyed on
+    the name `ROOT`, so `Path(__file__).parent.parent / "data"` — written out
+    inline, never binding `ROOT` at all — sailed past it. Two scripts were using
+    exactly that (`update_suppliers.py`, `build_kerma.py`) and the #349 guard
+    reported the directory clean. A matcher that only catches the spelling you
+    happened to write is the same silent-pass failure as the rest of this file.
     """
-    legacy = ["ROOT = Path(__file__).parent.parent", '    ap.add_argument("--data-dir", default=ROOT / "data")']
-    matched = [ln for ln in legacy if ln.lstrip().startswith(("ROOT = Path(", "ROOT=Path(")) or 'ROOT / "data"' in ln]
+    legacy = [
+        "ROOT = Path(__file__).parent.parent",
+        '    ap.add_argument("--data-dir", default=ROOT / "data")',
+        'SUPPLIERS_PATH = Path(__file__).parent.parent / "data" / "suppliers.json"',
+        '        data_dir = repo_root / "data"',
+    ]
+    matched = [ln for ln in legacy if _re_derives_a_repo_path(ln)]
     assert matched == legacy, "the matcher no longer recognises the pre-#341 spelling"
+
+
+# -- Every script must be introspectable and must not write by surprise (#363) --
+#
+# `fetch_iupac_compositions.py` had no argparse at all: `main()` was a
+# parameterless side effect that fetched from NIST and overwrote a *tracked*
+# parquet. It fired during #349, when a probe called `main()` on each ingest
+# module to compare path constants — every sibling exposed `build_parser()` and
+# was inspected without side effects; this one ran. It happened to be harmless
+# because the builder is deterministic, which is a property of the data, not of
+# the script.
+#
+# Every scripts/*.py is classified below. A new script that is in none of these
+# buckets fails `test_every_script_is_classified`, so the class check cannot go
+# stale by someone adding a script and not thinking about it.
+
+#: script -> the argparse dest that decides where it writes. Must exist, be
+#: Path-typed, and (when it has a default) default inside the data directory.
+_OUTPUT_DEST = {
+    "build_channels.py": "out_dir",
+    "build_kerma.py": "data_dir",
+    "build_manifests.py": "data_dir",
+    "build_neutron_njoy.py": "out",
+    "build_neutron_total.py": "data_dir",
+    "fetch_ame2020.py": "output",
+    "fetch_endf_libs.py": "output",
+    "fetch_exfor.py": "output",
+    "fetch_iupac_compositions.py": "output",
+    "fetch_strata_nuclear.py": "dest_dir",
+    "migrate_xs_schema.py": "data_dir",
+    "update_suppliers.py": "data_dir",
+}
+
+#: Writes only where the caller points it, with no default at all — the strongest
+#: form of "you chose this". `fetch_exfor_master` takes `out` as a required
+#: positional; `fetch_stsv` writes nothing unless `--out` is given.
+_OUTPUT_REQUIRED = {"fetch_exfor_master.py": "out", "fetch_stsv.py": "out"}
+
+#: Writes to a place that is not a data path: `sync_huggingface` pushes to the
+#: remote named by `--repo-id` (and has `--dry-run`); `build_readme` rewrites
+#: README.md and only when `--write` is passed.
+_WRITES_ELSEWHERE = {"sync_huggingface.py", "build_readme.py"}
+
+#: Audits and reports; writes nothing.
+_READ_ONLY = {"check_builder_staleness.py"}
+
+#: Shared helper modules, not runnable scripts — underscore-prefixed by
+#: convention. `_canonical.py` (#359/#366) holds the canonical row vocabulary and
+#: frame transform; it was caught by `test_every_script_is_classified` when this
+#: branch rebased onto it, which is the guard working as intended on a real file
+#: rather than a synthetic one.
+_NOT_A_SCRIPT = {"_paths.py", "_canonical.py"}
+
+
+def _script_names() -> set[str]:
+    return {p.name for p in (ROOT / "scripts").glob("*.py")}
+
+
+def _module_for(script_name: str):
+    return __import__(script_name[: -len(".py")])
+
+
+def test_every_script_is_classified() -> None:
+    """A new script must be placed in one of the buckets above.
+
+    Without this, the checks below silently stop covering the directory the
+    moment someone adds a file — the same way `scripts/ci.sh`'s allowlist stops
+    covering a new test file.
+    """
+    classified = set(_OUTPUT_DEST) | set(_OUTPUT_REQUIRED) | _WRITES_ELSEWHERE | _READ_ONLY | _NOT_A_SCRIPT
+    unclassified = sorted(_script_names() - classified)
+    stale = sorted(classified - _script_names())
+    assert not unclassified, (
+        f"new script(s) {unclassified} are not classified in tests/test_repo_layout.py. "
+        "Add each to _OUTPUT_DEST (it writes into the data dir), _OUTPUT_REQUIRED "
+        "(the caller must name the destination), _WRITES_ELSEWHERE, or _READ_ONLY."
+    )
+    assert not stale, f"classified script(s) {stale} no longer exist — drop them from the table"
+
+
+@pytest.mark.parametrize("script_name", sorted(_script_names() - _NOT_A_SCRIPT))
+def test_every_script_exposes_build_parser(script_name: str) -> None:
+    """Importing a script must reveal its CLI without running it.
+
+    `build_parser()` is the seam that makes a script inspectable — what are its
+    defaults, where does it write — without the import itself doing anything. A
+    script whose only entry point is `main()` can only be interrogated by
+    executing it, which for an ingest means a network fetch and a file write.
+    """
+    module = _module_for(script_name)
+    assert hasattr(module, "build_parser"), (
+        f"scripts/{script_name} does not expose build_parser(). Extract the "
+        "ArgumentParser out of main() so its defaults can be read without executing it (#363)."
+    )
+    parser = module.build_parser()
+    assert isinstance(parser, argparse.ArgumentParser)
+
+
+@pytest.mark.parametrize("script_name", sorted(_OUTPUT_DEST))
+def test_output_location_is_overridable_and_defaults_into_the_data_dir(script_name: str) -> None:
+    """Where a script writes must be a CLI argument, defaulting under `data/`.
+
+    Two failure modes in one assertion. Not overridable at all is #363
+    (`fetch_iupac_compositions` wrote a module constant). Overridable but
+    defaulting to the repo root is #341 (`fetch_endf_libs --output` scattered a
+    623-file tree next to `data/`).
+    """
+    dest = _OUTPUT_DEST[script_name]
+    parser = _module_for(script_name).build_parser()
+    action = next((a for a in parser._actions if a.dest == dest), None)
+    assert action is not None, f"scripts/{script_name} has no --{dest.replace('_', '-')} argument"
+    assert action.type is Path, f"scripts/{script_name} --{dest.replace('_', '-')} is not Path-typed"
+
+    default = action.default
+    assert isinstance(default, Path), f"scripts/{script_name} --{dest.replace('_', '-')} has no Path default"
+    assert default == DATA_DIR or DATA_DIR in default.parents, (
+        f"scripts/{script_name} --{dest.replace('_', '-')} defaults to {default}, which is outside "
+        f"{DATA_DIR}. An ingest default outside the data directory is the #341 regression."
+    )
+    assert default != ROOT, f"scripts/{script_name} defaults to the repo root — the #341 regression exactly"
+
+
+@pytest.mark.parametrize("script_name", sorted(_OUTPUT_REQUIRED))
+def test_scripts_without_an_output_default_require_one(script_name: str) -> None:
+    """No default is fine — silently defaulting somewhere surprising is not.
+
+    These two write only where told. Pinned so nobody "helpfully" gives them a
+    default later without going through the check above.
+    """
+    dest = _OUTPUT_REQUIRED[script_name]
+    parser = _module_for(script_name).build_parser()
+    action = next((a for a in parser._actions if a.dest == dest), None)
+    assert action is not None, f"scripts/{script_name} lost its {dest} argument"
+    assert action.default is None, f"scripts/{script_name} {dest} acquired a default: {action.default}"
+
+
+@pytest.mark.parametrize(
+    "script_name",
+    ["fetch_iupac_compositions.py", "fetch_ame2020.py", "update_suppliers.py", "migrate_xs_schema.py"],
+)
+def test_network_writers_offer_a_dry_run(script_name: str) -> None:
+    """A script that fetches and then overwrites tracked data must offer a no-write mode.
+
+    The three fetchers here had no `--dry-run`, so "see what this would do" and
+    "do it" were the same command. That is what turned a read-only inspection
+    during #349 into a write.
+    """
+    parser = _module_for(script_name).build_parser()
+    assert any(a.dest == "dry_run" for a in parser._actions), (
+        f"scripts/{script_name} fetches and overwrites tracked data but has no --dry-run (#363)"
+    )
+    assert parser.parse_args([]).dry_run is False, "--dry-run must be opt-in"
+
+
+def test_no_ingest_script_uses_the_reader_side_data_dir_resolver() -> None:
+    """`nucl_parquet.download.data_dir()` must not decide where a script writes.
+
+    It resolves $NUCL_PARQUET_DATA -> checkout -> **`~/.nucl-parquet/`**. That
+    last step is a consumer's download cache, so an ingest defaulting to it would
+    quietly populate the cache of whoever ran it instead of failing. Right for a
+    reader ("find the data, wherever it is"), wrong for a writer (which means one
+    specific tree).
+
+    #349 deliberately built `scripts/_paths.DATA_DIR` on the plain checkout path
+    for this reason and wrote down why, but a docstring does not stop the next
+    import. This does. Deliberately *not* solved by adding a writer-side resolver
+    to `nucl_parquet`: that would be a third spelling of "where does data live"
+    in a project whose first representation principle is one spelling per
+    concept, and the boundary it needs to defend is scripts/, which is here.
+    """
+    offenders = []
+    for script in sorted((ROOT / "scripts").glob("*.py")):
+        source = script.read_text()
+        prose = _prose_lines(source)
+        for n, line in enumerate(source.splitlines(), 1):
+            if n in prose:
+                continue
+            if re.search(r"\b(from nucl_parquet\.download import|download\.data_dir|_resolve_data_dir)\b", line):
+                offenders.append(f"{script.name}:{n}: {line.strip()}")
+
+    assert not offenders, (
+        "ingest scripts must not resolve their output path with the reader-side "
+        "nucl_parquet.download.data_dir():\n" + "\n".join(offenders) + "\n\n"
+        "Use `from _paths import DATA_DIR`. data_dir() falls back to ~/.nucl-parquet, "
+        "a download cache, so writing through it targets the wrong tree outside a checkout."
+    )
 
 
 def test_exfor_reads_tendl_from_the_data_dir() -> None:

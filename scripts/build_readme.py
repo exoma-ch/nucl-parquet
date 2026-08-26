@@ -16,6 +16,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -169,7 +170,27 @@ def check_or_write(write: bool = False) -> bool:
         return False
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363).
+
+    This used to be `"--write" in sys.argv`, which accepts any typo silently:
+    `--wirte` reads as check-only and exits 1 with a drift report, rather than
+    telling you the flag is not a flag. The default is check-only either way, so
+    the write is already opt-in.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0] if __doc__ else None)
+    ap.add_argument(
+        "--write",
+        action="store_true",
+        help="rewrite the generated README sections in place (default: report drift only)",
+    )
+    return ap
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    return 0 if check_or_write(write=args.write) else 1
+
+
 if __name__ == "__main__":
-    write_mode = "--write" in sys.argv
-    ok = check_or_write(write=write_mode)
-    sys.exit(0 if ok else 1)
+    sys.exit(main())

@@ -236,8 +236,15 @@ on the next data release.*
 """
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363).
+
+    This script reads `--data-dir` and writes to a *remote* — the Hugging Face
+    dataset repo named by `--repo-id`. Both ends are overridable and `--dry-run`
+    already existed, so it was never in the class this issue is about; the
+    extraction is for uniform introspection.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0] if __doc__ else None)
     ap.add_argument("--data-dir", type=Path, default=DATA_DIR)
     ap.add_argument("--repo-id", default=REPO_ID)
     ap.add_argument("--dry-run", action="store_true")
@@ -246,7 +253,11 @@ def main() -> None:
         action="store_true",
         help="push the dataset card but not the shards",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     shard_dir = args.data_dir / "endfb-8.0" / "xs"
     will_sync_shards = not args.card_only and shard_dir.exists()

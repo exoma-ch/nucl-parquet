@@ -661,12 +661,21 @@ def _emit_rows(
 # ----------------------------------------------------------------------- main
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363).
+
+    `out` is a required positional here rather than an optional with a default,
+    which is the strongest form of "the caller chooses where this writes".
+    """
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0] if __doc__ else None)
     ap.add_argument("src", type=pathlib.Path, help="exforall/ directory of exfor_master")
     ap.add_argument("out", type=pathlib.Path, help="output directory (writes <out>/exfor/)")
     ap.add_argument("--limit", type=int, default=0)
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     import polars as pl
 

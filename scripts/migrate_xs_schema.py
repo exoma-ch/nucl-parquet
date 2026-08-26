@@ -101,6 +101,7 @@ def _not_migrated(path: Path, status: str, detail: str, *, strict: bool) -> tupl
     logger.warning("NOT migrated: %s (%s)%s", path, status, f" — {detail}" if detail else "")
     return 0, status
 
+
 __all__ = [
     "LIGHT_ION",
     "SYMBOL_TO_Z",
