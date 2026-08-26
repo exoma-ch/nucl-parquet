@@ -208,6 +208,17 @@ def compute_element_kerma(
 
     results = []
 
+    # KERMA is computed per residual, from the Q-value implied by
+    # (target -> residual). Since #347 these tables also carry `kind='channel'`
+    # rows, and the four that name no residual — total, elastic, inelastic,
+    # fission — arrive with `residual_Z = residual_A = NULL`. Those have no
+    # (delta_Z, delta_A) to derive a Q-value from: `target_Z - res_Z` below is
+    # `int - None` and raises. Take the production sums, which is what this
+    # calculation always meant.
+    if "kind" in df.columns:
+        df = df.filter(pl.col("kind") == "production")
+    df = df.filter(pl.col("residual_Z").is_not_null() & pl.col("residual_A").is_not_null())
+
     for target_A in df["target_A"].unique().sort().to_list():
         iso_df = df.filter(pl.col("target_A") == target_A)
 

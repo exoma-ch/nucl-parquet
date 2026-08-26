@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import sys
 from pathlib import Path
 
@@ -42,67 +41,25 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
-from nucl_parquet._schemas import CANONICAL_XS_SCHEMA  # noqa: E402
 
 COMPRESSION = "zstd"
 
-# Legacy -> canonical column names. `exfor_entry` is source-specific naming for
-# what is really "which record did this datum come from"; the canonical schema
-# generalises it so measurements from any source share one provenance column.
-_RENAMES = {"exfor_entry": "source_entry"}
+# The canonical row vocabulary and the frame transform now live in
+# `_canonical.py`, so the ingest can produce canonical output directly instead of
+# depending on this migration being remembered afterwards (#359). Re-exported
+# here because these names are this module's public surface (tests import
+# `parse_stem`, `_RENAMES`).
+from _canonical import LIGHT_ION, SYMBOL_TO_Z, canonical_frame, parse_stem  # noqa: E402
+from _canonical import RENAMES as _RENAMES  # noqa: E402
 
-# Light-ion projectile code -> (Z, A). Photons carry ZA = 0, per ENDF.
-LIGHT_ION: dict[str, tuple[int, int]] = {
-    "n": (0, 1),
-    "p": (1, 1),
-    "d": (1, 2),
-    "t": (1, 3),
-    "h": (2, 3),
-    "a": (2, 4),
-    "g": (0, 0),
-}
-
-_ELEMENTS = (
-    "n H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn "
-    "Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce "
-    "Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn "
-    "Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl "
-    "Mc Lv Ts Og"
-).split()
-SYMBOL_TO_Z = {s.lower(): i for i, s in enumerate(_ELEMENTS)}
-
-# Heavy-ion projectile stem, e.g. 'ar40' -> ('Ar', 40).
-_HEAVY_ION = re.compile(r"^([a-z]{1,2})(\d{1,3})$")
-# File stem: <projectile>_<Element>. The target is either an element symbol or,
-# for elements the builders have no symbol for (transuranics, Tc, Pm), the
-# explicit 'Z<number>' form — e.g. 'p_Z61', 'd_Z105'.
-_STEM = re.compile(r"^([a-z]{1,2}\d{0,3})_(Z\d{1,3}|[A-Za-z]{1,2})$")
-
-
-def parse_stem(stem: str) -> tuple[str, int, int, int] | None:
-    """'p_Cu' -> ('p', 1, 1, 29);  'ar40_Ac' -> ('ar40', 18, 40, 89);
-    'p_Z61' -> ('p', 1, 1, 61)."""
-    m = _STEM.match(stem)
-    if not m:
-        return None
-    proj, elem = m.group(1), m.group(2)
-    if elem.startswith("Z") and elem[1:].isdigit():
-        target_z = int(elem[1:])
-    else:
-        target_z = SYMBOL_TO_Z.get(elem.lower())
-    if target_z is None:
-        return None
-    if proj in LIGHT_ION:
-        pz, pa = LIGHT_ION[proj]
-    else:
-        hm = _HEAVY_ION.match(proj)
-        if hm is None:
-            return None
-        pz = SYMBOL_TO_Z.get(hm.group(1).lower())
-        if pz is None:
-            return None
-        pa = int(hm.group(2))
-    return proj, pz, pa, target_z
+__all__ = [
+    "LIGHT_ION",
+    "SYMBOL_TO_Z",
+    "_RENAMES",
+    "canonical_frame",
+    "migrate_file",
+    "parse_stem",
+]
 
 
 def migrate_file(path: Path, library: str, kind: str, dry_run: bool) -> tuple[int, str]:
@@ -122,53 +79,15 @@ def migrate_file(path: Path, library: str, kind: str, dry_run: bool) -> tuple[in
     if "library" in df.columns:
         return df.height, "already-canonical"
 
-    # Legacy column names that the canonical schema spells differently. Without
-    # this the select-by-canonical-name below silently *drops* them — EXFOR entry
-    # ids are the whole provenance chain back to the measurement.
-    renames = {old: new for old, new in _RENAMES.items() if old in df.columns and new not in df.columns}
-    if renames:
-        df = df.rename(renames)
-
-    have = set(df.columns)
-    # hi-xs-prod already carries proj_Z/proj_A; prefer the file's own values.
-    if "proj_Z" in have and "proj_A" in have:
-        proj_expr = [pl.col("proj_Z").cast(pl.Int32), pl.col("proj_A").cast(pl.Int32)]
-    else:
-        proj_expr = [
-            pl.lit(proj_z, dtype=pl.Int32).alias("proj_Z"),
-            pl.lit(proj_a, dtype=pl.Int32).alias("proj_A"),
-        ]
-
-    df = df.with_columns(
-        pl.lit(library, dtype=pl.Utf8).alias("library"),
-        pl.lit(kind, dtype=pl.Utf8).alias("kind"),
-        pl.lit(projectile, dtype=pl.Utf8).alias("projectile"),
-        *proj_expr,
-        # target_Z is absent from the legacy schema — it lived in the filename.
-        (
-            pl.col("target_Z").cast(pl.Int32)
-            if "target_Z" in have
-            else pl.lit(target_z, dtype=pl.Int32).alias("target_Z")
-        ),
-    )
-
-    # Fill the rest of the canonical shape with typed nulls.
-    for col, dtype in CANONICAL_XS_SCHEMA.items():
-        if col not in df.columns:
-            df = df.with_columns(pl.lit(None, dtype=getattr(pl, dtype)).alias(col))
-
-    # A 0/0 residual is the legacy sentinel for "this channel names none".
-    # Nulls say that truthfully and do not collide with a real Z=0 product.
-    if {"residual_Z", "residual_A"} <= set(df.columns):
-        no_residual = (pl.col("residual_Z") == 0) & (pl.col("residual_A") == 0)
-        df = df.with_columns(
-            pl.when(no_residual).then(None).otherwise(pl.col("residual_Z")).cast(pl.Int32).alias("residual_Z"),
-            pl.when(no_residual).then(None).otherwise(pl.col("residual_A")).cast(pl.Int32).alias("residual_A"),
-        )
-
-    df = df.select([pl.col(c).cast(getattr(pl, t)) for c, t in CANONICAL_XS_SCHEMA.items()]).sort(
-        "target_A", "residual_Z", "residual_A", "energy_MeV"
-    )
+    df = canonical_frame(
+        df,
+        library=library,
+        kind=kind,
+        projectile=projectile,
+        proj_z=proj_z,
+        proj_a=proj_a,
+        target_z=target_z,
+    ).sort("target_A", "residual_Z", "residual_A", "energy_MeV")
 
     if not dry_run:
         df.write_parquet(path, compression=COMPRESSION)

@@ -527,3 +527,118 @@ def test_every_anchor_rejects_the_value_it_was_written_against(anchor: Anchor) -
         f"accepts {anchor.witness:,.4g} mb ({anchor.witness_note}). The band is too wide to "
         "catch the defect it was written for."
     )
+
+
+# ---------------------------------------------------------------------------
+# Channel anchors — the numbers #347 exists to make queryable
+# ---------------------------------------------------------------------------
+
+#: (MT, label, expected mb at 0.0253 eV, reference)
+_U235_THERMAL_ANCHORS = (
+    (18, "U-235(n,f)", 585_000.0),
+    (1, "U-235 total", 700_000.0),
+)
+
+
+def _loglog_at(rows: list[tuple[float, float]], energy_MeV: float) -> float | None:
+    """Interpolate sigma at one energy in log-log.
+
+    Thinned grids drop interior points of a 1/v region, which is a straight line
+    in log-log and a badly-curved one in lin-lin — interpolating linearly across
+    a decade of thermal data reads high by tens of percent (#271).
+    """
+    import numpy as np
+
+    if len(rows) < 2:
+        return None
+    e = np.array([r[0] for r in rows])
+    s = np.array([r[1] for r in rows])
+    keep = (e > 0) & (s > 0)
+    e, s = e[keep], s[keep]
+    if len(e) < 2 or not (e[0] <= energy_MeV <= e[-1]):
+        return None
+    return float(np.exp(np.interp(np.log(energy_MeV), np.log(e), np.log(s))))
+
+
+def test_u235_channel_anchors_are_physically_right() -> None:
+    """U-235 thermal fission is 585 b and the total is 700 b — the two most
+    quoted numbers in neutron physics, and the reason #347 was filed.
+
+    Both need `kind='channel'` rows: fission and total name no single residual,
+    so `mt_to_residual` returns None for them and the ingest used to drop the
+    row entirely. 17.3M evaluated rows carried zero of either, and this anchor
+    could not be written at all — it is checked in as part of the fix.
+
+    Asserted over every library that carries the channel, and at least one must.
+    Before the #347 re-ingest that is `endfb-8.0-channels` alone; afterwards the
+    evaluated libraries join it, and each is then held to the same number.
+    """
+    import duckdb
+
+    con = duckdb.connect()
+    checked: dict[str, dict[int, float]] = {}
+    for key, info in json.loads(_CATALOG.read_text()).get("libraries", {}).items():
+        path = info.get("path")
+        if not path or not (_DATA_DIR / path).exists():
+            continue
+        u_files = list((_DATA_DIR / path).glob("n_U.parquet"))
+        if not u_files:
+            continue
+        for mt, _label, _expected in _U235_THERMAL_ANCHORS:
+            try:
+                rows = con.sql(f"""
+                    SELECT energy_MeV, xs_mb FROM read_parquet('{u_files[0]}')
+                    WHERE target_Z = 92 AND target_A = 235 AND MT = {mt}
+                      AND kind = 'channel' AND xs_mb > 0
+                    ORDER BY energy_MeV
+                """).fetchall()
+            except duckdb.Error:
+                continue  # library predates the canonical schema
+            value = _loglog_at(rows, 2.53e-8)
+            if value is not None:
+                checked.setdefault(key, {})[mt] = value
+
+    assert checked, (
+        "no library carries U-235 MT=1 or MT=18 as a channel row. Either the "
+        "#347 re-ingest has not run and endfb-8.0-channels is missing, or the "
+        "ingest has stopped emitting null-residual channels again."
+    )
+
+    bad = []
+    for key, values in sorted(checked.items()):
+        for mt, label, expected in _U235_THERMAL_ANCHORS:
+            got = values.get(mt)
+            if got is None:
+                continue
+            if not (expected * 0.8 < got < expected * 1.2):
+                bad.append(f"{key} {label}: {got:,.0f} mb, expected ~{expected:,.0f} mb")
+    assert not bad, "U-235 thermal anchors are off:\n  " + "\n  ".join(bad)
+
+
+def test_fission_is_queryable_at_all() -> None:
+    """The blunt version of the above: `WHERE MT = 18` must return rows.
+
+    #347's headline symptom was that it returned nothing anywhere in the
+    evaluated half of the repository, so a user comparing EXFOR against an
+    evaluation for U-235(n,f) got 487,476 experimental rows and zero evaluated.
+    """
+    import duckdb
+
+    con = duckdb.connect()
+    total = 0
+    for key, info in json.loads(_CATALOG.read_text()).get("libraries", {}).items():
+        path = info.get("path")
+        if not path or not (_DATA_DIR / path).exists():
+            continue
+        # `f"{_DATA_DIR}/{path}"`, not `_DATA_DIR / path`: catalog paths end in a
+        # slash and pathlib strips it, turning `endfb-8.0/channels/` into a glob
+        # for `channels*.parquet`, which matches nothing. That is how this test
+        # first "found" zero fission rows in a tree that has 123,007 of them.
+        try:
+            n = con.sql(
+                f"SELECT count(*) FROM read_parquet('{_DATA_DIR}/{path}*.parquet', union_by_name=true) WHERE MT = 18"
+            ).fetchone()[0]
+        except duckdb.Error:
+            continue
+        total += n
+    assert total > 0, "no MT=18 fission rows anywhere in data/ — see #347"

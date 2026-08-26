@@ -107,21 +107,30 @@ def test_declared_builders_exist() -> None:
 def test_a_rebuild_command_that_would_downgrade_the_schema_chains_the_migration() -> None:
     """The remedy this PR prints must not itself be a defect.
 
-    `scripts/fetch_endf_libs.py`, `scripts/build_neutron_njoy.py` and
-    `nucl_parquet/build_hi_xs.py` still emit the pre-migration 6-column form
-    (#359). The committed data is 18-column canonical only because
-    `scripts/migrate_xs_schema.py` was run once, after the fact, and nothing
-    chains the two. So running the bare ingest on any library they build drops
-    12 of 18 columns — `library`, `kind`, `projectile`, `target_Z`, `MT` and all
-    provenance — which is `CLAUDE.md` principle 5 undone by the normal
-    maintenance operation, silently, with the ingest exiting 0.
+    `scripts/build_neutron_njoy.py` and `nucl_parquet/build_hi_xs.py` still emit
+    the pre-migration 6-column form (#359). Their committed data is 18-column
+    canonical only because `scripts/migrate_xs_schema.py` was run once, after the
+    fact, and nothing chains the two. So running the bare ingest on any library
+    they build drops 12 of 18 columns — `library`, `kind`, `projectile`,
+    `target_Z`, `MT` and all provenance — which is `CLAUDE.md` principle 5 undone
+    by the normal maintenance operation, silently, with the ingest exiting 0.
 
     That knowledge lived in no file. It lives in `rebuild_command` now, and this
     keeps it there: the requirement is **derived from the builder's source**, not
     from a list someone has to remember to update. Add a library whose builder
-    does not emit `CANONICAL_XS_SCHEMA` and forget the migration, and this fails.
-    Fix the ingest (#359, which is the same edit as #347) and the requirement
-    lifts by itself.
+    does not emit canonical rows and forget the migration, and this fails.
+
+    `scripts/fetch_endf_libs.py` was the third such builder and the one behind
+    nine of the eleven libraries this originally checked. #347/#359 fixed it, so
+    it now writes canonical directly and drops out of the loop by itself —
+    exactly the "the requirement lifts" path this docstring described. The floor
+    below moved 11 -> 2 to match; raise it back if a new legacy builder lands,
+    and retire the test entirely once these last two are converted.
+
+    The source grep is a heuristic. The load-bearing proof that `fetch_endf_libs`
+    really emits canonical rows is
+    `test_fetch_endf_libs.py::test_written_file_is_exactly_the_canonical_schema`,
+    which ingests a material and compares the written columns and dtypes.
     """
     catalog = json.loads((_DATA_DIR / "catalog.json").read_text())
     problems: list[str] = []
@@ -130,7 +139,11 @@ def test_a_rebuild_command_that_would_downgrade_the_schema_chains_the_migration(
         builder, cmd = info.get("builder"), info.get("rebuild_command")
         if not builder or not cmd:
             continue
-        if "CANONICAL_XS_SCHEMA" in (_REPO_ROOT / builder).read_text():
+        src = (_REPO_ROOT / builder).read_text()
+        # Either spelling counts: `build_channels.py` builds its frame straight
+        # from CANONICAL_XS_SCHEMA, `fetch_endf_libs.py` goes through
+        # `_canonical.canonical_frame`. Both land in the same shape.
+        if "CANONICAL_XS_SCHEMA" in src or "canonical_frame" in src:
             continue  # emits canonical form directly; nothing to migrate
         checked += 1
         if f"migrate_xs_schema.py --library {key}" not in cmd:
@@ -140,9 +153,11 @@ def test_a_rebuild_command_that_would_downgrade_the_schema_chains_the_migration(
 
     # Positive assertion. If the loop matched nothing this test would pass by
     # finding nothing — the exact failure mode #342 exists to prevent.
-    assert checked >= 11, (
+    assert checked >= 2, (
         f"only {checked} librarie(s) matched the legacy-schema builders; this test has stopped "
-        "checking what it was written for (or #359 is fixed and it should be retired)"
+        "checking what it was written for. Two remain after #347/#359 — endfb-8.0 "
+        "(build_neutron_njoy.py) and hi-xs (build_hi_xs.py). If both have since been "
+        "converted, retire this test rather than lowering the floor again."
     )
     assert not problems, "rebuild_command would revert these libraries to the legacy schema (#359):\n  " + "\n  ".join(
         problems

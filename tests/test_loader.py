@@ -298,10 +298,19 @@ def test_interp_loglog() -> None:
 
 
 def test_connect_empty_dir(tmp_path: Path) -> None:
-    """connect() works even with no catalog or data."""
+    """connect() works even with no catalog or data.
+
+    Every *data-backed* view needs a file to point at, so none of them can
+    register here. `endf_mt` is the exception by construction: it is built from
+    `nucl_parquet/endf_mt.py`, so the ENDF reaction vocabulary is queryable
+    without downloading anything (#347).
+    """
     db = connect(tmp_path)
-    views = db.sql("SELECT table_name FROM information_schema.tables WHERE table_type='VIEW'").fetchall()
-    assert len(views) == 0
+    views = {
+        r[0] for r in db.sql("SELECT table_name FROM information_schema.tables WHERE table_type='VIEW'").fetchall()
+    }
+    assert views == {"endf_mt"}
+    assert db.sql("SELECT count(*) FROM endf_mt").fetchone()[0] > 0
 
 
 def test_sql_constants_are_strings() -> None:
