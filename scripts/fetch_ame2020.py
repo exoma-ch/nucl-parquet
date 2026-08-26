@@ -19,18 +19,22 @@ Usage:
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 import polars as pl
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
 SRC_URL = "https://www-nds.iaea.org/amdc/ame2020/mass_1.mas20.txt"
-RAW_PATH = ROOT / "data" / "g4_raw" / "ame2020" / "mass_1.mas20.txt"
-OUT_PATH = ROOT / "data" / "auxiliary" / "ame2020.parquet"
+RAW_PATH = DATA_DIR / "g4_raw" / "ame2020" / "mass_1.mas20.txt"
+OUT_PATH = DATA_DIR / "auxiliary" / "ame2020.parquet"
 
 
 def _fetch() -> Path:

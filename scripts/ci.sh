@@ -62,10 +62,16 @@ uv sync --dev
 # test_data_signing: gates the minisign release-signing path (#289) — that the
 # workflow signs unconditionally, that the signature actually verifies, and that
 # tampering/replay/stripping are all rejected. Needs no data and no network.
+# test_repo_layout: gates where data may live (#341) — no tracked parquet outside
+# data/, and the ingest scripts' --output defaults. This list is an allowlist, so
+# a gate that is not named here does not run in CI at all; #341's tests were
+# written to stop a 623-file stale tree coming back and would have been silent.
+# Needs only a git checkout — no data tree, no network.
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
   tests/test_data_signing.py \
   tests/test_stsv.py \
   tests/test_release_config.py \
+  tests/test_repo_layout.py \
   -m "not data and not network" -v
 ok "python tests passed"
 endgroup

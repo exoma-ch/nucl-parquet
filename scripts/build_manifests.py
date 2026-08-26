@@ -27,8 +27,11 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR, ROOT  # noqa: E402
+
+sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
 XS_TYPES = {
     "cross_sections",
@@ -93,7 +96,7 @@ def build_manifest(key: str, pq_dir: Path) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", type=Path, default=ROOT / "data")
+    ap.add_argument("--data-dir", type=Path, default=DATA_DIR)
     ap.add_argument(
         "--check",
         action="store_true",

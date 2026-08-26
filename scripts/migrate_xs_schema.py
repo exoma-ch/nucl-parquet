@@ -36,8 +36,11 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR, ROOT  # noqa: E402
+
+sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
 from nucl_parquet._schemas import CANONICAL_XS_SCHEMA  # noqa: E402
 
@@ -174,7 +177,7 @@ def migrate_file(path: Path, library: str, kind: str, dry_run: bool) -> tuple[in
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", type=Path, default=ROOT / "data")
+    ap.add_argument("--data-dir", type=Path, default=DATA_DIR)
     ap.add_argument("--library", help="migrate only this library key")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
