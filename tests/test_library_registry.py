@@ -30,7 +30,11 @@ import pytest
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from fetch_endf_libs import LIBRARIES, UNSHIPPED_SUBLIBRARIES  # noqa: E402
+from fetch_endf_libs import (  # noqa: E402
+    LIBRARIES,
+    UNSHIPPED_SUBLIBRARIES,
+    UPSTREAM_TARGET_GAPS,
+)
 
 CATALOG = ROOT / "data" / "catalog.json"
 
@@ -428,3 +432,93 @@ def test_all_sublibs_and_all_agree_on_scope(monkeypatch, tmp_path):
         f"  only --all:         {sorted(everything - per_library)}"
     )
     assert per_library, "both sweeps selected nothing"
+
+
+# ---------------------------------------------------------------------------
+# Upstream target-coverage gaps (#331)
+# ---------------------------------------------------------------------------
+#
+# `tendl-2025` ships no hydrogen or helium — `target_Z` starts at 3 — while every
+# peer neutron library carries H-1/2/3. From inside the repository "upstream does
+# not evaluate it" and "our ingest lost it" are indistinguishable: both are just
+# a library with no hydrogen. `UPSTREAM_TARGET_GAPS` records which one it is, and
+# these tests keep the record honest against the shipped data.
+
+
+def test_upstream_gaps_name_real_libraries_and_give_a_reason():
+    """A gap entry must describe a library that exists and say why.
+
+    Same contract as `test_unshipped_entries_are_real_and_reasoned`: an entry
+    naming a library that has been renamed away excuses nothing and hides the
+    fact that nobody re-checked it.
+    """
+    for key, gap in sorted(UPSTREAM_TARGET_GAPS.items()):
+        assert key in LIBRARIES, f"UPSTREAM_TARGET_GAPS names unknown library {key!r}"
+        assert gap.min_target_Z > 1, f"{key}: a gap starting at Z<=1 is not a gap"
+        assert len(gap.reason) > 60, f"{key}: give an actual reason, got {gap.reason!r}"
+        assert "#" in gap.reason, f"{key}: cite the issue that established the gap"
+
+
+@pytest.mark.data
+def test_shipped_data_exhibits_every_declared_gap():
+    """The declared floor must be the floor the parquets actually have.
+
+    Two directions, both failures:
+
+      * a row *below* `min_target_Z` means the gap has closed — upstream added
+        the evaluations, or our ingest was losing them after all. Either way the
+        note is now false and must go.
+      * a floor *above* `min_target_Z` means coverage narrowed since the note was
+        written, which is worth knowing rather than silently tolerating.
+
+    Self-cleaning, so the record cannot outlive the fact it records.
+    """
+    import duckdb
+
+    con = duckdb.connect()
+    for key, gap in sorted(UPSTREAM_TARGET_GAPS.items()):
+        xs_dir = ROOT / "data" / key / "xs"
+        if not xs_dir.is_dir() or not any(xs_dir.glob("*.parquet")):
+            pytest.skip(f"no shipped data for {key}")
+        actual = con.sql(f"SELECT min(target_Z) FROM read_parquet('{xs_dir}/*.parquet')").fetchone()[0]
+        assert actual == gap.min_target_Z, (
+            f"{key}: UPSTREAM_TARGET_GAPS declares min_target_Z={gap.min_target_Z} but the "
+            f"shipped parquets start at {actual}.\n"
+            + (
+                "Coverage now goes lower than the note claims — the gap has closed, so delete "
+                "the entry (and check it was ever real)."
+                if actual < gap.min_target_Z
+                else "Coverage is narrower than the note claims — something else is missing too."
+            )
+        )
+
+
+@pytest.mark.data
+def test_a_declared_gap_is_not_shared_by_its_peers():
+    """A gap is only worth recording if it is this library's, not everyone's.
+
+    If every neutron library started at the same Z, that would be a property of
+    the format or of our ingest — not an upstream quirk of one evaluation
+    project — and the note would be attributing it to the wrong place. tendl-2025
+    starts at Li while JEFF-4.0, JENDL-5 and CENDL-3.2 start at H, which is what
+    makes it a fact about TALYS.
+    """
+    import duckdb
+
+    con = duckdb.connect()
+    for key, gap in sorted(UPSTREAM_TARGET_GAPS.items()):
+        lower = []
+        for peer in sorted(LIBRARIES):
+            if peer == key:
+                continue
+            peer_dir = ROOT / "data" / peer / "xs"
+            if not peer_dir.is_dir() or not any(peer_dir.glob("*.parquet")):
+                continue
+            peer_min = con.sql(f"SELECT min(target_Z) FROM read_parquet('{peer_dir}/*.parquet')").fetchone()[0]
+            if peer_min is not None and peer_min < gap.min_target_Z:
+                lower.append(peer)
+        assert lower, (
+            f"{key} declares an upstream gap below Z={gap.min_target_Z}, but no other "
+            "library in the catalog reaches lower. If they all stop at the same place "
+            "this is not upstream's coverage — it is ours."
+        )
