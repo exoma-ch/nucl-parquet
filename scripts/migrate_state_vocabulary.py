@@ -52,8 +52,10 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 sys.path.insert(0, str(ROOT))
 
 from nucl_parquet.state_vocabulary import (  # noqa: E402
+    GROUND,
     LEGACY_UNSPECIFIED,
     MEASURED_XS_STATES,
+    NUCLIDE_STATES,
     PENDING_COLUMN_RENAME,
     PENDING_MIGRATION,
     SUM,
@@ -115,6 +117,157 @@ def migrated_state_column(table: str, states: pl.Series) -> pl.Series:
         raise UnmigratableTable(table, "unknown-state", f"values the vocabulary cannot place: {unknown}")
 
     return states.replace_strict(mapping, default=pl.first(), return_dtype=pl.Utf8)
+
+
+#: Tables whose `state` names which state of the *parent nuclide* a row is
+#: about, so `''` meant the ground state. `meta/ensdf` is handled separately
+#: because it needs `level_keV` to tell a real ground state from an excited
+#: level that inherited the label.
+_NUCLIDE_KEYED = frozenset({"meta/ensdf/radiation", "meta/ensdf/beta_spectra", "meta"})
+
+#: Files inside a `_NUCLIDE_KEYED` directory that are NOT nuclide-keyed and must
+#: not take the `'' -> 'g'` rule.
+#:
+#: `meta/spectrum_xs.parquet` is a roll-up of the ENDF cross-section tables and
+#: its `state` is a passthrough, so its 99,512 `''` rows carry ENDF's "summed
+#: over states" meaning. Mapping them to `'g'` would relabel a hundred thousand
+#: aggregates as ground-state rows — the same mistake as #357, committed while
+#: fixing #357. It is rebuilt from the xs tables and will inherit `'sum'`.
+_NOT_NUCLIDE_KEYED = frozenset({"spectrum_xs.parquet"})
+
+#: Isomer energies per (Z, A), read from nuclides.parquet, for deciding whether
+#: a radiation row's emitting level coincides with a catalogued isomer.
+_ISOMER_TOLERANCE_KEV = 1.0
+
+
+def _catalogued_isomer_levels(data_dir: Path) -> dict[tuple[int, int], list[float]]:
+    nuclides = data_dir / "meta" / "ensdf" / "nuclides.parquet"
+    if not nuclides.is_file():
+        raise UnmigratableTable("meta/ensdf", "missing", f"{nuclides} is needed to classify radiation rows")
+    df = pl.read_parquet(nuclides, columns=["Z", "A", "state", "level_keV"])
+    levels: dict[tuple[int, int], list[float]] = {}
+    for z, a, state, level in df.iter_rows():
+        # Pre-migration the isomers are already spelled 'm'/'m2'/'m3'; post-
+        # migration they still are. Only the ground label moves, so this reads
+        # correctly either way.
+        if state not in (LEGACY_UNSPECIFIED, GROUND, None):
+            levels.setdefault((int(z), int(a)), []).append(float(level))
+    return levels
+
+
+def migrate_nuclides(data_dir: Path, *, dry_run: bool) -> tuple[int, str]:
+    """`meta/ensdf/nuclides.parquet`: level_keV == 0 -> 'g', else NULL.
+
+    `assign_state_labels` calls the lowest *listed* level per (Z, A) the ground
+    state. For 3,148 of 3,161 rows that level is at 0.0 keV and the label is
+    right. For 13 it is not: G4ENSDFSTATE does not list those nuclides' ground
+    states, so an excited level inherited the label — every one of them matches
+    a level at index 1-5 in `meta/ensdf/levels/`, and four carry ENSDF's `+X`
+    floating flag, meaning the excitation is relative to an unknown offset.
+
+    Those 13 become NULL rather than `'g'`. Calling a 2166 keV level "the ground
+    state" would be a plausible value under an identity nobody checked, which is
+    the defect this migration exists to remove (#378).
+    """
+    path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
+    if not path.is_file():
+        raise UnmigratableTable("meta/ensdf", "missing", str(path))
+    df = pl.read_parquet(path)
+    for column in ("state", "level_keV"):
+        if column not in df.columns:
+            raise UnmigratableTable("meta/ensdf", "no-column", f"{path.name} has no `{column}`")
+
+    present = {v for v in df["state"].unique().to_list() if v is not None}
+    stray = sorted(present - NUCLIDE_STATES - {LEGACY_UNSPECIFIED})
+    if stray:
+        raise UnmigratableTable("meta/ensdf", "unknown-state", f"{stray}")
+    if LEGACY_UNSPECIFIED not in present:
+        return 0, "already-migrated"
+
+    new_state = (
+        pl.when(pl.col("state") != LEGACY_UNSPECIFIED)
+        .then(pl.col("state"))
+        .when(pl.col("level_keV") == 0.0)
+        .then(pl.lit(GROUND))
+        .otherwise(pl.lit(None, dtype=pl.Utf8))
+    )
+    out = df.with_columns(new_state.alias("state"))
+    changed = int((df["state"] == LEGACY_UNSPECIFIED).sum())
+    if not dry_run:
+        out.write_parquet(path, compression=COMPRESSION)
+    return changed, "migrated"
+
+
+def migrate_nuclide_keyed(data_dir: Path, table: str, *, dry_run: bool) -> tuple[int, str]:
+    """`''` -> `'g'` in tables whose `state` names which state of the parent decays.
+
+    `radiation` is the hard one. Its `''` is documented as "from the ground-band
+    decay chain", so the decaying species is the ground state and `'g'` is
+    right — except for 13,106 rows across 45 nuclides whose emitting level
+    coincides with a catalogued isomer of the same nuclide. Whether those are
+    ground-band cascade gammas or isomer decays cannot be settled from an energy
+    coincidence, so they become NULL (#386); resolving them needs ENSDF's own
+    band assignment, not a better energy tolerance.
+    """
+    paths = shards(data_dir, table)
+    if not paths:
+        raise UnmigratableTable(table, "no-shards", "declared but ships no parquet")
+
+    ambiguous_levels = _catalogued_isomer_levels(data_dir) if table.endswith("radiation") else {}
+    changed = 0
+    # "No shard in this table has a `state` column" is a real error; "this one
+    # sibling never had one" is normal in data/meta. Keeping the two apart is
+    # the difference between a skip and a silent skip.
+    seen_state_column = False
+    for path in paths:
+        if path.name in _NOT_NUCLIDE_KEYED:
+            continue  # different meaning of '' — see _NOT_NUCLIDE_KEYED
+        if "state" not in pl.read_parquet_schema(path):
+            continue  # a sibling that never had the column (data/meta is mixed)
+        seen_state_column = True
+        df = pl.read_parquet(path)
+        present = {v for v in df["state"].unique().to_list() if v is not None}
+        stray = sorted(present - NUCLIDE_STATES - {LEGACY_UNSPECIFIED})
+        if stray:
+            raise UnmigratableTable(table, "unknown-state", f"{path.name}: {stray}")
+        if LEGACY_UNSPECIFIED not in present:
+            continue
+
+        blank = pl.col("state") == LEGACY_UNSPECIFIED
+        if ambiguous_levels and "parent_level_keV" in df.columns:
+            ambiguous = pl.Series(
+                [
+                    row_blank
+                    and row_level is not None
+                    and any(
+                        abs(row_level - lvl) < _ISOMER_TOLERANCE_KEV for lvl in ambiguous_levels.get((row_z, row_a), ())
+                    )
+                    for row_blank, row_level, row_z, row_a in zip(
+                        (df["state"] == LEGACY_UNSPECIFIED).to_list(),
+                        df["parent_level_keV"].to_list(),
+                        df["Z"].to_list(),
+                        df["A"].to_list(),
+                    )
+                ],
+                dtype=pl.Boolean,
+            )
+        else:
+            ambiguous = pl.Series([False] * df.height, dtype=pl.Boolean)
+
+        new_state = (
+            pl.when(~blank)
+            .then(pl.col("state"))
+            .when(pl.lit(ambiguous))
+            .then(pl.lit(None, dtype=pl.Utf8))
+            .otherwise(pl.lit(GROUND))
+        )
+        changed += int((df["state"] == LEGACY_UNSPECIFIED).sum())
+        if not dry_run:
+            df.with_columns(new_state.alias("state")).write_parquet(path, compression=COMPRESSION)
+
+    if not seen_state_column:
+        raise UnmigratableTable(table, "no-state-column", "no shard in this table has a `state` column")
+    return changed, "already-migrated" if changed == 0 else "migrated"
 
 
 def migrate_table(data_dir: Path, table: str, *, dry_run: bool) -> tuple[int, str]:
@@ -231,12 +384,14 @@ def main(argv: list[str] | None = None) -> None:
     total = 0
     statuses: dict[str, str] = {}
     for table in wanted:
-        # meta/* is deliberately out of scope — see the module docstring.
-        if table.startswith("meta"):
-            logger.info("skipping %s: the nuclide-identity tables need their own pass", table)
-            continue
-        migrate = rename_state_to_phase if table in PENDING_COLUMN_RENAME else migrate_table
-        rows, status = migrate(args.data_dir, table, dry_run=args.dry_run)
+        if table == "meta/ensdf":
+            rows, status = migrate_nuclides(args.data_dir, dry_run=args.dry_run)
+        elif table in _NUCLIDE_KEYED:
+            rows, status = migrate_nuclide_keyed(args.data_dir, table, dry_run=args.dry_run)
+        elif table in PENDING_COLUMN_RENAME:
+            rows, status = rename_state_to_phase(args.data_dir, table, dry_run=args.dry_run)
+        else:
+            rows, status = migrate_table(args.data_dir, table, dry_run=args.dry_run)
         statuses[table] = status
         total += rows
         logger.info("  %-28s %-16s %8d row(s)", table, status, rows)

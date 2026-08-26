@@ -268,10 +268,22 @@ def connect(data_dir: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     _register_endf_mt(db)
 
     # ground_states: when nuclides.parquet exists, override the file-based
-    # ground_states view with a filtered view of nuclides (state='').
+    # ground_states view with a filtered view of nuclides.
+    #
+    # Accepts both spellings on purpose. The ground state is `'g'` in the
+    # vocabulary every other table now uses (#357), but `nuclides.parquet` still
+    # ships `''` until #378's migration is run against `data/` — that is a data
+    # release, so the code lands first. Matching both means the migration can be
+    # run without a lockstep code change, and this line keeps telling the truth
+    # on either side of it.
+    #
+    # It is not a widened net: `''` and `'g'` are the *same claim* about the same
+    # rows, one before the rename and one after. NULL is deliberately excluded —
+    # those are the 13 rows whose state could not be established (#378), and
+    # "ground state" is exactly what they do not say.
     nuclides_path = data_dir / "meta" / "ensdf" / "nuclides.parquet"
     if nuclides_path.exists():
-        db.execute("CREATE OR REPLACE VIEW ground_states AS SELECT * FROM nuclides WHERE state = ''")
+        db.execute("CREATE OR REPLACE VIEW ground_states AS SELECT * FROM nuclides WHERE state IN ('g', '')")
 
     # EADL aliases: eadl_transitions (v0.11 compat) + fluorescence (radiative subset)
     eadl_dir = data_dir / "meta" / "eadl"
