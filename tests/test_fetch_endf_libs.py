@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -563,6 +564,127 @@ def test_guard_is_quiet_when_the_library_genuinely_has_no_mf10(monkeypatch, tmp_
     assert manifest["mf3_rows"] == 1
     assert manifest["states"] == {SUM: 2}  # the production row and the channel row
     assert manifest["null_residual_rows"] == 1
+
+
+def test_the_signed_section_rule_is_one_function_both_readers_use():
+    """#377's rule must not be re-implemented by the second MF=3 reader.
+
+    `scripts/backfill_xs_nuclides.py` also parses MF=3 straight off a tape, and
+    it had its own point-wise `xs > 0` filter — which is exactly the half-fix
+    #379 rejected, because it keeps the positive lobe of a mixed-sign curve. The
+    predicate is a named function so there is one spelling of "this section is
+    not a sigma", and this asserts the backfill imports *that* one rather than
+    growing a second.
+    """
+    import backfill_xs_nuclides as bf
+    import numpy as np
+
+    m = _mod()
+    assert bf.is_signed_section is m.is_signed_section, "the backfill has its own copy of the rule"
+
+    # Mixed sign is the load-bearing case: an all-negative section fails safe
+    # under a point-wise filter too, so a test built only on that would pass
+    # against the half-fix.
+    assert m.is_signed_section(np.array([-257.4, 172.2, 12604.5])), "mixed-sign section must be rejected whole"
+    assert m.is_signed_section(np.array([-1.0, -2.0]))
+    assert not m.is_signed_section(np.array([0.3, 0.02, 0.001]))
+    assert not m.is_signed_section(np.array([0.0, 0.5])), "zero is not negative"
+    # NaNs must not make a clean section look signed, nor mask a real negative.
+    assert not m.is_signed_section(np.array([np.nan, 1.0]))
+    assert m.is_signed_section(np.array([np.nan, -1.0]))
+
+
+def test_a_tape_that_yields_nothing_is_named_in_the_log(monkeypatch, tmp_path, caplog):
+    """#335 / #336: dropping a nuclide is allowed; doing it silently is not.
+
+    None of the guards above can see this. They ask whether a *sublibrary* went
+    dark, and a run where 2 of 2298 tapes convert to nothing is healthy by every
+    one of those measures — the element count is fine, MF=3 and MF=10 are both
+    producing, and the exit code is 0. That is exactly the state in which
+    tendl-2023-iso lost p+Be-9 and jendl-5 lost n+Ho-165, and the only thing that
+    would have surfaced either is being told *which* tapes produced nothing.
+
+    So the assertion is on the tape's name, not on a count: a count says
+    something went missing, a name says what.
+    """
+    healthy = _mod().ParsedFile(
+        rows=[_MF3_ROW, _CHANNEL_ROW],
+        mf3_sections=12,
+        mf3_usable_sections=12,
+        mf3_residual_sections=12,
+        mf3_rows=1,
+        channel_rows=1,
+        null_residual_rows=1,
+    )
+    # Parsed fine, named nothing: an evaluation with no production data. Its
+    # counters stay zero so no aggregate guard fires on it.
+    silent = _mod().ParsedFile(rows=[])
+    m = _stub_library(
+        monkeypatch,
+        {"n_013-Al-27_1325.zip": healthy, "n_004-Be-9_0425.zip": silent},
+    )
+    with caplog.at_level(logging.WARNING):
+        m.fetch_library("cendl-3.2", "n", tmp_path, session=None)
+
+    report = "\n".join(r.getMessage() for r in caplog.records)
+    assert "n_004-Be-9_0425.zip" in report, "the dropped tape was not named — this is the #335 silence"
+    assert "1/2" in report, "the report must say how many tapes of how many"
+    assert "n_013-Al-27_1325.zip" not in report, "a tape that produced rows must not be reported as absent"
+    # And the run still succeeds: a legitimate drop is not a failure.
+    assert (tmp_path / "cendl-3.2" / "manifest.json").exists()
+
+
+def test_no_report_when_every_tape_produced_rows(monkeypatch, tmp_path, caplog):
+    """The other half. A warning that fires on a clean run is noise, and noise
+    is how the next real one gets scrolled past."""
+    m = _stub_library(
+        monkeypatch,
+        {
+            "n_013-Al-27_1325.zip": _mod().ParsedFile(
+                rows=[_MF3_ROW, _CHANNEL_ROW],
+                mf3_sections=12,
+                mf3_usable_sections=12,
+                mf3_residual_sections=12,
+                mf3_rows=1,
+                channel_rows=1,
+                null_residual_rows=1,
+            )
+        },
+    )
+    with caplog.at_level(logging.WARNING):
+        m.fetch_library("cendl-3.2", "n", tmp_path, session=None)
+    assert "ABSENT from the output" not in caplog.text
+
+
+def test_a_long_report_states_what_it_truncated(monkeypatch, tmp_path, caplog):
+    """A sublibrary is up to ~2300 tapes, so the list has to stop somewhere.
+
+    It stops *out loud*. The count is always exact and the remainder is spelled
+    out, because a cap nobody is told about reads as "that was all of them" —
+    the same shape of silence as the skip this report exists to expose.
+    """
+    m = _stub_library(
+        monkeypatch,
+        {
+            "n_013-Al-27_1325.zip": _mod().ParsedFile(
+                rows=[_MF3_ROW, _CHANNEL_ROW],
+                mf3_sections=12,
+                mf3_usable_sections=12,
+                mf3_residual_sections=12,
+                mf3_rows=1,
+                channel_rows=1,
+                null_residual_rows=1,
+            ),
+            **{f"n_0{i:02d}-X-{i}_000{i}.zip": _mod().ParsedFile(rows=[]) for i in range(1, 6)},
+        },
+    )
+    monkeypatch.setattr(m, "_MAX_LISTED_TAPES", 2)
+    with caplog.at_level(logging.WARNING):
+        m.fetch_library("cendl-3.2", "n", tmp_path, session=None)
+
+    report = "\n".join(r.getMessage() for r in caplog.records)
+    assert "5/6 tapes" in report, f"the count must be exact even when the list is not: {report}"
+    assert "… and 3 more" in report, f"the truncation must be stated: {report}"
 
 
 def test_empty_ingest_guard_raises_rather_than_returning(monkeypatch, tmp_path):
