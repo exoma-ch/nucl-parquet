@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 
 from .build_stopping import _APSTAR_CGI, _fetch_apstar, _parse_apstar_html
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 # Probe range. NIST's compound matnos start at 99 and most known entries fall
 # in 99-276; we go to 280 to be safe. ~180 probes per program at 0.3s = ~55s.

@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 from .loader import _SYMBOL_TO_Z as _SYMBOL_TO_Z_LOWER
 
 # Re-key the shared map with capitalized symbols (filenames use "n_Cu.parquet" style)

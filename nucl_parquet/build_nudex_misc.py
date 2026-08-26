@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 _STRATA_DIR_REL = ("g4_raw", "strata-nuclear")
 _SOURCES: list[tuple[str, str]] = [

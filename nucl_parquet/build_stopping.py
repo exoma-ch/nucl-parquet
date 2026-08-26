@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.request import Request, urlopen
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 _ESTAR_CGI = "https://physics.nist.gov/cgi-bin/Star/e_table-t.pl"
 # PSTAR and ASTAR share /cgi-bin/Star/ap_table.pl — distinguished by the

@@ -1,6 +1,7 @@
 """nucl-parquet: Nuclear data as Parquet — queryable with DuckDB."""
 
 from .download import (
+    NoWritableDataDir,
     build_release_manifest,
     compute_data_sha256,
     data_dir,
@@ -12,6 +13,7 @@ from .download import (
     fetch_file,
     iter_file_digests,
     verify_against_manifest,
+    writable_data_dir,
 )
 from .loader import (
     COINCIDENCE_SQL,
@@ -42,12 +44,14 @@ __all__ = [
     "build_release_manifest",
     "compute_data_sha256",
     "connect",
+    "NoWritableDataDir",
     "data_dir",
     "data_sha256",
     "data_version",
     "dump_release_manifest",
     "iter_file_digests",
     "verify_against_manifest",
+    "writable_data_dir",
     "download",
     "elemental_dedx",
     "ensure",
