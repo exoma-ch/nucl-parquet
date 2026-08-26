@@ -139,6 +139,30 @@ CANONICAL_XS_SCHEMA = {
     "xs_mb": "Float64",
     "energy_err_MeV": "Float64",
     "xs_err_mb": "Float64",
+    # ENDF's interpolation law (ENDF-102 `INT`) for the interval that STARTS at
+    # this row's energy. The vocabulary lives in `nucl_parquet/endf_interp.py`
+    # and is queryable as the `endf_interp` view.
+    #
+    # ENDF tabulates sigma(E) as points *plus a law*; keeping only the points
+    # leaves the reader to assume one, and every reader assumes `np.interp`.
+    # Measured against the TENDL-2023 tapes #335 restored, that assumption is
+    # wrong by up to 30% in a law-5 (log-log) region and by *multiples* — 150%
+    # to 550% median — in a law-6 region, which is the near-threshold
+    # Coulomb-penetrability regime a (p,n) converter foil lives in (#338).
+    #
+    # Per row rather than per region because the law genuinely varies inside one
+    # MF=3 section (TENDL-2023 p+Li-6 MT=750 is law 6 then law 5), so there is no
+    # coarser key that holds it, and because the ingest filters points before
+    # emitting rows, which invalidates ENDF's index-based region boundaries. It
+    # is a low-cardinality integer, so Parquet dictionary-encodes it to almost
+    # nothing — this is not the "long, never wide" trap of principle 4, which is
+    # about a new *channel* becoming a new *column*.
+    #
+    # NULL means the source never stated a law — NOT law 2. `endfb-8.0` comes
+    # from NJOY-reconstructed pointwise data with the ENDF regions already
+    # collapsed upstream, so nothing survives to record; writing 2 there would
+    # manufacture a statement nobody made.
+    "interp_law": "Int32",
     # --- experimental provenance (null for evaluations)
     "source_entry": "Utf8",
     "author": "Utf8",
@@ -155,6 +179,13 @@ CANONICAL_XS_SCHEMA = {
 #: column silently — and a schema test that has been red for a week is one nobody
 #: reads.
 #:
+#: `migrate_xs_schema.py` cannot close an entry here. It reshapes parquets and
+#: has no access to the source — ENDF tapes, EXFOR records — so the most it could
+#: add is a typed NULL column, which is semantically identical to the column
+#: being absent at the cost of rewriting the whole tree. Only a builder that
+#: reads the source can populate one of these for real, which is why every entry
+#: names a re-ingest rather than a migration.
+#:
 #: Same contract as `state_vocabulary.PENDING_MIGRATION` and
 #: `data/builder_stamp_exemptions.json`: an entry is a debt, not a decision, and
 #: it is self-cleaning. Once every table carries the column,
@@ -164,6 +195,10 @@ PENDING_COLUMN_ADDITION: dict[str, str] = {
     "target_state": (
         "#353: metastable targets are merged into their ground state. The builder "
         "writes the column; the shipped parquets gain it in the ENDF re-ingest."
+    ),
+    "interp_law": (
+        "#338: evaluated rows drop the ENDF interpolation law. Every ENDF builder "
+        "writes it now; the shipped parquets gain it in the re-ingest (#345/#346)."
     ),
 }
 

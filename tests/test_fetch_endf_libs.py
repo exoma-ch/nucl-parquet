@@ -380,6 +380,8 @@ def test_every_row_matches_the_parquet_schema(parsed):
         "state",
         "energy_MeV",
         "xs_mb",
+        # ENDF's interpolation law for the interval starting at this row (#338).
+        "interp_law",
     }
     assert parsed.rows
     for row in parsed.rows:
@@ -477,12 +479,16 @@ def test_sum_on_union_grid_interpolates_onto_the_union():
     import numpy as np
 
     m = _mod()
-    a = (np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]))
-    b = (np.array([2.0, 4.0]), np.array([5.0, 15.0]))
-    e, xs = m.sum_on_union_grid([a, b])
+    lin = lambda n: np.full(n, 2, dtype=np.int64)  # noqa: E731 — all lin-lin
+    a = (np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]), lin(3))
+    b = (np.array([2.0, 4.0]), np.array([5.0, 15.0]), lin(2))
+    e, xs, laws = m.sum_on_union_grid([a, b])
     assert list(e) == [1.0, 2.0, 3.0, 4.0]
     # b contributes 0 below its threshold and above its max; a likewise.
     assert list(xs) == pytest.approx([10.0, 25.0, 40.0, 15.0])
+    # Every contribution was lin-lin, so resampling was exact and the sum can
+    # honestly claim law 2 (#338).
+    assert list(laws) == [2, 2, 2, 2]
 
 
 def test_sum_on_union_grid_passes_a_lone_contribution_through():
@@ -490,9 +496,45 @@ def test_sum_on_union_grid_passes_a_lone_contribution_through():
 
     m = _mod()
     e_in, xs_in = np.array([1.0, 2.0]), np.array([3.0, 4.0])
-    e, xs = m.sum_on_union_grid([(e_in, xs_in)])
+    laws_in = np.array([5, 5], dtype=np.int64)
+    e, xs, laws = m.sum_on_union_grid([(e_in, xs_in, laws_in)])
     assert list(e) == [1.0, 2.0]
     assert list(xs) == [3.0, 4.0]
+    # Nothing was resampled, so the evaluator's own law survives untouched —
+    # even a non-default one.
+    assert list(laws) == [5, 5]
+
+
+def test_a_sum_over_disagreeing_laws_reports_no_law():
+    """The #338 branch that must not quietly assert lin-lin.
+
+    `sum_on_union_grid` resamples with `np.interp`. When a contribution says the
+    curve is log-log, that resampling *approximated* it, so no single law
+    describes the result and NULL is the only honest answer. Emitting 2 here
+    would be the ingest inventing an evaluator's statement — the exact defect
+    #338 exists to remove, reintroduced inside its own fix.
+    """
+    import numpy as np
+
+    m = _mod()
+    a = (np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]), np.array([2, 2, 2], dtype=np.int64))
+    b = (np.array([2.0, 4.0]), np.array([5.0, 15.0]), np.array([5, 5], dtype=np.int64))
+    e, xs, laws = m.sum_on_union_grid([a, b])
+    assert list(e) == [1.0, 2.0, 3.0, 4.0], "the sum itself must be unaffected"
+    assert laws is None, "a sum over mixed laws has no law, and must say so"
+
+
+def test_a_lone_contribution_keeps_a_law_that_varies_along_it():
+    """A single section can change law partway — TENDL-2023 p+Li-6 MT=750 is
+    law 6 for 23 points then law 5 for 111. Passing it through must preserve
+    that, not collapse it to whichever law came first."""
+    import numpy as np
+
+    m = _mod()
+    e_in = np.array([1.0, 2.0, 3.0, 4.0])
+    laws_in = np.array([6, 6, 5, 5], dtype=np.int64)
+    _e, _xs, laws = m.sum_on_union_grid([(e_in, np.array([1.0, 2.0, 3.0, 4.0]), laws_in)])
+    assert list(laws) == [6, 6, 5, 5]
 
 
 # ---------------------------------------------------------------------------
@@ -1176,6 +1218,25 @@ def test_a_library_with_nothing_signed_says_nothing(monkeypatch, tmp_path):
     assert manifest["ingest"]["n"]["charged_particle_elastic"] is None
 
 
+def test_the_manifest_records_sums_that_lost_their_law(monkeypatch, tmp_path):
+    """`summed_without_law` belongs beside `signed_sections_dropped` for the same
+    reason (#338/#383): it keeps "this library states no interpolation law for
+    these rows" apart from "nobody looked", without re-running a multi-GB ingest.
+
+    The synthetic material's residual sums all come from lin-lin sections, so the
+    honest answer is 0 — and asserting the 0 is the point. A counter that only
+    ever appeared when non-zero could not be distinguished from one that was
+    never wired up.
+    """
+    rows = _mod().parse_endf_file(synthetic_material(), 13, 27, "n")
+    assert rows.summed_without_law == 0
+    m = _stub_library(monkeypatch, {"n_013-Al-27_1325.zip": rows})
+    m.fetch_library("irdff-2", "n", tmp_path, session=None)
+
+    manifest = json.loads((tmp_path / "irdff-2" / "manifest.json").read_text())
+    assert manifest["ingest"]["n"]["summed_without_law"] == 0
+
+
 def test_the_rule_is_on_the_data_not_on_mt_2():
     """A signed section is dropped whichever MT it is.
 
@@ -1575,6 +1636,31 @@ def test_mf9_rows_are_production_rows_with_no_mt(yields):
     for r in rows:
         assert r["MT"] is None
         assert (r["residual_Z"], r["residual_A"]) == (13, 28)
+
+
+def test_mf9_rows_carry_no_interpolation_law(yields):
+    """An MF=9 row is sigma(E) x Y(E), and no ENDF law describes a product of two
+    curves that are not both logarithmic in y (#338/#390).
+
+    Laws 4 and 5 survive multiplication — ln(sigma*Y) = ln(sigma) + ln(Y) — and
+    law 1 does, being constant. Laws 2 and 3 do not: linear times linear is
+    quadratic. Since `parse_mf9_rows` resamples both curves with `np.interp`, the
+    only case where that resampling is exact is both-law-2, which is exactly the
+    case whose product is unrepresentable. So there is no branch on which such a
+    row could honestly name a law, and inheriting one would claim lin-lin while
+    being wrong by 30% on an ordinary interval — see
+    `tests/test_endf_interp.py::test_inheriting_lin_lin_through_a_product_would_be_wrong_by_a_third`.
+
+    Asserted positively — the rows exist and every one of them is NULL — so this
+    cannot pass by finding no MF=9 rows at all.
+    """
+    mf9 = [r for r in yields.rows if r["state"] in ("g", "m") and r["kind"] == "production"]
+    assert mf9, "no MF=9 rows to check — the fixture stopped producing them"
+    assert all(r["interp_law"] is None for r in mf9)
+    # And the MF=3 channel rows in the same file still carry theirs, so this is a
+    # statement about products rather than the column having quietly gone dark.
+    channels = [r for r in yields.rows if r["kind"] == "channel"]
+    assert channels and all(r["interp_law"] is not None for r in channels)
 
 
 def test_mf9_counters_and_guard_denominator(yields):

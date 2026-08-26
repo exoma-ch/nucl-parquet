@@ -301,16 +301,22 @@ def test_connect_empty_dir(tmp_path: Path) -> None:
     """connect() works even with no catalog or data.
 
     Every *data-backed* view needs a file to point at, so none of them can
-    register here. `endf_mt` is the exception by construction: it is built from
-    `nucl_parquet/endf_mt.py`, so the ENDF reaction vocabulary is queryable
-    without downloading anything (#347).
+    register here. The two ENDF vocabularies are the exceptions by construction:
+    both are built from an in-package table rather than a parquet, so the
+    reaction names (#347) and the interpolation laws (#338) are queryable
+    without downloading anything.
     """
     db = connect(tmp_path)
     views = {
         r[0] for r in db.sql("SELECT table_name FROM information_schema.tables WHERE table_type='VIEW'").fetchall()
     }
-    assert views == {"endf_mt"}
+    assert views == {"endf_mt", "endf_interp"}
     assert db.sql("SELECT count(*) FROM endf_mt").fetchone()[0] > 0
+    assert db.sql("SELECT count(*) FROM endf_interp").fetchone()[0] > 0
+    # The join key is spelled the same as the column it describes, so the
+    # documented query works verbatim rather than needing an alias.
+    assert db.sql("SELECT name FROM endf_interp WHERE interp_law = 2").fetchone()[0] == "lin-lin"
+    assert db.sql("SELECT count(*) FROM endf_interp WHERE is_linear").fetchone()[0] == 1
 
 
 def test_sql_constants_are_strings() -> None:
