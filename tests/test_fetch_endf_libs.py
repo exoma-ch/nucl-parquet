@@ -1821,3 +1821,29 @@ def test_dropping_fewer_sections_than_before_is_fine(monkeypatch, tmp_path):
     record = json.loads((tmp_path / "jeff-4.0" / "manifest.json").read_text())["ingest"]["n"]
     assert record["signed_sections_dropped"] == {}
     assert record["negative_points_dropped"] == {"102": 1}
+
+
+def test_an_all_positive_interference_section_is_still_dropped():
+    """The other half of #394, which the sign rule also got wrong.
+
+    27 MF=3 sections at a LAW=5 MT carry no negative value at all — several are a
+    flat 1.0 barn across the whole range, an obvious placeholder. #379's sign
+    test kept every one of them and wrote 1000 mb into `xs_mb`. The structural
+    signal does not care about sign in either direction.
+    """
+    za = 1002.0
+    material = "".join(
+        [
+            "".ljust(66) + "TPID\n",
+            mf3_section(za, 2, [(1.0e5, 1.0), (1.0e7, 1.0), (2.0e7, 1.0)]),
+            mf3_section(za, 102, CAPTURE),
+            mf6_law5_section(za, 2),
+            _line(_endf_float(0.0) * 2 + _endf_int(0) * 4, 0, 0, 0),
+            f"{'':<66}{0:>4d}{0:>2d}{0:>3d}{0:>5d}\n",
+        ]
+    )
+    parsed = _mod().parse_endf_file(material, 1, 2, "d")
+    assert not _channel(parsed, 2), "a flat 1 barn placeholder must not ship as 1000 mb"
+    assert parsed.signed_sections == {2: 1}
+    assert parsed.negative_points_dropped == {}, "nothing to repair — it has no negatives"
+    assert _channel(parsed, 102), "the real section is untouched"

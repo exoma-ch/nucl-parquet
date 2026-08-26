@@ -1667,11 +1667,10 @@ def fetch_library(
         # Loud, and once per library rather than once per file. Dropping data is
         # exactly the kind of thing this script has done silently before.
         logger.info(
-            "  %s/%s: dropped %d MF=3 section(s) whole for carrying negative values "
-            "(by MT: %s). A signed quantity is not a cross-section, so its positive "
-            "part is not one either — for charged particles MT=2 is the Rutherford "
-            "interference term and the elastic distribution is in MF=6 LAW=5, which "
-            "this ingest does not read (#377).",
+            "  %s/%s: dropped %d MF=3 section(s) whole because MF=6 carries LAW=5 at the "
+            "same MT (by MT: %s) — those hold the Rutherford interference term, not a "
+            "cross-section, and the elastic distribution this ingest does not read is in "
+            "MF=6 (#377/#394).",
             lib_key,
             sublib_code,
             sum(signed_sections.values()),
