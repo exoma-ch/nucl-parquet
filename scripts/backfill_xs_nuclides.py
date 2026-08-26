@@ -95,6 +95,7 @@ from fetch_endf_libs import IAEA_MIRROR, is_signed_section, mt_to_residual  # no
 
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
+from nucl_parquet.endf_interp import LIN_LIN, laws_per_point  # noqa: E402
 from nucl_parquet.state_vocabulary import SUM  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -160,14 +161,15 @@ def _lin_lin(x: np.ndarray, y: np.ndarray, grid: np.ndarray) -> np.ndarray:
     `channel_rows` refuses to take for any law but 2 — so nothing is ever
     *resampled* under the wrong law.
 
-    That is a narrower guarantee than it may look. A residual fed by a single
-    channel is emitted on the tape's own grid verbatim, law and all, and several
-    of the backfilled tapes declare laws 5/6 (log-log, charged-particle
-    threshold). A consumer interpolating those points linearly will be wrong
-    between them, most visibly near threshold. That matches how
-    `fetch_endf_libs.py::parse_endf_file` has always emitted evaluated data —
-    it is pre-existing library-wide debt, not something introduced here — but it
-    is debt, and the honest fix is to carry the interpolation law as a column.
+    A residual fed by a single channel is emitted on the tape's own grid
+    verbatim, law and all, and several of the backfilled tapes declare laws 5/6
+    (log-log, charged-particle threshold). A consumer interpolating those points
+    linearly is wrong between them, most visibly near threshold.
+
+    That used to be silent debt, shared with every library this repository ships.
+    It is not any more: #338 added `interp_law`, and `channel_rows` now carries
+    the evaluator's own law onto every row it emits, so a consumer can see which
+    of its points `np.interp` reads wrongly instead of having to know.
     """
     out = np.interp(grid, x, y, left=0.0, right=0.0)
     out[(grid < x[0]) | (grid > x[-1])] = 0.0
@@ -220,11 +222,13 @@ def _suppressed_levels(present: set[int]) -> set[int]:
 
 def channel_rows(
     endf_text: str, projectile: str, target_z: int, target_a: int
-) -> dict[tuple[int, int], tuple[np.ndarray, np.ndarray]]:
+) -> dict[tuple[int, int], tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Residual-production curves from a tape's exclusive MF=3 channels.
 
-    Returns {(residual_Z, residual_A): (energy_eV, xs_barns)}. Channels sharing a
-    residual are summed onto the union of their energy grids.
+    Returns {(residual_Z, residual_A): (energy_eV, xs_barns, interp_laws)}, where
+    `interp_laws[i]` is the ENDF `INT` for the interval starting at
+    `energy_eV[i]` (#338). Channels sharing a residual are summed onto the union
+    of their energy grids.
     """
     import endf
 
@@ -294,12 +298,17 @@ def channel_rows(
             continue
         per_residual.setdefault(residual, []).append((tab, mt))
 
-    out: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
+    out: dict[tuple[int, int], tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
     for residual, tabs in per_residual.items():
         if len(tabs) == 1:
             tab, _ = tabs[0]
-            # Single channel — emit its own grid verbatim, no interpolation.
-            out[residual] = (np.asarray(tab.x, float), np.asarray(tab.y, float))
+            # Single channel — emit its own grid verbatim, no interpolation, so
+            # the evaluator's own per-region laws carry over exactly (#338).
+            out[residual] = (
+                np.asarray(tab.x, float),
+                np.asarray(tab.y, float),
+                laws_per_point(tab.breakpoints, tab.interpolation, len(tab.x)),
+            )
             continue
 
         laws = {int(v) for tab, _ in tabs for v in tab.interpolation}
@@ -314,7 +323,12 @@ def channel_rows(
         total = np.zeros_like(grid)
         for tab, _ in tabs:
             total += _lin_lin(np.asarray(tab.x, float), np.asarray(tab.y, float), grid)
-        out[residual] = (grid, total)
+        # Every contribution is lin-lin — the guard above refuses anything else —
+        # so resampling onto the union grid is exact and the sum really is law 2.
+        # This is the same rule `fetch_endf_libs.sum_on_union_grid` applies; the
+        # difference is only that this script raises where that one emits NULL,
+        # because a backfill rewrites shipped data and should stop for a human.
+        out[residual] = (grid, total, np.full(grid.shape, LIN_LIN, dtype=np.int64))
 
     return out
 
@@ -329,8 +343,8 @@ def build_frame(library: str, projectile: str, target_z: int, target_a: int, cur
     """Canonical-schema rows for one target nuclide."""
     proj_z, proj_a = LIGHT_ION[projectile]
     recs: list[dict] = []
-    for (res_z, res_a), (energies_ev, xs_barns) in sorted(curves.items()):
-        for e_ev, xs_b in zip(energies_ev, xs_barns):
+    for (res_z, res_a), (energies_ev, xs_barns, interp_laws) in sorted(curves.items()):
+        for e_ev, xs_b, law in zip(energies_ev, xs_barns, interp_laws):
             # Same guard the main converter uses: drop non-positive points and
             # TALYS overflow sentinels (~1.99e35 b).
             if xs_b <= 0 or xs_b > 1e30:
@@ -351,6 +365,12 @@ def build_frame(library: str, projectile: str, target_z: int, target_a: int, cur
                     "state": SUM,
                     "energy_MeV": float(e_ev) * 1e-6,
                     "xs_mb": float(xs_b) * 1e3,
+                    # The evaluator's own interpolation law for the interval
+                    # starting here. These tapes are exactly the ones that
+                    # motivated #338: several declare laws 5 and 6, where a
+                    # lin-lin reading is wrong by up to 30% and by multiples
+                    # respectively.
+                    "interp_law": int(law),
                 }
             )
     # Identity columns come from `canonical_frame`, the one place that knows how
@@ -367,6 +387,7 @@ def build_frame(library: str, projectile: str, target_z: int, target_a: int, cur
             "state": pl.Utf8,
             "energy_MeV": pl.Float64,
             "xs_mb": pl.Float64,
+            "interp_law": pl.Int32,
         },
     )
     return canonical_frame(
@@ -387,7 +408,25 @@ def merge_into_shard(shard: Path, new: pl.DataFrame, dry_run: bool) -> tuple[int
         existing = pl.read_parquet(shard)
         kept = existing.filter(~pl.col("target_A").is_in(list(targets)))
         action = "updated" if len(kept) != len(existing) else "extended"
-        combined = pl.concat([kept, new.select(existing.columns)], how="vertical")
+
+        # Widen the *old* rows to the new schema, never narrow the new ones to
+        # the old. A parquet file has one schema, so appending a row that knows
+        # its interpolation law to a shard that has no such column would silently
+        # drop the law — data we just went to the mirror to fetch, discarded to
+        # match a file that predates the column (#338). The other direction is
+        # honest: the pre-existing rows genuinely have no law on record, and a
+        # typed NULL says exactly that.
+        missing = [c for c in new.columns if c not in kept.columns]
+        if missing:
+            logger.info(
+                "  %s predates %s; adding it as NULL to its %d existing row(s), which is what "
+                "'the source never stated one' looks like",
+                shard.name,
+                ", ".join(missing),
+                len(kept),
+            )
+            kept = kept.with_columns([pl.lit(None, dtype=new.schema[c]).alias(c) for c in missing])
+        combined = pl.concat([kept.select(new.columns), new], how="vertical")
         before = len(existing)
     else:
         action = "created"
