@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 # `tests/test_builder_staleness.py` walks the same set when it audits them. Two
 # copies of that rule is how `endfb-8.0/xs/` and `endfb-8.0/channels/` came to
 # overwrite each other's manifest in the first place.
-from nucl_parquet.builder_stamp import library_dirs  # noqa: E402
+from nucl_parquet.builder_stamp import RETIRED_MANIFEST_KEYS, library_dirs  # noqa: E402
 
 
 def build_manifest(key: str, pq_dir: Path) -> dict:
@@ -90,16 +90,23 @@ def main() -> None:
         fresh = build_manifest(key, pq_dir)
         if manifest_path.exists():
             existing = json.loads(manifest_path.read_text())
-            # Preserve fields this builder does not derive (`source_files`,
-            # `sublibrary`, and above all `builder`) so re-running never loses
-            # provenance a builder wrote.
+            # Preserve fields this builder does not derive — `ingest` (the
+            # per-sublibrary counters only a real ingest can know) and above all
+            # `builder` — so re-running never loses provenance a builder wrote.
             #
             # `builder` is deliberately never *written* here: this script
             # regenerates manifests from data that may be years old, and
             # stamping it with today's builder digest would attest that today's
             # code produced yesterday's parquets — the exact lie the stamp
             # exists to detect (#342). Only a real ingest may stamp.
-            merged = {**existing, **fresh}
+            #
+            # Retired keys are dropped rather than preserved. They held a single
+            # `--sublibrary` run's value under a whole-library name, so on a
+            # six-projectile library they described one sixth of it while
+            # sitting next to correct derived counts (#369). Regenerating is how
+            # they leave the committed manifests.
+            merged = {k: v for k, v in existing.items() if k not in RETIRED_MANIFEST_KEYS}
+            merged.update(fresh)
         else:
             merged = fresh
 

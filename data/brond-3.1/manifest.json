@@ -1,9 +1,7 @@
 {
   "library": "brond-3.1",
-  "sublibrary": "n",
   "files": 84,
   "total_rows": 197257,
-  "source_files": 371,
   "projectiles": [
     "n"
   ],
