@@ -309,7 +309,11 @@ _OUTPUT_REQUIRED = {"fetch_exfor_master.py": "out", "fetch_stsv.py": "out"}
 _WRITES_ELSEWHERE = {"sync_huggingface.py", "build_readme.py"}
 
 #: Audits and reports; writes nothing.
-_READ_ONLY = {"check_builder_staleness.py", "check_source_urls.py"}
+_READ_ONLY = {
+    "check_builder_staleness.py",
+    "check_isomeric_sum_rule.py",
+    "check_source_urls.py",
+}
 
 #: Shared helper modules, not runnable scripts — underscore-prefixed by
 #: convention. `_canonical.py` (#359/#366) holds the canonical row vocabulary and
