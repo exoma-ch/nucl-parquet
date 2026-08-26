@@ -141,8 +141,30 @@ LIBRARIES: dict[str, LibraryDef] = {
         iaea_path="IAEA-Medical",
         description="Medical isotope production cross-sections (IAEA)",
         source_url="https://www-nds.iaea.org/medical/",
-        sublibraries={"n": "n", "p": "p", "d": "d", "h": "he3", "a": "he4"},
+        # No neutron sublibrary: IAEA-Medical/n/ is a 404 on the mirror, and
+        # never was anything else. `data/catalog.json` has said `['p','d']`
+        # since #321 and `data/iaea-medical/xs/` holds only d_* and p_* — the
+        # registry was the last thing still claiming neutrons (#356).
+        sublibraries={"p": "p", "d": "d", "h": "he3", "a": "he4"},
     ),
+}
+
+#: Sublibraries the registry can fetch but that this repo does not ship, and
+#: why. Every entry in `LIBRARIES` must either appear in
+#: `catalog.json::projectiles` or be listed here — `tests/test_library_registry.py`
+#: enforces that, offline.
+#:
+#: The point is that "declared, and deliberately not shipped" and "declared by
+#: mistake" look identical in a diff. iaea-medical's neutron sublibrary sat in
+#: the registry for as long as it did because nothing could tell them apart.
+UNSHIPPED_SUBLIBRARIES: dict[tuple[str, str], str] = {
+    ("endfb-8.1", "n"): (
+        "Retired in #263. The raw MF=3 tabulation omits the resonance region "
+        "entirely, so neutron ships as endfb-8.0 (NJOY-processed pointwise) "
+        "instead. Still served by the mirror and still fetchable on request."
+    ),
+    ("iaea-medical", "h"): "Served by the mirror (2 evaluations), never ingested.",
+    ("iaea-medical", "a"): "Served by the mirror (3 evaluations), never ingested.",
 }
 
 
@@ -842,21 +864,42 @@ def list_endf_files(
     sublib_code: str,
     session: requests.Session,
 ) -> list[str]:
-    """Get list of zip filenames from the IAEA mirror directory."""
+    """Get the zip filenames the mirror serves for one sublibrary.
+
+    Raises rather than returning an empty list. A declared sublibrary that
+    lists no files is a defect in the registry or a change on the mirror, not
+    a condition to log: the previous `logger.warning(...); return` meant a
+    re-ingest of `iaea-medical/n` walked a 404, wrote a line nobody reads in
+    the middle of a multi-hour run, and exited 0 (#356). That is #334's
+    zero-file ingest again — BROND-3.1 ingested nothing, reported success, and
+    would have deleted an 84-element library had the diff not caught it.
+
+    Raised here rather than in `fetch_library` so nothing downstream has to
+    decide what an empty listing means.
+    """
     sublib_dir = lib.sublibraries.get(sublib_code)
     if sublib_dir is None:
-        return []
+        raise KeyError(f"{lib.key} declares no '{sublib_code}' sublibrary; have {sorted(lib.sublibraries)}")
 
     url = f"{IAEA_MIRROR}/{lib.iaea_path}/{sublib_dir}/"
     try:
         resp = session.get(url, timeout=30)
         resp.raise_for_status()
     except requests.RequestException as e:
-        logger.error("Failed to list %s: %s", url, e)
-        return []
+        raise RuntimeError(
+            f"{lib.key}/{sublib_code}: cannot list {url}: {e}. The registry declares this "
+            "sublibrary, so either the mirror moved or LIBRARIES is wrong. Refusing to "
+            "continue and report success on a library that fetched nothing."
+        ) from e
 
     # Parse HTML directory listing for .zip filenames
     filenames = re.findall(r'href="([^"]+\.zip)"', resp.text)
+    if not filenames:
+        raise RuntimeError(
+            f"{lib.key}/{sublib_code}: {url} returned HTTP {resp.status_code} but listed no "
+            ".zip files. A declared sublibrary with zero files is a defect — correct "
+            "LIBRARIES, or the mirror's directory layout has changed."
+        )
     return filenames
 
 
@@ -907,18 +950,11 @@ def fetch_library(
 ) -> None:
     """Fetch and convert an entire sub-library to Parquet."""
     lib = LIBRARIES[lib_key]
-
-    if sublib_code not in lib.sublibraries:
-        logger.error("%s does not have sub-library '%s'", lib.name, sublib_code)
-        return
-
     logger.info("Fetching %s / %s ...", lib.name, sublib_code)
 
+    # No empty-listing check here: list_endf_files raises rather than returning
+    # [], so there is one place that decides what zero files means (#356).
     filenames = list_endf_files(lib, sublib_code, session)
-    if not filenames:
-        logger.warning("No files found for %s/%s", lib.name, sublib_code)
-        return
-
     logger.info("  Found %d ENDF files", len(filenames))
 
     # Group rows by element
@@ -1171,6 +1207,20 @@ def main() -> None:
         for sublib in sublibs:
             if sublib not in lib.sublibraries:
                 logger.info("Skipping %s/%s (not available)", lib.name, sublib)
+                continue
+            # A sweep must not ingest what the repo deliberately does not ship.
+            # `--sublibrary n --all` would otherwise write endfb-8.1 neutron
+            # parquets, retired in #263, into data/endfb-8.1/xs/ — a projectile
+            # catalog.json does not list, which is the drift #356's test
+            # forbids. Still reachable by naming it: --library endfb-8.1.
+            if args.all and (lib_key, sublib) in UNSHIPPED_SUBLIBRARIES:
+                logger.info(
+                    "Skipping %s/%s in a sweep: %s Fetch it explicitly with --library %s if you mean to.",
+                    lib.name,
+                    sublib,
+                    UNSHIPPED_SUBLIBRARIES[lib_key, sublib],
+                    lib_key,
+                )
                 continue
             fetch_library(lib_key, sublib, args.output, session)
 

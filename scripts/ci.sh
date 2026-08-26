@@ -68,6 +68,12 @@ uv sync --dev
 # from: ENDF-102's reaction names via the `endf` package, and MF=10's IZAP read
 # from committed excerpts of real evaluations. Offline — the fixtures are in
 # tests/fixtures/mf10/.
+# test_library_registry: gates LIBRARIES against catalog.json (#356) — that
+# everything shipped can still be refetched, and that a declared sublibrary the
+# repo does not ship says why. iaea-medical declared a neutron sublibrary that
+# 404s, and the ingest logged it and exited 0. Deliberately offline: a mirror
+# reachability check fails in PR CI and on a train, and a test that cannot run
+# is not a check (#355).
 # test_repo_layout: gates where data may live (#341) — no tracked parquet outside
 # data/, and the ingest scripts' --output defaults. This list is an allowlist, so
 # a gate that is not named here does not run in CI at all; #341's tests were
@@ -91,6 +97,7 @@ uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron
   tests/test_fetch_endf_libs.py \
   tests/test_builder_staleness.py \
   tests/test_mt_residuals.py \
+  tests/test_library_registry.py \
   -m "not data and not network" -v
 
 # test_manifests: a second invocation, because its drift check is marked
