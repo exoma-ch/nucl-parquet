@@ -16,6 +16,10 @@ out of sync regardless of which side moved.
 
 Tests are *not* marked `@pytest.mark.data` — they must run in every PR's
 CI regardless of whether `--no-data` is passed.
+
+Runs in every PR: this is the gate that stops a data re-release shipping a
+`data_version` and a `data_sha256` that disagree with the parquets. Reads the
+committed tree only — no network.
 """
 
 from __future__ import annotations

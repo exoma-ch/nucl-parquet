@@ -4,6 +4,15 @@ The migration lifts legacy per-library tables into `CANONICAL_XS_SCHEMA`. It ran
 once over 35.4M rows, and every defect it had was a silent one: a stem it could
 not parse meant a file skipped, and a column it did not carry forward meant data
 deleted. Both happened. These pin the two failure modes.
+
+Gates the legacy -> canonical lift, including that a file the migration cannot
+handle now *raises* rather than being tallied into a counter nobody branched on
+(#361). This file was absent from `ci.sh`'s allowlist, so neither those gates nor
+the pre-existing `parse_stem` cases ran in CI at all — an allowlist gap on a file
+whose whole subject is silent non-execution. Fixed at the root in #355; the note
+moved here from `ci.sh` because this is where the next reader is looking.
+
+Pure unit tests: no data tree, no network.
 """
 
 from __future__ import annotations

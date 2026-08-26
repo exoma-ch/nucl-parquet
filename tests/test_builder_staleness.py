@@ -19,6 +19,9 @@ Two layers here:
 
 Not marked `@pytest.mark.data`: the check reads `catalog.json`, the manifests
 and the builder scripts, all of which are in every checkout. It runs in PR CI.
+
+Reads manifests and script digests only — no download, and no git history, so
+it works in the depth-1 clone `actions/checkout` gives CI.
 """
 
 from __future__ import annotations

@@ -2,6 +2,10 @@
 
 Catches drift when new data tables are added to catalog.json but README
 is not regenerated. Fix: `python scripts/build_readme.py --write`.
+
+`CLAUDE.md` promises that forgetting to regenerate the README fails the suite.
+Until #355 that promise was false in CI, where this file was never invoked.
+Reads the checkout only — no data tree, no network.
 """
 
 import subprocess

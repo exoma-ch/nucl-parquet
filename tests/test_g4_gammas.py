@@ -20,6 +20,9 @@ import polars as pl
 import pytest
 
 from nucl_parquet.g4.photon_evap_gammas import (
+    _ELEMENTS,
+    _STRATA_GAMMAS,
+    _STRATA_LEVELS,
     HALF_LIFE_STABLE_SENTINEL,
     LEVEL_MATCH_TOLERANCE_KEV,
     LONG_LIVED_HALF_LIFE_S_THRESHOLD,
@@ -492,11 +495,28 @@ def built_radiation_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
     Reads ``conftest.DATA_DIR`` directly (rather than the function-scoped
     ``data_dir_path`` fixture) to keep this fixture module-scoped.
+
+    The precondition is the *strata inputs under* ``data/g4_raw/``, not the data
+    tree as a whole. Guarding on ``DATA_DIR is None`` checked the wrong thing:
+    ``data/g4_raw/`` is gitignored (a download cache), so in any checkout
+    ``DATA_DIR`` is set, the guard passes, and ``build()`` raises
+    ``FileNotFoundError`` during setup — five ERRORs rather than five skips.
+    CLAUDE.md recorded those as "missing local data files" and left it there;
+    they are collection-time errors, and an errored test is not a passing test
+    or a skipped one, it is a suite that cannot go green (#355).
     """
     from conftest import DATA_DIR  # type: ignore[import-not-found]
 
     if DATA_DIR is None:
         pytest.skip("nucl-parquet data not available")
+    required = [DATA_DIR / _STRATA_GAMMAS, DATA_DIR / _STRATA_LEVELS, DATA_DIR / _ELEMENTS]
+    missing = [str(p.relative_to(DATA_DIR)) for p in required if not p.exists()]
+    if missing:
+        pytest.skip(
+            "strata inputs absent (data/g4_raw/ is a gitignored download cache): "
+            + ", ".join(missing)
+            + " — run `nix develop -c uv run python scripts/fetch_strata_nuclear.py` to exercise these"
+        )
     out = tmp_path_factory.mktemp("radiation_g4")
     build(data_dir=DATA_DIR, out_dir=out)
     return out

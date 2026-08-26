@@ -25,6 +25,8 @@ ignore rule makes a re-scattered ingest invisible — the files land next to `da
 and nothing says so — which is strictly worse than the loud failure here. It would
 also mask this very test if the test scanned the filesystem. A stale tree should
 fail the suite by name, not disappear from `git status`.
+
+Needs only a git checkout — no data tree, no network.
 """
 
 from __future__ import annotations

@@ -104,19 +104,16 @@ def test_stopping_no_broken_legacy_files(data_dir_path: Path) -> None:
     )
 
 
-@pytest.mark.data
-def test_tendl_has_all_projectiles(data_dir_path: Path) -> None:
-    """TENDL-2024 should have files for all listed projectiles."""
-    catalog = json.loads((data_dir_path / "catalog.json").read_text())
-    tendl = catalog["libraries"].get("tendl-2024")
-    if tendl is None:
-        pytest.skip("tendl-2024 not in catalog")
-    xs_dir = data_dir_path / tendl["path"]
-    if not xs_dir.exists():
-        pytest.skip("tendl-2024 data not present")
-    files = {f.stem.split("_")[0] for f in xs_dir.glob("*.parquet")}
-    for proj in tendl["projectiles"]:
-        assert proj in files, f"Missing projectile '{proj}' in TENDL-2024"
+# `test_tendl_has_all_projectiles` lived here. It looked up `tendl-2024`, a key
+# renamed to `tendl-2023-iso` in e8510563, so it hit `pytest.skip("tendl-2024
+# not in catalog")` on every run and could never fail. Nothing noticed, because
+# nothing ran this file in CI (#355).
+#
+# Deleted rather than retargeted: it is a single-library special case of
+# `tests/test_data_release.py::test_declared_projectiles_match_the_files_on_disk`,
+# which since #321 checks every library in the catalog, in both directions —
+# claimed-but-absent *and* shipped-but-undeclared. Retargeting would have
+# reinstated a narrower duplicate of a gate that already covers it.
 
 
 @pytest.mark.data
