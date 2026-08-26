@@ -89,6 +89,12 @@ uv sync --dev
 # months with CI green, because nothing related a library to its builder. Reads
 # manifests and script digests only — no download, no git history, so it works
 # in the depth-1 clone actions/checkout gives us.
+# test_migrate_xs_schema: gates the legacy -> canonical lift, including that a
+# file it cannot handle now *raises* rather than being tallied into a counter
+# nobody branched on (#361). It was absent from this list, so neither the new
+# gates nor the pre-existing parse_stem cases ran in CI at all — the same
+# allowlist gap #341's tests hit, on a file whose whole subject is silent
+# non-execution. Pure unit tests: no data tree, no network.
 uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron_njoy.py \
   tests/test_data_signing.py \
   tests/test_stsv.py \
@@ -98,6 +104,7 @@ uv run pytest tests/test_loader.py tests/test_data_release.py tests/test_neutron
   tests/test_builder_staleness.py \
   tests/test_mt_residuals.py \
   tests/test_library_registry.py \
+  tests/test_migrate_xs_schema.py \
   -m "not data and not network" -v
 
 # test_manifests: a second invocation, because its drift check is marked
