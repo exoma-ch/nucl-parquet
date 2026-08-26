@@ -23,7 +23,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 # ---------------------------------------------------------------------------
 # NIST XCOM µ_en/ρ for dry air (cm²/g)

@@ -118,7 +118,7 @@ from pathlib import Path
 
 import polars as pl
 
-from nucl_parquet.download import data_dir as _resolve_data_dir
+from nucl_parquet.download import writable_data_dir as _resolve_data_dir
 
 logger = logging.getLogger(__name__)
 

@@ -28,6 +28,50 @@ _DATA_TAG_RE = re.compile(r"^data-\d{4}\.\d+\.\d+$")
 _DATA_VERSION_RE = re.compile(r"^\d{4}\.\d+\.\d+$")
 
 
+class NoWritableDataDir(RuntimeError):
+    """No directory a builder may legitimately write generated data into (#373).
+
+    Raised by `writable_data_dir()` in place of the `~/.nucl-parquet/` fallback
+    that `data_dir()` ends on. See that function for why a writer must not take
+    it.
+    """
+
+
+def _env_data_dir() -> Path | None:
+    """$NUCL_PARQUET_DATA, if it names an existing directory.
+
+    An explicit environment variable is the caller stating *this is my data
+    tree*, so it is honoured for reading and for writing alike.
+    """
+    env = os.environ.get("NUCL_PARQUET_DATA")
+    if env:
+        p = Path(env)
+        if p.is_dir():
+            return p
+    return None
+
+
+def _checkout_data_dir() -> Path | None:
+    """`<repo>/data` when running from a source checkout, else None.
+
+    Detected by `data/catalog.json`, which ships in the repo and not in a wheel —
+    so this is precisely the "am I installed, or am I in the tree?" question.
+    """
+    repo_root = Path(__file__).parent.parent
+    return repo_root / "data" if (repo_root / "data" / "catalog.json").exists() else None
+
+
+def _cache_data_dir() -> Path | None:
+    """`~/.nucl-parquet/`, the consumer download cache, if it exists.
+
+    Populated by `download()` with *fetched release* content, verified against
+    the signed manifest (#296). Readable by anyone; writable by `download()`
+    alone.
+    """
+    home = Path.home() / ".nucl-parquet"
+    return home if home.is_dir() else None
+
+
 def data_dir() -> Path:
     """Resolve the nucl-parquet data directory **for reading**.
 
@@ -43,34 +87,72 @@ def data_dir() -> Path:
         FileNotFoundError: If no data directory is found.
 
     Warning:
-        Do not use this to decide where to **write**. Step 3 is a consumer's
-        download cache: outside a checkout this silently resolves to
-        `~/.nucl-parquet/`, so an ingest defaulting to it would populate the
-        cache of whoever ran it rather than failing. That is correct for a
-        reader — "find me the data, wherever it is" — and wrong for a writer,
-        which means one specific tree.
+        Do not use this to decide where to **write** — call `writable_data_dir()`
+        instead, which is this minus step 3. That step is a consumer's download
+        cache: outside a checkout this resolves to `~/.nucl-parquet/`, so a
+        builder defaulting to it populates the cache of whoever ran it rather
+        than failing. Correct for a reader — "find me the data, wherever it is" —
+        and wrong for a writer, which means one specific tree.
 
-        Ingest scripts take their default from `scripts/_paths.DATA_DIR`, the
-        plain checkout path, and `tests/test_repo_layout.py` enforces that none
-        of them import this function (#341, #363).
+        `tests/test_writable_data_dir.py` enforces that every module which writes
+        uses the writer's resolver, and `tests/test_repo_layout.py` that no
+        ingest script imports this one (#341, #363, #373).
     """
-    env = os.environ.get("NUCL_PARQUET_DATA")
-    if env:
-        p = Path(env)
-        if p.is_dir():
-            return p
-
-    repo_root = Path(__file__).parent.parent
-    if (repo_root / "data" / "catalog.json").exists():
-        return repo_root / "data"
-
-    home = Path.home() / ".nucl-parquet"
-    if home.is_dir():
-        return home
+    resolved = _env_data_dir() or _checkout_data_dir() or _cache_data_dir()
+    if resolved is not None:
+        return resolved
 
     raise FileNotFoundError(
         "nucl-parquet data not found. Set $NUCL_PARQUET_DATA, clone the repo, "
         "or run nucl_parquet.download.download() to fetch data."
+    )
+
+
+def writable_data_dir() -> Path:
+    """Resolve the data directory a **builder** may write generated output into.
+
+    `data_dir()` minus its cache fallback:
+        1. $NUCL_PARQUET_DATA — the caller naming their own tree
+        2. Repo checkout — `<repo>/data`
+        3. raise `NoWritableDataDir`
+
+    Returns:
+        Path to a data directory it is legitimate to generate into.
+
+    Raises:
+        NoWritableDataDir: Running from an installed wheel with no
+            $NUCL_PARQUET_DATA — i.e. the only candidate left is the download
+            cache.
+
+    Why the fallback is dropped rather than shared (#373). `~/.nucl-parquet/` is
+    where `download()` puts *fetched release* content. #296 signs a content
+    manifest for that tree and `scripts/verify_data_release.sh` answers "is this
+    what was published?" against it. A builder writing generated artefacts into
+    the same directory makes that question unanswerable: the tree becomes a blend
+    of signed release data and local output with nothing distinguishing them.
+
+    Failing is the right outcome, not a lesser one — there is no correct
+    directory to guess at that point, and the two ways to supply one
+    ($NUCL_PARQUET_DATA, or a checkout) are both cheap and explicit.
+    """
+    resolved = _env_data_dir() or _checkout_data_dir()
+    if resolved is not None:
+        return resolved
+
+    cache = _cache_data_dir()
+    raise NoWritableDataDir(
+        "No data directory to build into. nucl-parquet appears to be running "
+        "from an installed package rather than a source checkout, and "
+        "$NUCL_PARQUET_DATA is not set.\n\n"
+        + (
+            f"Refusing to fall back to {cache}: that is the download cache for "
+            "verified release data (#296), and mixing generated output into it "
+            "makes `scripts/verify_data_release.sh` unable to tell the two apart.\n\n"
+            if cache is not None
+            else ""
+        )
+        + "Pass an explicit `data_dir=`, set $NUCL_PARQUET_DATA to a directory "
+        "you want to generate into, or run from a clone of the repository."
     )
 
 

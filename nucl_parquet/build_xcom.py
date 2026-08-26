@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from urllib.request import urlopen
 
-from .download import data_dir as _resolve_data_dir
+from .download import writable_data_dir as _resolve_data_dir
 
 _BASE_URL = "https://physics.nist.gov/PhysRefData/XrayMassCoef"
 
