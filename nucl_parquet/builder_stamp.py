@@ -365,6 +365,15 @@ def _fix_hint(lib: _Library, kind: str) -> str:
     lines = []
     if cmd:
         lines.append(f"re-ingest    : {cmd}")
+        # `rebuild_command` chains `migrate_xs_schema.py` for the builders that
+        # still emit the pre-migration 6-column form (#359). Running the ingest
+        # alone there drops 12 of 18 columns — library, kind, projectile,
+        # target_Z, MT and all provenance — silently, exiting 0. Say so, rather
+        # than trusting the operator to notice a second command in a long line:
+        # a remedy nobody reads to the end of is a remedy that does damage.
+        if "migrate_xs_schema" in cmd:
+            lines.append("               ^ both halves — the ingest alone writes the legacy 6-column")
+            lines.append("                 schema and would revert this library (#359)")
         # Only builders that write to a throwaway directory need the copy step;
         # the ones that write into `data/` in place do not.
         if "<scratch>" in cmd:

@@ -104,6 +104,51 @@ def test_declared_builders_exist() -> None:
     assert not dangling, "catalog.json names builders that do not exist: " + ", ".join(dangling)
 
 
+def test_a_rebuild_command_that_would_downgrade_the_schema_chains_the_migration() -> None:
+    """The remedy this PR prints must not itself be a defect.
+
+    `scripts/fetch_endf_libs.py`, `scripts/build_neutron_njoy.py` and
+    `nucl_parquet/build_hi_xs.py` still emit the pre-migration 6-column form
+    (#359). The committed data is 18-column canonical only because
+    `scripts/migrate_xs_schema.py` was run once, after the fact, and nothing
+    chains the two. So running the bare ingest on any library they build drops
+    12 of 18 columns — `library`, `kind`, `projectile`, `target_Z`, `MT` and all
+    provenance — which is `CLAUDE.md` principle 5 undone by the normal
+    maintenance operation, silently, with the ingest exiting 0.
+
+    That knowledge lived in no file. It lives in `rebuild_command` now, and this
+    keeps it there: the requirement is **derived from the builder's source**, not
+    from a list someone has to remember to update. Add a library whose builder
+    does not emit `CANONICAL_XS_SCHEMA` and forget the migration, and this fails.
+    Fix the ingest (#359, which is the same edit as #347) and the requirement
+    lifts by itself.
+    """
+    catalog = json.loads((_DATA_DIR / "catalog.json").read_text())
+    problems: list[str] = []
+    checked = 0
+    for key, info in sorted(catalog["libraries"].items()):
+        builder, cmd = info.get("builder"), info.get("rebuild_command")
+        if not builder or not cmd:
+            continue
+        if "CANONICAL_XS_SCHEMA" in (_REPO_ROOT / builder).read_text():
+            continue  # emits canonical form directly; nothing to migrate
+        checked += 1
+        if f"migrate_xs_schema.py --library {key}" not in cmd:
+            problems.append(
+                f"{key}: built by {builder}, which writes the legacy 6-column schema, but\n      {cmd!r}\n      does not chain scripts/migrate_xs_schema.py --library {key}"
+            )
+
+    # Positive assertion. If the loop matched nothing this test would pass by
+    # finding nothing — the exact failure mode #342 exists to prevent.
+    assert checked >= 11, (
+        f"only {checked} librarie(s) matched the legacy-schema builders; this test has stopped "
+        "checking what it was written for (or #359 is fixed and it should be retired)"
+    )
+    assert not problems, "rebuild_command would revert these libraries to the legacy schema (#359):\n  " + "\n  ".join(
+        problems
+    )
+
+
 # ---------------------------------------------------------------------------
 # Layer 1b: the exemption ledger cannot become a dumping ground
 # ---------------------------------------------------------------------------
@@ -496,21 +541,22 @@ def test_build_manifests_never_writes_a_stamp(tmp_path: Path) -> None:
     assert {**existing, **fresh}["builder"] == existing["builder"]
 
 
-def test_an_ingest_that_extracts_nothing_raises_before_writing_anything(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """BROND-3.1's silent success, reproduced — and now loud.
+def test_an_empty_ingest_leaves_no_artefact_to_stamp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """BROND-3.1's silent success, from the provenance side.
 
     Every filename used a shape the parser did not recognise, each was skipped
-    with a warning, and the run exited 0. #334 added a `RuntimeError` for it, but
-    an older `if not element_rows: return` sat higher in the same function and
-    short-circuited first, so the guard was unreachable and the failure stayed
-    silent. Found while wiring the stamp: a builder that can report success on
-    an empty ingest can also stamp one.
+    with a warning, and the run exited 0. #334 added a `RuntimeError` and left an
+    older `logger.warning(); return` on the same condition above it, so the guard
+    was unreachable. This branch found that independently while wiring the stamp
+    — a builder that can report success on an empty ingest can stamp one — but
+    #354 landed the identical fix first, at the identical position, with two
+    further guards on top. Both placements were compared; that one wins and this
+    branch keeps none of its own.
 
-    Asserts on the exception *and* on the absence of any artefact, because "it
-    raised" and "it raised before writing a manifest that claims 97 files" are
-    different guarantees.
+    What stays is the half `test_empty_ingest_guard_raises_rather_than_returning`
+    does not assert: that **nothing was written**. "It raised" and "it raised
+    before leaving a manifest claiming 97 files" are different guarantees, and
+    only the second is what a provenance stamp rests on.
     """
     import sys
 
@@ -519,7 +565,7 @@ def test_an_ingest_that_extracts_nothing_raises_before_writing_anything(
 
     # Files are found, and every one of them is skipped — the BROND-3.1 shape.
     monkeypatch.setattr(fetch_endf_libs, "list_endf_files", lambda *a: ["n_9640_96-Cm-245.zip"] * 3)
-    monkeypatch.setattr(fetch_endf_libs, "download_and_parse", lambda *a: [])
+    monkeypatch.setattr(fetch_endf_libs, "download_and_parse", lambda *a: fetch_endf_libs.ParsedFile(rows=[]))
 
     with pytest.raises(RuntimeError, match="Refusing to report success on an empty ingest"):
         fetch_endf_libs.fetch_library("brond-3.1", "n", tmp_path, session=None)

@@ -37,7 +37,7 @@
       "data_type": "cross_sections",
       "version": "VIII.1",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library endfb-8.1 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library endfb-8.1 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library endfb-8.1",
       "path": "endfb-8.1/xs/"
     },
     "endfb-8.0": {
@@ -51,7 +51,7 @@
       "version": "VIII.0",
       "temperature_K": 294,
       "builder": "scripts/build_neutron_njoy.py",
-      "rebuild_command": "nix develop -c uv run python scripts/build_neutron_njoy.py",
+      "rebuild_command": "nix develop -c uv run python scripts/build_neutron_njoy.py && nix develop -c uv run python scripts/migrate_xs_schema.py --library endfb-8.0",
       "path": "endfb-8.0/xs/"
     },
     "endfb-8.0-channels": {
@@ -79,7 +79,7 @@
       "data_type": "cross_sections",
       "version": "4.0",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library jeff-4.0 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library jeff-4.0 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library jeff-4.0",
       "path": "jeff-4.0/xs/"
     },
     "jendl-5": {
@@ -95,7 +95,7 @@
       "data_type": "cross_sections",
       "version": "5",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library jendl-5 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library jendl-5 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library jendl-5",
       "path": "jendl-5/xs/"
     },
     "tendl-2025": {
@@ -113,7 +113,7 @@
       "data_type": "cross_sections",
       "version": "2025",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library tendl-2025 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library tendl-2025 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library tendl-2025",
       "path": "tendl-2025/xs/"
     },
     "cendl-3.2": {
@@ -126,7 +126,7 @@
       "data_type": "cross_sections",
       "version": "3.2",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library cendl-3.2 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library cendl-3.2 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library cendl-3.2",
       "path": "cendl-3.2/xs/"
     },
     "brond-3.1": {
@@ -139,7 +139,7 @@
       "data_type": "cross_sections",
       "version": "3.1",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library brond-3.1 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library brond-3.1 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library brond-3.1",
       "path": "brond-3.1/xs/"
     },
     "fendl-3.2": {
@@ -152,7 +152,7 @@
       "data_type": "cross_sections",
       "version": "3.2c",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library fendl-3.2 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library fendl-3.2 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library fendl-3.2",
       "path": "fendl-3.2/xs/"
     },
     "irdff-2": {
@@ -165,7 +165,7 @@
       "data_type": "cross_sections",
       "version": "II",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library irdff-2 --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library irdff-2 --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library irdff-2",
       "path": "irdff-2/xs/"
     },
     "iaea-medical": {
@@ -179,7 +179,7 @@
       "data_type": "cross_sections",
       "version": "latest",
       "builder": "scripts/fetch_endf_libs.py",
-      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library iaea-medical --all-sublibs",
+      "rebuild_command": "nix develop -c uv run python scripts/fetch_endf_libs.py --library iaea-medical --all-sublibs && nix develop -c uv run python scripts/migrate_xs_schema.py --library iaea-medical",
       "path": "iaea-medical/xs/"
     },
     "jendl-ad-2017": {
@@ -293,7 +293,7 @@
       "data_type": "total_reaction_cross_sections",
       "version": "tripathi-1997",
       "builder": "nucl_parquet/build_hi_xs.py",
-      "rebuild_command": "nix develop -c uv run python -m nucl_parquet.build_hi_xs --data-dir data",
+      "rebuild_command": "nix develop -c uv run python -m nucl_parquet.build_hi_xs --data-dir data && nix develop -c uv run python scripts/migrate_xs_schema.py --library hi-xs",
       "path": "hi-xs/xs/"
     },
     "strata-data-nuclear": {
