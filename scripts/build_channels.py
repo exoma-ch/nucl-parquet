@@ -286,7 +286,8 @@ def build(
     )
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363)."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
         "--out-dir",
@@ -302,7 +303,11 @@ def main() -> None:
         help="thinning tolerance, relative (default 0.01)",
     )
     parser.add_argument("--cache-dir", type=Path, help="cache raw .h5 downloads here")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     _ensure_native_libs()
     build(args.out_dir, args.nuclides, args.tol, cache_dir=args.cache_dir)

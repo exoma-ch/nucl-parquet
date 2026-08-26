@@ -10,14 +10,19 @@ Plugs the gap that G4 data files leave: G4ENSDFSTATE has level energies
 and lifetimes but not atomic masses or Q-values relative to the nucleon
 ground state. AME2020 fills both columns of `ground_states.parquet`.
 
-Output: data/auxiliary/ame2020.parquet (gitignored — regenerate via this script).
+Output: `<output>/auxiliary/ame2020.parquet`, a **tracked** file — it is covered by
+`catalog.json::data_sha256`, so rewriting it is a data change. (An earlier version
+of this docstring called it gitignored. It never was.)
 
 Usage:
     python scripts/fetch_ame2020.py
+    python scripts/fetch_ame2020.py --dry-run          # fetch, parse, write nothing
+    python scripts/fetch_ame2020.py --output /tmp/out  # write somewhere else
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -33,22 +38,24 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(mes
 logger = logging.getLogger(__name__)
 
 SRC_URL = "https://www-nds.iaea.org/amdc/ame2020/mass_1.mas20.txt"
-RAW_PATH = DATA_DIR / "g4_raw" / "ame2020" / "mass_1.mas20.txt"
-OUT_PATH = DATA_DIR / "auxiliary" / "ame2020.parquet"
+# Relative to the chosen output directory — see fetch_iupac_compositions.py for
+# why these stopped being absolute module constants (#363).
+RAW_REL = Path("g4_raw") / "ame2020" / "mass_1.mas20.txt"
+OUT_REL = Path("auxiliary") / "ame2020.parquet"
 
 
-def _fetch() -> Path:
+def _fetch(raw_path: Path) -> Path:
     """Download mass_1.mas20.txt if not cached. Returns path to cached file."""
-    if RAW_PATH.exists():
-        logger.info("AME2020 cached at %s (%d bytes)", RAW_PATH, RAW_PATH.stat().st_size)
-        return RAW_PATH
-    RAW_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if raw_path.exists():
+        logger.info("AME2020 cached at %s (%d bytes)", raw_path, raw_path.stat().st_size)
+        return raw_path
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("Downloading %s", SRC_URL)
     resp = requests.get(SRC_URL, timeout=30)
     resp.raise_for_status()
-    RAW_PATH.write_bytes(resp.content)
-    logger.info("Wrote %d bytes to %s", len(resp.content), RAW_PATH)
-    return RAW_PATH
+    raw_path.write_bytes(resp.content)
+    logger.info("Wrote %d bytes to %s", len(resp.content), raw_path)
+    return raw_path
 
 
 def _parse_value(s: str) -> tuple[float | None, bool]:
@@ -156,13 +163,44 @@ def _parse(path: Path) -> pl.DataFrame:
     return pl.DataFrame(rows).sort("Z", "A")
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it.
+
+    Same shape as its sibling `fetch_iupac_compositions.py` (#363): `main()` was a
+    parameterless side effect that fetched from AMDC and overwrote a tracked
+    parquet, with no way to redirect or suppress the write.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument(
+        "--output",
+        type=Path,
+        default=DATA_DIR,
+        help=f"Output directory (default: {DATA_DIR.name}/)",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and parse, report what would be written, then write nothing.",
+    )
+    return ap
+
+
 def main() -> None:
-    raw = _fetch()
+    args = build_parser().parse_args()
+
+    raw = _fetch(args.output / RAW_REL)
     df = _parse(raw)
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.write_parquet(OUT_PATH, compression="zstd")
-    logger.info("Wrote %d rows to %s", len(df), OUT_PATH)
+    out_path = args.output / OUT_REL
     n_est = df["is_estimated"].sum()
+
+    if args.dry_run:
+        logger.info("dry run: would write %d rows to %s", len(df), out_path)
+        logger.info("  experimental: %d  estimated: %d", len(df) - n_est, n_est)
+        return
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(out_path, compression="zstd")
+    logger.info("Wrote %d rows to %s", len(df), out_path)
     logger.info("  experimental: %d  estimated: %d", len(df) - n_est, n_est)
 
 

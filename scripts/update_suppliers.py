@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Check supplier URLs and update data/suppliers.json with status + timestamp.
+"""Check supplier URLs and update `<data-dir>/suppliers.json` with status + timestamp.
 
 Exit codes:
-  0 — no changes (or --force)
+  0 — no changes
   1 — error
   2 — data changed (signals the workflow to create a release)
+
+Usage:
+    python scripts/update_suppliers.py
+    python scripts/update_suppliers.py --dry-run   # probe every URL, write nothing
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import date
@@ -16,7 +21,11 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-SUPPLIERS_PATH = Path(__file__).parent.parent / "data" / "suppliers.json"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
+
+SUPPLIERS_REL = Path("suppliers.json")
 TIMEOUT = 15  # seconds
 
 
@@ -44,12 +53,38 @@ def check_url(url: str) -> str:
         return "down"
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it.
+
+    This script took no arguments and wrote `data/suppliers.json` unconditionally
+    on every run — including bumping `last_checked` when nothing had changed
+    (#363). It also spelled its own `Path(__file__).parent.parent / "data"`, a
+    form the #349 guard did not match because it never mentions `ROOT`.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument(
+        "--data-dir",
+        type=Path,
+        default=DATA_DIR,
+        help=f"Data directory holding suppliers.json (default: {DATA_DIR.name}/)",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Probe every supplier URL and report, but do not write suppliers.json.",
+    )
+    return ap
+
+
 def main() -> int:
-    if not SUPPLIERS_PATH.exists():
-        print(f"ERROR: {SUPPLIERS_PATH} not found", file=sys.stderr)
+    args = build_parser().parse_args()
+    suppliers_path = args.data_dir / SUPPLIERS_REL
+
+    if not suppliers_path.exists():
+        print(f"ERROR: {suppliers_path} not found", file=sys.stderr)
         return 1
 
-    suppliers = json.loads(SUPPLIERS_PATH.read_text())
+    suppliers = json.loads(suppliers_path.read_text())
     today = date.today().isoformat()
     changed = False
 
@@ -65,8 +100,12 @@ def main() -> int:
 
         s["last_checked"] = today
 
+    if args.dry_run:
+        print(f"\ndry run: would {'update' if changed else 'rewrite'} {suppliers_path}")
+        return 2 if changed else 0
+
     # Write back (always update last_checked)
-    SUPPLIERS_PATH.write_text(json.dumps(suppliers, indent=2, ensure_ascii=False) + "\n")
+    suppliers_path.write_text(json.dumps(suppliers, indent=2, ensure_ascii=False) + "\n")
 
     if changed:
         print("\n⚠ Supplier status changed — diff detected")

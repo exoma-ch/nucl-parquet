@@ -35,7 +35,11 @@ sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 from nucl_parquet.builder_stamp import EXEMPTIONS_FILE, audit, format_report  # noqa: E402
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363).
+
+    Read-only: this script audits and reports, it writes nothing.
+    """
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-dir", type=Path, default=DATA_DIR)
     ap.add_argument("--repo-root", type=Path, default=ROOT)
@@ -44,7 +48,11 @@ def main() -> None:
         action="store_true",
         help="also list the libraries currently excused, and the issue that removes each",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     findings = audit(args.data_dir, args.repo_root)
     print(format_report(findings))

@@ -399,12 +399,21 @@ def build_records(de_rows: list[list[str]], en_rows: list[list[str]], consolidat
     return records
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363).
+
+    `--out` has no default on purpose: with no `--out` this script parses and
+    reports but writes nothing, so the default behaviour is already read-only.
+    """
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=Path, help="output directory for parquet files")
     ap.add_argument("--consolidation", default=PINNED_CONSOLIDATION)
     ap.add_argument("--check", action="store_true", help="only report whether the pin is current")
-    args = ap.parse_args(argv)
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     current = current_consolidation()
     if args.check:

@@ -30,10 +30,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _paths import DATA_DIR  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -369,8 +374,7 @@ def build(
     library: str = "endfb-8.1",
 ) -> None:
     if data_dir is None:
-        repo_root = Path(__file__).parent.parent
-        data_dir = repo_root / "data"
+        data_dir = DATA_DIR
 
     out_dir = data_dir / "meta" / "kerma"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -413,10 +417,28 @@ def build(
     logger.info("Done: %d elements, %d total KERMA data points", total_elements, total_rows)
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363).
+
+    The parser used to be constructed inside `if __name__ == "__main__"`, so it
+    was unreachable by anything importing this module — including a test asking
+    where the script writes.
+    """
     parser = argparse.ArgumentParser(description="Compute neutron KERMA coefficients")
     parser.add_argument("--library", default="endfb-8.1", help="XS library to use")
-    parser.add_argument("--data-dir", type=Path, help="Data directory (default: data/)")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=DATA_DIR,
+        help=f"Data directory (default: {DATA_DIR.name}/)",
+    )
+    return parser
 
+
+def main() -> None:
+    args = build_parser().parse_args()
     build(data_dir=args.data_dir, library=args.library)
+
+
+if __name__ == "__main__":
+    main()

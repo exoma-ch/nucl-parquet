@@ -202,7 +202,13 @@ def fetch_from_local(local_dir: Path) -> list[Path]:
     return written
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it.
+
+    This script always had a CLI — it was `--output` it lacked (#363). The
+    destination was the module constant `DEST_DIR` and nothing could redirect it,
+    so every invocation wrote into the checkout.
+    """
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument(
         "--revision",
@@ -220,7 +226,26 @@ def main() -> None:
         action="store_true",
         help="Re-download from HF even if the file is already cached.",
     )
+    parser.add_argument(
+        "--dest-dir",
+        type=Path,
+        default=DEST_DIR,
+        help=f"Where to write the fetched files (default: {DEST_DIR}).",
+    )
+    return parser
+
+
+def main() -> None:
+    global DEST_DIR
+
+    parser = build_parser()
     args = parser.parse_args()
+
+    # `fetch_from_hf` / `fetch_from_local` / `_all_dests_present` all read the
+    # module-level DEST_DIR. Rebinding it here gives --dest-dir effect without
+    # threading a parameter through four functions, and keeps working the
+    # monkeypatch-DEST_DIR seam that tests/test_fetch_strata.py already uses.
+    DEST_DIR = args.dest_dir
 
     if args.from_local and args.revision:
         parser.error("--from-local and --revision are mutually exclusive.")

@@ -215,12 +215,29 @@ def build(
     )
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363).
+
+    The parser used to be constructed inside `if __name__ == "__main__"`, so it
+    was unreachable by anything importing this module.
+    """
     parser = argparse.ArgumentParser(
         description="Extract neutron total/elastic XS from ENDF libraries",
     )
     parser.add_argument("--library", default="endfb-8.1", help="Library to use")
-    parser.add_argument("--data-dir", type=Path, help="Data directory (default: data/)")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=DATA_DIR,
+        help=f"Data directory (default: {DATA_DIR.name}/)",
+    )
+    return parser
 
+
+def main() -> None:
+    args = build_parser().parse_args()
     build(data_dir=args.data_dir, library=args.library)
+
+
+if __name__ == "__main__":
+    main()

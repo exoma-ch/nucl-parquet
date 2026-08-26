@@ -464,7 +464,8 @@ def build(out_dir: Path, nuclides: list[str] | None, tol: float, cache_dir: Path
     )
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser, separately from running it (#363)."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--out",
@@ -485,7 +486,11 @@ def main() -> None:
         default=None,
         help="Cache raw HDF5 here to avoid re-fetching on a re-thin/rebuild (VIII.0 is frozen).",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     _ensure_native_libs()
     nuclides = [s.strip() for s in args.nuclides.split(",")] if args.nuclides else None
