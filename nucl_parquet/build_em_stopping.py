@@ -18,7 +18,9 @@ Reads the three strata em/*.parquet files fetched by
 
 3. `data/stopping/em/density_effect_params.parquet` — NEW
    Sternheimer parameterization per material
-   `{name, I_eV, C, X0, X1, a, k, delta0, density_gcm3, state, Zeff, nElements}`.
+   `{name, I_eV, C, X0, X1, a, k, delta0, density_gcm3, phase, Zeff, nElements}`.
+   `phase` is solid/liquid/gas — strata calls it `state`, renamed on the way in
+   because `state` means *isomeric* state everywhere else in this repo (#357).
    Names use the G4_<symbol>/G4_<COMPOUND> convention from PhysicsList.
    Join with `electron_stopping` on `density_effect_params.name = electron_stopping.g4_name`.
 
@@ -131,7 +133,12 @@ def build(data_dir: Path | None = None) -> None:
         pl.col("k"),
         pl.col("delta0"),
         pl.col("density_gcm3"),
-        pl.col("state"),
+        # strata calls this `state`; it holds solid/liquid/gas. Every other
+        # table in this repository means *isomeric* state by that name, so a
+        # consumer filtering `state` across a glob silently crossed phase of
+        # matter with nuclear isomers — identical name, unrelated concept
+        # (#357). `phase` makes the collision unrepresentable.
+        pl.col("state").alias("phase"),
         pl.col("Zeff"),
         pl.col("nElements"),
     ).sort("Zeff", "name")

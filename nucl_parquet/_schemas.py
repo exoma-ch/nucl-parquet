@@ -62,18 +62,51 @@ CANONICAL_XS_SCHEMA = {
     # other and from a real Z=0 product.
     "residual_Z": "Int32",
     "residual_A": "Int32",
-    # Residual isomeric state: '' (unspecified) | 'g' (explicitly ground) |
-    # 'm', 'm2', 'm3' (isomers, ascending excitation — the spelling
-    # meta/ensdf/nuclides.parquet uses, so these join). EXFOR additionally ships
-    # 'm1' as a synonym for 'm' and a bare 'l', and hi-xs-prod leaves it null —
-    # so match with `state LIKE 'm%'`, not `state = 'm'`.
+    # Residual isomeric state. One vocabulary, defined once in
+    # `nucl_parquet/state_vocabulary.py` and imported by every builder:
     #
-    # '' is a SUM OVER the states 'g'/'m' enumerate, not a peer of them. ENDF
-    # gives the channel total in MF=3 and the ground/metastable split in MF=10,
-    # and both become rows: Al-27(n,2n) is one 177 mb '' row *and* a 114 mb 'g'
-    # + 65 mb 'm' pair. So `GROUP BY residual_Z, residual_A` with `SUM(xs_mb)`
-    # double-counts. Filter `state = ''` for totals or `state <> ''` for the
-    # split — never sum across the two (#340).
+    #   'g'    the ground state
+    #   'm'    first isomer, 'm2' second, 'm3' third, … ascending excitation
+    #   'l'    an isomer is involved, but the measurement did not resolve which
+    #          (EXFOR's L flag) — a real datum, and not the same as NULL
+    #   'sum'  summed over all states. An aggregate, NOT a peer of the others
+    #   NULL   not stated
+    #
+    # There is no '' — see #357. It used to mean three different things
+    # depending on which table you read: "summed over states" on an ENDF row,
+    # "not stated" on an EXFOR row, and "the ground state" in meta/ensdf. So
+    # `WHERE state = ''` over a glob returned a mixture of all three, and
+    # nothing could separate them again.
+    #
+    # 'sum' is a word, not '', on purpose: it is a claim about the quantity, and
+    # spelling a claim as an empty string is how it got confused with the
+    # absence of one. It also survives a CSV or pandas round-trip that coerces
+    # '' to null.
+    #
+    # NEVER SUM ACROSS 'sum' AND THE REST. ENDF gives the channel total in MF=3
+    # and the ground/metastable split in MF=10, and both become rows: Al-27(n,2n)
+    # is one 177 mb 'sum' row *and* a 114 mb 'g' + 65 mb 'm' pair. So
+    # `GROUP BY residual_Z, residual_A` with `SUM(xs_mb)` double-counts. Filter
+    # `state = 'sum'` for totals or `state <> 'sum'` for the split (#340).
+    #
+    # THE JOIN INVARIANT (#357). `state` is the third component of nuclide
+    # identity, so it is a join key against `meta/ensdf/nuclides.parquet`:
+    #
+    #     JOIN nuclides USING (Z, A, state)
+    #
+    #   * 'g', 'm', 'm2', 'm3' name a nuclide state and JOIN.
+    #   * 'sum' names no state and MUST JOIN NOTHING — it is an aggregate over
+    #     the very rows it would otherwise match. A 'sum' row that acquires a
+    #     half-life has silently been given the ground state's.
+    #   * 'l' names an unidentified state and joins nothing.
+    #   * NULL joins nothing, as NULL does.
+    #
+    # That invariant did not hold before #357: ENDF spelled the ground state 'g'
+    # while meta/ensdf spelled it '', so the join missed every real ground-state
+    # row *and* matched the summed rows instead — wrong in both directions at
+    # once. `nucl_parquet.state_vocabulary.JOINABLE_STATES` is the set that may
+    # appear on the left of that join, and `tests/test_state_vocabulary.py`
+    # enforces it per table.
     "state": "Utf8",
     # --- the datum
     "energy_MeV": "Float64",

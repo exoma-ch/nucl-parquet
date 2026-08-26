@@ -154,7 +154,12 @@ def build(data_dir: Path | None = None) -> None:
                             "target_A": target_A,
                             "residual_Z": residual_Z,
                             "residual_A": residual_A,
-                            "state": state if state is not None else "",
+                            # Passed straight through from the source xs row.
+                            # This used to coerce null to '', minting a fourth
+                            # meaning for those four bytes in a table that is
+                            # otherwise a faithful roll-up (#357). Null means
+                            # the source did not say; say the same thing.
+                            "state": state,
                             "spectrum": spec_name,
                             "xs_avg_mb": avg,
                             "library": lib_key,

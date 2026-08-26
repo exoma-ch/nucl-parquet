@@ -192,17 +192,44 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | target_A | Int32 | Target mass number |
 | residual_Z | Int32 | Product atomic number |
 | residual_A | Int32 | Product mass number |
-| state | Utf8 | Isomer state: `""` (total), `"g"` (ground), `"m"`/`"m2"` (isomers) — see below |
+| state | Utf8 | Isomer state: `"g"` ground, `"m"`/`"m2"`/`"m3"` isomers, `"l"` unresolved, `"sum"` summed over states, NULL not stated — see below |
 | energy_MeV | Float64 | Projectile energy in MeV |
 | xs_mb | Float64 | Cross-section in millibarn |
 
-> **`state` is not a partition — `""` is a sum *over* `"g"`/`"m"`, not a peer of
-> them.** ENDF gives the channel total in MF=3 and the ground/metastable split in
-> MF=10, so both land as rows: IRDFF-II's Al-27(n,2n) is one 177 mb `""` row *and*
-> a 114 mb `"g"` + 65 mb `"m"` pair. `GROUP BY residual_Z, residual_A` with
-> `SUM(xs_mb)` therefore double-counts. Filter `state = ''` for totals, or
-> `state <> ''` for the split. Match isomers with `state LIKE 'm%'` — EXFOR also
-> uses `"m1"` for `"m"`, and a bare `"l"`.
+> **`state` is not a partition — `"sum"` is a sum *over* `"g"`/`"m"`, not a peer
+> of them.** ENDF gives the channel total in MF=3 and the ground/metastable split
+> in MF=10, so both land as rows: IRDFF-II's Al-27(n,2n) is one 177 mb `"sum"`
+> row *and* a 114 mb `"g"` + 65 mb `"m"` pair. `GROUP BY residual_Z, residual_A`
+> with `SUM(xs_mb)` therefore double-counts. Filter `state = 'sum'` for totals,
+> or `state <> 'sum'` for the split.
+
+> **The join invariant.** `state` is the third component of nuclide identity, so
+> it is a join key against `nuclides`:
+>
+> ```sql
+> SELECT * FROM xs JOIN nuclides USING (Z, A, state)
+> ```
+>
+> `"g"`, `"m"`, `"m2"`, `"m3"` name a nuclide state and join. **`"sum"` names no
+> state and joins nothing** — it is an aggregate over the very rows it would
+> otherwise match, so a `"sum"` row that comes back carrying a half-life has
+> silently been given the ground state's. `"l"` (an isomer, unresolved which) and
+> NULL join nothing either.
+>
+> `""` is retired from the cross-section tables, where it meant "summed over
+> states" (ENDF) or "not stated" (EXFOR) with nothing to tell those apart.
+>
+> **The join does not work yet, and knowing why matters.** `nuclides` still
+> spells the ground state `""` rather than `"g"`, so today the join misses every
+> real ground-state row *and* matches the `"sum"` rows instead — wrong in both
+> directions at once. Normalising it is a separate pass: 3,148 of its 3,161 `""`
+> rows sit at `level_keV = 0.0` and are plainly the ground state, but 13 sit
+> between 124.5 and 2166.1 keV with no isomer flag, and calling those `"g"` would
+> assert something nobody checked. Until then, join `nuclides` on `(Z, A)` and
+> filter `state` yourself.
+>
+> The vocabulary itself lives in `nucl_parquet/state_vocabulary.py`, which every
+> builder imports, and `tests/test_state_vocabulary.py` enforces it per table.
 
 > **`kind` is not a partition either.** `production` rows are our sum over every
 > channel reaching a residual (`MT` null); `channel` rows are one ENDF MT (`MT`
@@ -241,7 +268,7 @@ The [ENDF-6 format](https://www.nndc.bnl.gov/endfdocs/ENDF-102/) dates from the 
 | target_A | Int32 | Target mass number (0 = natural) |
 | residual_Z | Int32 | Product atomic number |
 | residual_A | Int32 | Product mass number |
-| state | Utf8 | Isomer state — same vocabulary and same `""`-is-a-sum caveat as above |
+| state | Utf8 | Isomer state — same vocabulary as above. EXFOR never asserts `"sum"`: a measurement reports what it resolved, or NULL |
 | energy_MeV | Float64 | Projectile energy in MeV |
 | energy_err_MeV | Float64 | Energy uncertainty (nullable) |
 | xs_mb | Float64 | Cross-section in millibarn |
@@ -306,7 +333,7 @@ Sourced from the [strata project's HuggingFace dataset](https://huggingface.co/d
 | View | Source | What's in it |
 |---|---|---|
 | `nuclides` | `meta/ensdf/nuclides.parquet` | All known states (ground + isomers) with half-life, J^π, decay modes, AME2020 mass excess, IUPAC composition |
-| `ground_states` | `nuclides WHERE state = ''` | Compatibility view |
+| `ground_states` | `nuclides WHERE state = ''` | Compatibility view (becomes `state = 'g'` when the nuclide-identity tables are normalised) |
 | `decay` / `decay_detailed` | `meta/decay{,_detailed}.parquet` | Decay branches per `(Z, A, state)`. `decay_detailed` adds `parent_ex_kev`, `daughter_ex_kev`, `q_value_kev`, `forbiddenness`, and **per-shell EC fractions** (`KshellEC`/`LshellEC`/`MshellEC`/`NshellEC`) |
 | `radiation` | `meta/ensdf/radiation/{Symbol}.parquet` | Per-element gamma + X-ray + Auger lines, unioned by `rad_type` discriminator |
 | `coincidences` | `meta/ensdf/coincidences/{Symbol}.parquet` | Gamma cascade pairs (~600k pairs, 104 element files) |

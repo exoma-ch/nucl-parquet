@@ -77,6 +77,7 @@ from fetch_endf_libs import mt_to_residual  # noqa: E402
 
 from nucl_parquet._schemas import CANONICAL_XS_SCHEMA  # noqa: E402
 from nucl_parquet.builder_stamp import manifest_path_for, write_builder_stamp  # noqa: E402
+from nucl_parquet.state_vocabulary import SUM  # noqa: E402
 
 LIBRARY = "endfb-8.0-channels"
 
@@ -199,7 +200,7 @@ def extract_channels(h5_bytes: bytes, stem: str, z: int, a: int, tol: float) -> 
                 "MT": mt,
                 "residual_Z": rz,
                 "residual_A": ra,
-                "state": "",
+                "state": SUM,
                 "energy_MeV": float(e) * 1e-6,
                 "xs_mb": float(s) * 1e3,
                 "energy_err_MeV": None,
