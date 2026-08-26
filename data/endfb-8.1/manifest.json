@@ -1,9 +1,7 @@
 {
   "library": "endfb-8.1",
-  "sublibrary": "a",
   "files": 33,
   "total_rows": 21749,
-  "source_files": 5,
   "projectiles": [
     "a",
     "d",

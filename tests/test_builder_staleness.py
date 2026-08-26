@@ -27,6 +27,7 @@ it works in the depth-1 clone `actions/checkout` gives CI.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -47,6 +48,17 @@ from nucl_parquet.builder_stamp import (
 _REPO_ROOT = Path(__file__).parent.parent
 _DATA_DIR = _REPO_ROOT / "data"
 _EXEMPTIONS = _DATA_DIR / EXEMPTIONS_FILE
+
+#: The `data_type`s `scripts/migrate_xs_schema.py` actually lifts. Kept in step
+#: with its own `xs_types`, which deliberately excludes `transport_cross_sections`
+#: (written canonical by `build_channels.py`, no legacy form) and everything
+#: outside cross sections.
+_XS_TYPES_MIGRATED = {
+    "cross_sections",
+    "production_cross_sections",
+    "total_reaction_cross_sections",
+    "experimental_cross_sections",
+}
 
 
 def _exemptions() -> dict[str, dict]:
@@ -107,6 +119,104 @@ def test_declared_builders_exist() -> None:
     assert not dangling, "catalog.json names builders that do not exist: " + ", ".join(dangling)
 
 
+def test_a_named_builder_always_carries_a_rebuild_command() -> None:
+    """`builder` and `rebuild_command` move together, in both directions.
+
+    A named builder with no command is a library the checker will one day report
+    as stale while having nothing to tell the operator to do — which is the half
+    of the failure message that matters, since the thirteen-month gap persisted
+    partly because nothing said what to run. `stsv-2026-limits` and
+    `stsv-2026-dose-coefficients` were in exactly that state: stamped with
+    `scripts/fetch_stsv.py`, no command, and outside `XS_TYPES` so
+    `library_dirs()` never audited them and no exemption covered them either
+    (#369). Invisible today, a surprise the first time `XS_TYPES` widens.
+
+    The converse matters too: a command with no builder claims a rebuild path
+    the provenance record denies.
+
+    `builder: null` is the third state and takes neither — see #346. There is no
+    in-repo pipeline, so there is no command to give, and inventing one would be
+    worse than the silence.
+    """
+    catalog = json.loads((_DATA_DIR / "catalog.json").read_text())
+    problems: list[str] = []
+    named = 0
+    for key, info in sorted(catalog["libraries"].items()):
+        if not info.get("path"):
+            continue
+        builder, cmd = info.get("builder"), info.get("rebuild_command")
+        if isinstance(builder, str):
+            named += 1
+            if not cmd:
+                problems.append(f"{key}: builder={builder!r} but no rebuild_command")
+        elif cmd:
+            problems.append(f"{key}: rebuild_command={cmd!r} but builder is {builder!r}")
+
+    # Positive assertion: the loop above passes vacuously over a catalog where
+    # nothing declares a builder at all.
+    assert named >= 16, f"only {named} libraries declare a named builder — has catalog.json lost the field?"
+    assert not problems, (
+        "catalog.json: `builder` and `rebuild_command` must be present or absent together:\n  "
+        + "\n  ".join(problems)
+        + "\n\nA named builder needs the literal command that re-runs it; `builder: null` (#346) takes neither."
+    )
+
+
+def test_a_null_builder_records_what_actually_produced_the_library() -> None:
+    """`builder: null` must say why, with evidence.
+
+    Five libraries have no in-repo producer (#346). Recording only `null`
+    conflates two states that need to stay apart: *we looked, and the pipeline
+    is not recoverable* versus *nobody has looked*. The first is a finding; the
+    second is a to-do that reads like a finding.
+
+    `provenance.status` distinguishes them and `evidence` keeps the summary
+    honest — every claim in it has to cite a commit or a file. That mattered:
+    the first version of #346 said `scripts/backfill_xs_nuclides.py` had been
+    "since deleted", and it never existed on main at all. It lives only on the
+    unmerged PR #339 branch, `git log --all --diff-filter=D` finds no deletion,
+    and the claim had already been copied verbatim into the exemption ledger.
+    Prose nobody has to support is prose that drifts.
+    """
+    catalog = json.loads((_DATA_DIR / "catalog.json").read_text())
+    problems: list[str] = []
+    recorded = 0
+    for key, info in sorted(catalog["libraries"].items()):
+        if not info.get("path") or info.get("builder") is not None or "builder" not in info:
+            continue
+        prov = info.get("provenance")
+        if not prov:
+            problems.append(
+                f"{key}: builder is null with no `provenance` — say whether the pipeline was "
+                "researched and lost, or simply never looked for (#346)"
+            )
+            continue
+        recorded += 1
+        if prov.get("status") not in {"unrecorded", "external-pipeline"}:
+            problems.append(f"{key}: provenance.status {prov.get('status')!r} is not a recognised state")
+        if len(str(prov.get("summary", "")).strip()) < 40:
+            problems.append(f"{key}: provenance.summary must be a usable paragraph, got {prov.get('summary')!r}")
+        evidence = prov.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            problems.append(f"{key}: provenance.evidence must cite at least one commit or file")
+        elif not any(_looks_like_a_citation(e) for e in evidence):
+            problems.append(
+                f"{key}: no item in provenance.evidence names a commit sha or a file path — "
+                "a summary nothing backs is the kind of claim that turned out to be wrong in #346"
+            )
+        if not isinstance(prov.get("issue"), int):
+            problems.append(f"{key}: provenance.issue must name the issue tracking recovery")
+
+    assert recorded >= 5, f"only {recorded} null-builder libraries carry provenance; #346 identified five"
+    assert not problems, "catalog.json provenance records are incomplete:\n  " + "\n  ".join(problems)
+
+
+def _looks_like_a_citation(item: str) -> bool:
+    """A 7+ hex-digit sha, or a path with a recognisable source extension."""
+    sha = re.compile(r"\b(?=[0-9a-f]{7,40}\b)[0-9a-f]*[a-f][0-9a-f]*\b")
+    return bool(sha.search(item) or re.search(r"[\w/.-]+\.(?:py|json|md|toml)\b", item))
+
+
 def test_a_rebuild_command_that_would_downgrade_the_schema_chains_the_migration() -> None:
     """The remedy this PR prints must not itself be a defect.
 
@@ -141,6 +251,14 @@ def test_a_rebuild_command_that_would_downgrade_the_schema_chains_the_migration(
     for key, info in sorted(catalog["libraries"].items()):
         builder, cmd = info.get("builder"), info.get("rebuild_command")
         if not builder or not cmd:
+            continue
+        # Cross-section libraries only. `migrate_xs_schema.py` lifts legacy xs
+        # tables into CANONICAL_XS_SCHEMA and iterates the same `data_type` set;
+        # a regulatory-limits or dose-coefficient table has no legacy xs form to
+        # lift and no business carrying that schema. The scope was implicit
+        # until the stsv pair gained a `rebuild_command` in #369 and this
+        # started demanding a nonsensical migration of them.
+        if info.get("data_type") not in _XS_TYPES_MIGRATED:
             continue
         src = (_REPO_ROOT / builder).read_text()
         # Either spelling counts: `build_channels.py` builds its frame straight

@@ -315,6 +315,28 @@ EEDL_ELECTRON_XS_SCHEMA = {
 NUCLIDES_SCHEMA = {
     "Z": "Int32",
     "A": "Int32",
+    # Which state of this nuclide the row is about — same vocabulary as the xs
+    # tables (`nucl_parquet.state_vocabulary`), which is what makes
+    # `JOIN nuclides USING (Z, A, state)` work. `'sum'` never appears here: a
+    # nuclide catalogue describes states, not aggregates over them.
+    #
+    # NULL means **the state could not be established**, which is NOT the same
+    # as "this nuclide has no isomer". Two cases carry it (#378):
+    #
+    #   nuclides   13 rows that are excited levels rather than ground states —
+    #              the builder labels the lowest *listed* level per (Z, A) as
+    #              ground, and G4ENSDFSTATE does not list those nuclides'
+    #              ground states. Four carry ENSDF's `+X` floating flag, so
+    #              their excitation is relative to an unknown offset.
+    #   radiation  13,106 rows across 45 nuclides whose `state` was `''`
+    #              ("the ground-band decay chain") but whose emitting level
+    #              coincides with a catalogued isomer of the same nuclide.
+    #              Ground-band cascade gamma or isomer decay cannot be told
+    #              apart from an energy coincidence, so neither is claimed.
+    #              Resolving them needs ENSDF's own band assignment (#386).
+    #
+    # Those rows do not join, deliberately. A row that does not come back is
+    # visible; a row that comes back wrong is not.
     "state": "Utf8",
     "symbol": "Utf8",
     "jp": "Utf8",

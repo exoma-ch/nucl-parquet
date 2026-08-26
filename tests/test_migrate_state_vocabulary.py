@@ -24,7 +24,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from nucl_parquet.state_vocabulary import SUM  # noqa: E402
+from nucl_parquet.state_vocabulary import GROUND, SUM  # noqa: E402
 
 import migrate_state_vocabulary as m  # noqa: E402  isort:skip
 
@@ -251,3 +251,158 @@ def test_verify_flags_a_leftover_state_column(tmp_path):
     path.parent.mkdir(parents=True)
     pl.DataFrame({"state": ["liquid"]}).write_parquet(path)
     assert any(_DENSITY in p for p in m.verify(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# Nuclide-identity tables (#378): the ground state, and refusing to guess
+# ---------------------------------------------------------------------------
+
+
+def _nuclides(directory: Path, rows: list[tuple[int, int, str, float]]) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "nuclides.parquet"
+    pl.DataFrame(
+        {
+            "Z": pl.Series([r[0] for r in rows], dtype=pl.Int32),
+            "A": pl.Series([r[1] for r in rows], dtype=pl.Int32),
+            "state": pl.Series([r[2] for r in rows], dtype=pl.Utf8),
+            "level_keV": [r[3] for r in rows],
+        }
+    ).write_parquet(path)
+    return path
+
+
+def test_a_zero_level_blank_becomes_ground(tmp_path):
+    path = _nuclides(tmp_path / "meta" / "ensdf", [(27, 58, "", 0.0), (27, 58, "m", 24.95)])
+    rows, status = m.migrate_nuclides(tmp_path, dry_run=False)
+
+    assert (rows, status) == (1, "migrated")
+    assert pl.read_parquet(path)["state"].to_list() == [GROUND, "m"]
+
+
+def test_a_nonzero_level_blank_becomes_null_not_ground(tmp_path):
+    """The #378 trap. Dy-140's only catalogue row is a 2166.1 keV level, because
+    G4ENSDFSTATE does not list its ground state. Calling that `'g'` asserts
+    "ground state" about a 2 MeV level — a plausible value under an identity
+    nobody checked."""
+    path = _nuclides(tmp_path / "meta" / "ensdf", [(66, 140, "", 2166.1)])
+    rows, status = m.migrate_nuclides(tmp_path, dry_run=False)
+
+    assert (rows, status) == (1, "migrated")
+    assert pl.read_parquet(path)["state"].to_list() == [None]
+
+
+def test_the_two_cases_are_distinguishable_in_one_file(tmp_path):
+    """A negative control for the rule itself: if the migration ignored
+    level_keV, both rows would come out the same and this would pass anyway."""
+    path = _nuclides(tmp_path / "meta" / "ensdf", [(27, 58, "", 0.0), (66, 140, "", 2166.1)])
+    m.migrate_nuclides(tmp_path, dry_run=False)
+
+    assert pl.read_parquet(path)["state"].to_list() == [GROUND, None]
+
+
+def test_nuclides_migration_is_idempotent(tmp_path):
+    path = _nuclides(tmp_path / "meta" / "ensdf", [(27, 58, "", 0.0), (66, 140, "", 2166.1)])
+    m.migrate_nuclides(tmp_path, dry_run=False)
+    first = path.read_bytes()
+
+    assert m.migrate_nuclides(tmp_path, dry_run=False) == (0, "already-migrated")
+    assert path.read_bytes() == first
+
+
+def test_nuclides_without_level_keV_raises(tmp_path):
+    """Without level_keV the rule cannot run, and guessing is the whole problem."""
+    directory = tmp_path / "meta" / "ensdf"
+    directory.mkdir(parents=True)
+    pl.DataFrame({"Z": [27], "A": [58], "state": [""]}).write_parquet(directory / "nuclides.parquet")
+    with pytest.raises(m.UnmigratableTable, match="no-column"):
+        m.migrate_nuclides(tmp_path, dry_run=False)
+
+
+def _radiation(tmp_path, rows: list[tuple[int, int, str, float]]) -> Path:
+    directory = tmp_path / "meta" / "ensdf" / "radiation"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "Tc.parquet"
+    pl.DataFrame(
+        {
+            "Z": pl.Series([r[0] for r in rows], dtype=pl.Int32),
+            "A": pl.Series([r[1] for r in rows], dtype=pl.Int32),
+            "state": pl.Series([r[2] for r in rows], dtype=pl.Utf8),
+            "parent_level_keV": [r[3] for r in rows],
+        }
+    ).write_parquet(path)
+    return path
+
+
+def test_radiation_blank_becomes_ground_when_the_level_is_not_an_isomer(tmp_path):
+    _nuclides(tmp_path / "meta" / "ensdf", [(43, 99, "", 0.0), (43, 99, "m", 142.68)])
+    path = _radiation(tmp_path, [(43, 99, "", 89.5)])
+
+    _rows, status = m.migrate_nuclide_keyed(tmp_path, "meta/ensdf/radiation", dry_run=False)
+
+    assert status == "migrated"
+    assert pl.read_parquet(path)["state"].to_list() == [GROUND]
+
+
+def test_radiation_blank_at_a_catalogued_isomer_energy_becomes_null(tmp_path):
+    """#386. The emitting level coincides with Tc-99m. Ground-band cascade gamma
+    or isomer decay? An energy coincidence cannot say, so neither is claimed."""
+    _nuclides(tmp_path / "meta" / "ensdf", [(43, 99, "", 0.0), (43, 99, "m", 142.68)])
+    path = _radiation(tmp_path, [(43, 99, "", 142.68)])
+
+    m.migrate_nuclide_keyed(tmp_path, "meta/ensdf/radiation", dry_run=False)
+
+    assert pl.read_parquet(path)["state"].to_list() == [None]
+
+
+def test_radiation_keeps_the_two_apart_in_one_file(tmp_path):
+    """Negative control: a migration that mapped every blank to 'g' would pass
+    the first radiation test and silently claim the ground band for #386's rows."""
+    _nuclides(tmp_path / "meta" / "ensdf", [(43, 99, "", 0.0), (43, 99, "m", 142.68)])
+    path = _radiation(tmp_path, [(43, 99, "", 89.5), (43, 99, "", 142.68), (43, 99, "m", 142.68)])
+
+    m.migrate_nuclide_keyed(tmp_path, "meta/ensdf/radiation", dry_run=False)
+
+    assert pl.read_parquet(path)["state"].to_list() == [GROUND, None, "m"]
+
+
+def test_a_sibling_without_a_state_column_is_skipped_not_fatal(tmp_path):
+    """data/meta holds abundances.parquet and friends, which never had the
+    column. That is normal; a table where NOTHING has it is not."""
+    directory = tmp_path / "meta"
+    directory.mkdir(parents=True)
+    pl.DataFrame({"Z": [1], "abundance": [0.99]}).write_parquet(directory / "abundances.parquet")
+    pl.DataFrame(
+        {"Z": pl.Series([43], dtype=pl.Int32), "A": pl.Series([99], dtype=pl.Int32), "state": [""]}
+    ).write_parquet(directory / "decay.parquet")
+
+    rows, status = m.migrate_nuclide_keyed(tmp_path, "meta", dry_run=False)
+    assert (rows, status) == (1, "migrated")
+    assert pl.read_parquet(directory / "decay.parquet")["state"].to_list() == [GROUND]
+
+
+def test_a_table_where_nothing_has_a_state_column_raises(tmp_path):
+    directory = tmp_path / "meta"
+    directory.mkdir(parents=True)
+    pl.DataFrame({"Z": [1], "abundance": [0.99]}).write_parquet(directory / "abundances.parquet")
+    with pytest.raises(m.UnmigratableTable, match="no-state-column"):
+        m.migrate_nuclide_keyed(tmp_path, "meta", dry_run=False)
+
+
+def test_spectrum_xs_is_not_treated_as_nuclide_keyed(tmp_path):
+    """Its '' is an ENDF passthrough meaning "summed over states". Mapping those
+    99,512 rows to 'g' would relabel aggregates as ground states — committing
+    #357's mistake while fixing it."""
+    directory = tmp_path / "meta"
+    directory.mkdir(parents=True)
+    pl.DataFrame(
+        {"Z": pl.Series([43], dtype=pl.Int32), "A": pl.Series([99], dtype=pl.Int32), "state": [""]}
+    ).write_parquet(directory / "spectrum_xs.parquet")
+    pl.DataFrame(
+        {"Z": pl.Series([43], dtype=pl.Int32), "A": pl.Series([99], dtype=pl.Int32), "state": [""]}
+    ).write_parquet(directory / "decay.parquet")
+
+    m.migrate_nuclide_keyed(tmp_path, "meta", dry_run=False)
+
+    assert pl.read_parquet(directory / "spectrum_xs.parquet")["state"].to_list() == [""]
+    assert pl.read_parquet(directory / "decay.parquet")["state"].to_list() == [GROUND]

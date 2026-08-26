@@ -1,9 +1,7 @@
 {
   "library": "jendl-5",
-  "sublibrary": "n",
   "files": 173,
   "total_rows": 527368,
-  "source_files": 793,
   "projectiles": [
     "a",
     "d",

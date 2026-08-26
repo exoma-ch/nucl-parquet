@@ -98,14 +98,17 @@ JOINABLE_STATES: frozenset[str] = frozenset({GROUND, *ISOMERS})
 #: shipping both was one of the four spellings #357 counted. `'g'` and `'l'`
 #: pass through. Anything else — including an absent suffix — is not a state
 #: this repository can name, and becomes NULL rather than a guess.
+#:
+#: Derived from `ISOMERS` rather than written out. It was hand-written to `m4`
+#: while `ISOMERS` ran to `m9`, so `parse_x4_state('M9')` returned None — "not
+#: stated" — for a suffix that states the isomer perfectly clearly, while
+#: `isomer_state(9)` happily produced `'m9'`. Two spellings of one cap that
+#: disagreed: the same defect as the table this module replaced, one level up.
 _X4_SUFFIXES: dict[str, str] = {
-    "g": GROUND,
-    "m": "m",
+    GROUND: GROUND,
+    UNRESOLVED: UNRESOLVED,
     "m1": "m",  # X4 synonym for 'm', normalised here so only one reaches disk
-    "m2": "m2",
-    "m3": "m3",
-    "m4": "m4",
-    "l": UNRESOLVED,
+    **{isomer: isomer for isomer in ISOMERS},
 }
 
 
@@ -128,8 +131,30 @@ EVALUATED_XS_STATES: frozenset[str] = frozenset({SUM, GROUND, *ISOMERS})
 #: and "summed over states" is a claim about an evaluation, not a measurement.
 MEASURED_XS_STATES: frozenset[str] = frozenset({GROUND, UNRESOLVED, *ISOMERS})
 
-#: Nuclide-identity tables (`meta/ensdf/*`). A row *is* a nuclide in a given
-#: state, so every row names one and NULL is not meaningful either.
+#: Nuclide-identity tables (`meta/ensdf/*`, `meta/decay.parquet`, …). A row is
+#: *about* a nuclide in a given state.
+#:
+#: NULL is meaningful here, and is not the same as "this nuclide has no isomer".
+#: It means **the state could not be established**, and two measured cases need
+#: it (#378):
+#:
+#:   * `nuclides.parquet` carries 13 rows that are excited levels, not ground
+#:     states — the builder labelled the lowest *listed* level per (Z, A) as
+#:     ground, and G4ENSDFSTATE does not list those nuclides' ground states at
+#:     all. Four of them carry ENSDF's `+X` floating flag, so their excitation
+#:     is relative to an unknown offset and is not even a definite energy.
+#:   * `radiation` carries 13,106 rows whose `state` was `''` ("the ground-band
+#:     decay chain") but whose emitting level coincides with a catalogued isomer
+#:     of the same nuclide. Whether those are ground-band cascade gammas or
+#:     isomer decays cannot be settled from an energy coincidence (#386).
+#:
+#: `'g'` is a positive claim about which nuclear state a row belongs to.
+#: Asserting it over a row measured as ambiguous is inventing a claim — the
+#: defect class of #326, #351 and #377. NULL is the only value in this
+#: vocabulary that is true of those rows.
+#:
+#: They stop joining, which is the correct consequence: a row that does not come
+#: back is visible, and a row that comes back wrong is not.
 NUCLIDE_STATES: frozenset[str] = frozenset({GROUND, *ISOMERS})
 
 
@@ -275,7 +300,12 @@ _ENDF_EXT = _pending(
     LEGACY_UNSPECIFIED,
 )
 _EXFOR = _pending("#357/#367: '' -> NULL and 'm1' -> 'm', pending the EXFOR re-ingest", LEGACY_UNSPECIFIED, "m1")
-_ENSDF = _pending("#378: '' -> 'g' in the nuclide-identity tables, not started", LEGACY_UNSPECIFIED)
+#: The nuclide-identity tables. The migration code exists and is tested
+#: (`scripts/migrate_state_vocabulary.py --table meta/ensdf`); only the run is
+#: outstanding, because rewriting the parquets is a data release and
+#: `test_version_and_sha_co_change_in_pr` rightly forces a `data_version` bump
+#: with it. Run it alongside the next rebuild and delete these four entries.
+_ENSDF = _pending("#378: '' -> 'g'/NULL — migration written and tested, run pending", LEGACY_UNSPECIFIED)
 
 PENDING_MIGRATION: dict[str, PendingMigration] = {
     "brond-3.1/xs": _ENDF,

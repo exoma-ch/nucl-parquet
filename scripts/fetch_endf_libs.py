@@ -43,7 +43,7 @@ from _paths import DATA_DIR, ROOT  # noqa: E402
 
 sys.path.insert(0, str(ROOT))  # so `nucl_parquet` imports from the checkout
 
-from nucl_parquet.builder_stamp import write_builder_stamp  # noqa: E402
+from nucl_parquet.builder_stamp import RETIRED_MANIFEST_KEYS, write_builder_stamp  # noqa: E402
 from nucl_parquet.state_vocabulary import (  # noqa: E402
     ENDF_TARGET_MARKERS,
     SUM,
@@ -1385,20 +1385,30 @@ def fetch_library(
     # can tell "this library ships no isomeric data" from "this library's
     # isomeric data was dropped on the floor" without re-running the ingest.
     #
-    # Then stamp it with this script's digest (#342). Without the stamp, a
-    # correctness fix here and the parquets it should have regenerated can
-    # diverge indefinitely with CI green — which is exactly what happened
-    # between #260 and #334, for thirteen months. Routed through
-    # `write_builder_stamp` rather than inlining the stamp, so every builder in
-    # the repo passes the one guard that refuses to stamp a run that wrote
-    # nothing.
-    manifest = {
-        "library": lib_key,
-        "sublibrary": sublib_code,
+    # Everything this run counted is filed **under its sublibrary code**, and
+    # merged into whatever previous sublibraries wrote. One `--sublibrary` run
+    # sees one projectile, so a flat `"mf10_rows": 412` on a library that ships
+    # six of them is not a fact about the library — it is a fact about whichever
+    # run happened to go last. The manifest used to be written flat and
+    # overwritten wholesale, which left `"sublibrary": "a"` on tendl-2025 (ships
+    # a/d/h/n/p/t) and would have done the same to all ten diagnostic counters
+    # the moment a multi-projectile library was re-ingested (#369).
+    #
+    # Keyed rather than summed: "TENDL's proton sublibrary dropped its isomeric
+    # data" is exactly the question these counters exist to answer, and a total
+    # across six projectiles cannot answer it.
+    #
+    # `library` / `files` / `total_rows` / `projectiles` / `elements` are left
+    # to `scripts/build_manifests.py`, which derives them from everything on
+    # disk and so describes the whole library rather than this run.
+    manifest_path = output_dir / lib_key / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    manifest.setdefault("library", lib_key)
+    ingest = manifest.setdefault("ingest", {})
+    ingest[sublib_code] = {
+        "source_files": total_files,
         "files": len(element_rows),
         "total_rows": total_rows,
-        "source_files": total_files,
-        "projectiles": [sublib_code],
         "elements": sorted(element_rows.keys()),
         "mf3_sections": mf3_sections,
         # Sections dropped for being signed, and what that means is absent as a
@@ -1423,7 +1433,36 @@ def fetch_library(
         "null_residual_rows": null_residual_rows,
         "states": dict(sorted(state_counts.items())),
     }
-    manifest_path = output_dir / lib_key / "manifest.json"
+    manifest["ingest"] = {k: ingest[k] for k in sorted(ingest)}
+
+    # Whole-library totals, summed over every sublibrary recorded so far rather
+    # than taken from this run. `scripts/build_manifests.py` recomputes all four
+    # from what is actually on disk and is the authority; these exist so a
+    # manifest is coherent between the ingest and that regeneration, instead of
+    # describing one projectile until someone remembers the second command.
+    # A record written by an older or interrupted run may not carry every key
+    # this sums. Say which sublibrary is malformed rather than raising a bare
+    # KeyError from inside a generator — the failure is in one record and the
+    # message should name it — and refuse rather than defaulting to zero, which
+    # would quietly under-report the library's totals.
+    for sub, rec in manifest["ingest"].items():
+        missing = sorted({"files", "total_rows", "elements"} - set(rec))
+        if missing:
+            raise RuntimeError(
+                f"{lib_key}: manifest ingest record for sublibrary {sub!r} is missing {missing}. "
+                f"Re-run the ingest for that sublibrary, or delete the record — totals summed over a "
+                "partial record would silently under-report the library."
+            )
+    manifest["files"] = sum(rec["files"] for rec in manifest["ingest"].values())
+    manifest["total_rows"] = sum(rec["total_rows"] for rec in manifest["ingest"].values())
+    manifest["projectiles"] = sorted(manifest["ingest"])
+    manifest["elements"] = sorted({el for rec in manifest["ingest"].values() for el in rec["elements"]})
+
+    # Retired flat spellings of the same facts. Dropped here as well as in
+    # build_manifests.py so a partial re-ingest cannot leave one behind.
+    for retired in RETIRED_MANIFEST_KEYS:
+        manifest.pop(retired, None)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     write_builder_stamp(manifest_path, Path(__file__), files_written=len(element_rows))
 

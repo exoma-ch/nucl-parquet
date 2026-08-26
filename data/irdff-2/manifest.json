@@ -1,9 +1,7 @@
 {
   "library": "irdff-2",
-  "sublibrary": "n",
   "files": 33,
   "total_rows": 753743,
-  "source_files": 45,
   "projectiles": [
     "n"
   ],
