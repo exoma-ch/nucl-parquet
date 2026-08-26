@@ -1151,6 +1151,38 @@ def parse_mf9_rows(
     return rows, len(sections), product_sections, overshoot_products
 
 
+#: Summed MT -> the discrete-level partials it already contains.
+_SUMMED_TO_PARTIAL_RANGE: dict[int, range] = {
+    103: range(600, 650),  # (n,p) — summed by MT=103, partials MT=600–649
+    104: range(650, 700),  # (n,d)
+    105: range(700, 750),  # (n,t)
+    106: range(750, 800),  # (n,³He)
+    107: range(800, 850),  # (n,α)
+    16: range(875, 892),  # (n,2n) — summed by MT=16, partials MT=875–891
+}
+
+
+def redundant_partial_mts(mf3_mts: set[int]) -> set[int]:
+    """Of `mf3_mts`, the discrete-level partials whose summed MT is also present.
+
+    Prefer the summed MT (103, 107, …) when the evaluation ships it, and skip the
+    partials it already contains; otherwise sum the partials ourselves. Mirrors
+    the redundant-MT handling in `build_neutron_njoy.py` — never double-count a
+    channel the evaluator has already summed for us.
+
+    A named function because it defines *which MTs a production row draws on*,
+    and anything reasoning about that sum has to agree with the ingest exactly.
+    `scripts/check_isomeric_sum_rule.py` compares production rows against the
+    MF=10 split, and a second opinion about redundancy there would make its
+    verdicts about this policy rather than about the data (#368).
+    """
+    skip: set[int] = set()
+    for summed_mt, partial_range in _SUMMED_TO_PARTIAL_RANGE.items():
+        if summed_mt in mf3_mts:
+            skip.update(mt for mt in partial_range if mt in mf3_mts)
+    return skip
+
+
 def parse_endf_file(
     endf_text: str,
     target_z: int,
@@ -1190,24 +1222,8 @@ def parse_endf_file(
     # Extract MF=3 (cross-section) data, accumulating per residual so that
     # discrete-level partial MTs sharing one residual (e.g. MT=600-649 → (Z-1,A))
     # are summed on the union grid rather than mutually clobbered by dedup.
-    #
-    # Key policy: prefer the summed MT (103, 107, …) when present, and skip the
-    # partials it sums. Otherwise sum the partials. This mirrors the redundant-MT
-    # handling in build_neutron_njoy.py — never double-count a channel that the
-    # evaluator has already summed for us.
-    _SUMMED_TO_PARTIAL_RANGE: dict[int, range] = {
-        103: range(600, 650),  # (n,p) — summed by MT=103, partials MT=600–649
-        104: range(650, 700),  # (n,d)
-        105: range(700, 750),  # (n,t)
-        106: range(750, 800),  # (n,³He)
-        107: range(800, 850),  # (n,α)
-        16: range(875, 892),  # (n,2n) — summed by MT=16, partials MT=875–891
-    }
     mf3_mts = {mt for (mf, mt) in material.section_data if mf == 3}
-    skip_partials: set[int] = set()
-    for summed_mt, partial_range in _SUMMED_TO_PARTIAL_RANGE.items():
-        if summed_mt in mf3_mts:
-            skip_partials.update(mt for mt in partial_range if mt in mf3_mts)
+    skip_partials = redundant_partial_mts(mf3_mts)
 
     # (residual_Z, residual_A) -> list[(energies_ev: np.ndarray, xs_barns: np.ndarray)]
     by_residual: dict[tuple[int, int], list[tuple[np.ndarray, np.ndarray]]] = {}
@@ -1438,36 +1454,48 @@ def download_and_parse(
     session: requests.Session,
 ) -> ParsedFile:
     """Download a single ENDF zip file and parse it."""
-    sublib_dir = lib.sublibraries[sublib_code]
-    url = f"{IAEA_MIRROR}/{lib.iaea_path}/{sublib_dir}/{filename}"
-
-    # Parse target Z, A from filename
     parsed = parse_endf_filename(filename)
     if parsed is None:
         logger.warning("Cannot parse filename: %s", filename)
         return ParsedFile(rows=[])
-
     target_z, target_a, marker = parsed
 
+    endf_text = fetch_endf_text(lib, sublib_code, filename, session)
+    if endf_text is None:
+        return ParsedFile(rows=[])
+
+    return parse_endf_file(endf_text, target_z, target_a, sublib_code, marker)
+
+
+def fetch_endf_text(
+    lib: LibraryDef,
+    sublib_code: str,
+    filename: str,
+    session: requests.Session,
+) -> str | None:
+    """Download one ENDF zip from the mirror and return the tape inside it.
+
+    Split out of `download_and_parse` so a caller that wants the *material* —
+    a diagnostic reading MF=6 or MF=10 directly, say — does not have to go
+    through the row builder or reimplement the fetch.
+    """
+    sublib_dir = lib.sublibraries[sublib_code]
+    url = f"{IAEA_MIRROR}/{lib.iaea_path}/{sublib_dir}/{filename}"
     try:
         resp = session.get(url, timeout=60)
         resp.raise_for_status()
     except requests.RequestException as e:
         logger.warning("Download failed %s: %s", filename, e)
-        return ParsedFile(rows=[])
-
-    # Extract ENDF text from zip
+        return None
     try:
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
             names = zf.namelist()
             if not names:
-                return ParsedFile(rows=[])
-            endf_text = zf.read(names[0]).decode("ascii", errors="replace")
+                return None
+            return zf.read(names[0]).decode("ascii", errors="replace")
     except (zipfile.BadZipFile, KeyError) as e:
         logger.warning("Bad zip %s: %s", filename, e)
-        return ParsedFile(rows=[])
-
-    return parse_endf_file(endf_text, target_z, target_a, sublib_code, marker)
+        return None
 
 
 def fetch_library(
