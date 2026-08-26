@@ -1,42 +1,95 @@
 name: Auto-tag data release
 
-# When a push to main changes `data/catalog.json::data_version`, automatically
-# create + push the matching `data-<version>` tag. That tag push fires
-# release-data.yml, which validates the tag-vs-catalog match and publishes
-# the tarball to a GitHub Release. The PR review is the human gate; this
-# workflow removes the manual `git tag` step entirely — `data/catalog.json`
-# is the single source of truth.
+# When a push to main changes `data/catalog.json::data_version`, create and push
+# the matching `data-<version>` tag. That tag push fires release-data.yml, which
+# re-validates tag-vs-catalog and publishes the signed tarball. The PR review is
+# the human gate; `data/catalog.json` is the single source of truth.
 #
-# Belt-and-suspenders: release-data.yml re-validates tag CalVer vs catalog
-# at build time. If this workflow ever produces a mismatched tag (it
-# shouldn't — it derives the tag from catalog.json itself), release-data.yml
-# fails loudly rather than publishing the bad tarball.
+# One operation, not two (#344).
+#
+# This job used to push the tag with GITHUB_TOKEN — which by design cannot fire
+# a downstream `on: push` — and then dispatch release-data.yml over a separate,
+# long-lived DATA_RELEASE_PAT. When that PAT expired the tag push succeeded and
+# the dispatch returned 401, leaving `data-2026.8.3` tagged with no release, no
+# tarball and no signature, a catalog claiming a version nobody could download,
+# and a retry blocked by this workflow's own "refusing to re-tag". The
+# half-completed state was the defect; the expired credential was only how it
+# got reached (#274 and #308 were the same shape on different secrets).
+#
+# The tag is now pushed with a GitHub App installation token, which *does* fire
+# `on: push: tags:`. That deletes the second operation rather than repairing it:
+# either the tag exists and release-data.yml is running, or nothing moved and a
+# retry is clean. App tokens are minted per run and never expire.
+#
+# Three properties hold the rest of the failure surface closed:
+#
+#   1. Every credential is exercised *before* any ref moves, so a broken one
+#      leaves a clean retry instead of a half-published version.
+#   2. The job is idempotent. Already released -> green no-op. Tagged but not
+#      released -> re-trigger instead of refusing. So a manual re-run is always
+#      the right first response, and `workflow_dispatch` is a real escape hatch
+#      rather than a no-op that only ever compares HEAD against HEAD~1.
+#   3. The tag push is confirmed to have actually started release-data.yml, and
+#      when it has not, the error names the manual remedy verbatim. That remedy
+#      previously lived only in somebody's head, which is why #344 sat unnoticed.
 
 on:
   push:
     branches: [main]
     paths: [data/catalog.json]
-  # Manual-trigger escape hatch: if a catalog change merged without
-  # firing this workflow (e.g. the workflow itself was being updated in
-  # the same merge), an admin can dispatch from the Actions UI to retry.
+  # Escape hatch. Unlike the old version, dispatching this is useful: it targets
+  # whatever `data/catalog.json` currently claims and reconciles it, rather than
+  # diffing the last commit and finding nothing to do.
   workflow_dispatch: {}
 
+# Scopes GITHUB_TOKEN only — the App token carries its own installation
+# permissions. GITHUB_TOKEN reads Actions state (has release-data.yml started?)
+# and release state; the App token does all the writing.
 permissions:
-  contents: write
+  contents: read
+  actions: read
+
+# The state checks and the tag push are not one atomic operation, so two
+# concurrent runs (a merge racing a manual dispatch, or two dispatches) could
+# both observe "no tag yet" and both try to create it. `cancel-in-progress` is
+# deliberately false: cancelling a run that has already pushed the tag would
+# abandon it before the confirmation step — reintroducing, by a different route,
+# exactly the unwatched half-state this workflow exists to close.
+concurrency:
+  group: auto-tag-data
+  cancel-in-progress: false
 
 jobs:
   auto-tag:
     name: Auto-tag data release on data_version change
     runs-on: ubuntu-latest
     steps:
+      # Mint a short-lived installation token from the "nucl-parquet-release-bot"
+      # GitHub App (app id in RP_APP_ID, PEM in RP_APP_PRIVATE_KEY) — the same
+      # App release-please.yml already uses. A tag pushed with this token fires
+      # release-data.yml's `on: push` trigger, which GITHUB_TOKEN cannot do, and
+      # the App credential does not expire the way DATA_RELEASE_PAT did.
+      #
+      # This step is also the first half of the credential preflight: it fails
+      # here, before checkout and long before anything is tagged, if the App id
+      # or private key is missing or malformed.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RP_APP_ID }}
+          private-key: ${{ secrets.RP_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
+          # Leaves `origin` authenticated as the App for the tag push below.
+          token: ${{ steps.app-token.outputs.token }}
 
       - id: detect
-        name: Detect data_version change
+        name: Detect the data_version to release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          OLD=$(git show HEAD~1:data/catalog.json 2>/dev/null | jq -r '.data_version // empty')
           NEW=$(jq -r '.data_version // empty' data/catalog.json)
 
           if [ -z "$NEW" ]; then
@@ -44,47 +97,217 @@ jobs:
             exit 1
           fi
 
-          if [ "$OLD" = "$NEW" ]; then
-            echo "data_version unchanged ($NEW) — nothing to tag"
-            echo "tag=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           if ! [[ "$NEW" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]]; then
-            echo "ERROR: new data_version ($NEW) is not valid CalVer YYYY.MM.MICRO" >&2
+            echo "ERROR: data_version ($NEW) is not valid CalVer YYYY.MM.MICRO" >&2
             exit 1
           fi
 
-          echo "data_version: $OLD -> $NEW"
+          # A manual dispatch is a request to reconcile the current catalog with
+          # what is actually published, so it deliberately skips the diff. The
+          # old workflow compared HEAD against HEAD~1 unconditionally, which made
+          # the escape hatch useless in exactly the case it existed for: a merge
+          # whose tag or release did not happen is, by then, several commits back.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "manual dispatch — reconciling whatever data/catalog.json claims ($NEW)"
+          else
+            OLD=$(git show HEAD~1:data/catalog.json 2>/dev/null | jq -r '.data_version // empty')
+            if [ "$OLD" = "$NEW" ]; then
+              echo "data_version unchanged ($NEW) — nothing to tag"
+              echo "tag=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "data_version: $OLD -> $NEW"
+          fi
+
           echo "tag=data-${NEW}" >> "$GITHUB_OUTPUT"
           echo "version=${NEW}" >> "$GITHUB_OUTPUT"
 
-      - name: Push data tag
+      # Everything this job needs, checked while a failure still costs nothing.
+      #
+      # #344 failed *after* the tag was pushed. Ordering the checks before the
+      # write is the difference between "re-run the job" and "a human works out
+      # that the remedy is a workflow_dispatch nobody documented".
+      - name: Verify credentials before anything is tagged
         if: steps.detect.outputs.tag != ''
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          CI_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Does the App installation still cover this repository? A minted token
+          # for an App that was uninstalled, suspended, or had the repo dropped
+          # from its selection is well-formed and useless.
+          if ! GH_TOKEN="${APP_TOKEN}" gh api "repos/${GITHUB_REPOSITORY}" --jq .full_name; then
+            echo "::error::The nucl-parquet-release-bot App token cannot reach ${GITHUB_REPOSITORY}." \
+                 "Check that RP_APP_ID and RP_APP_PRIVATE_KEY are set, and that the App is still" \
+                 "installed on this repository with Contents: read and write." \
+                 "Nothing has been tagged — fix the installation and re-run this workflow."
+            exit 1
+          fi
+
+          # A disabled release-data.yml is the same bug wearing a different hat:
+          # the tag push would succeed and trigger nothing at all.
+          STATE=$(GH_TOKEN="${CI_TOKEN}" gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/release-data.yml" --jq .state)
+          if [ "${STATE}" != "active" ]; then
+            echo "::error::release-data.yml is '${STATE}', not 'active'. Pushing the tag would" \
+                 "publish nothing and leave the catalog claiming a version with no release." \
+                 "Re-enable the workflow in the Actions tab, then re-run this job."
+            exit 1
+          fi
+
+      - id: state
+        name: Resolve what already exists for this version
+        if: steps.detect.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.detect.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            TAG_EXISTS=true
+          else
+            TAG_EXISTS=false
+          fi
+
+          # "Is there a release?" is answered from the HTTP status, not merely
+          # from whether the command succeeded. Treating *any* failure as "no
+          # release" would let a transient API error route a tagged, already
+          # published version into the recovery dispatch below and re-publish
+          # it. Only a 404 means no release; anything else is unknown, and this
+          # job does not act on unknown.
+          ERR="${RUNNER_TEMP}/release-lookup.err"
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --silent 2>"${ERR}"; then
+            RELEASE_EXISTS=true
+          elif grep -q "HTTP 404" "${ERR}"; then
+            RELEASE_EXISTS=false
+          else
+            echo "::error::could not determine whether a release exists for ${TAG}:" \
+                 "$(tr '\n' ' ' < "${ERR}")"
+            exit 1
+          fi
+
+          echo "tag_exists=${TAG_EXISTS}" >> "$GITHUB_OUTPUT"
+          echo "release_exists=${RELEASE_EXISTS}" >> "$GITHUB_OUTPUT"
+          echo "${TAG}: tag_exists=${TAG_EXISTS} release_exists=${RELEASE_EXISTS}"
+
+      - name: Already released — nothing to do
+        if: steps.state.outputs.tag_exists == 'true' && steps.state.outputs.release_exists == 'true'
+        env:
+          TAG: ${{ steps.detect.outputs.tag }}
+        run: echo "${TAG} is already tagged and released. Nothing to do."
+
+      # A release whose tag was deleted. Re-tagging would silently re-point a
+      # published release at whatever main happens to be now, so refuse.
+      - name: Refuse to re-tag a published release
+        if: steps.state.outputs.tag_exists == 'false' && steps.state.outputs.release_exists == 'true'
         env:
           TAG: ${{ steps.detect.outputs.tag }}
         run: |
-          # Fail loudly if the tag already exists — never silently overwrite.
-          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
-            echo "ERROR: tag ${TAG} already exists; refusing to re-tag" >&2
-            exit 1
-          fi
-          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}"; then
-            echo "ERROR: tag ${TAG} already exists on origin; refusing to re-tag" >&2
-            exit 1
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Auto-tagged from data/catalog.json::data_version on merge"
-          git push origin "${TAG}"
+          echo "::error::A release ${TAG} exists but its tag does not. Re-creating the tag here" \
+               "would re-point a published, signed release at the current main. Restore the tag" \
+               "at the commit the release was built from, or bump data_version instead."
+          exit 1
 
-      # GITHUB_TOKEN can't dispatch workflow_dispatch events on other
-      # workflows (403 "Resource not accessible by integration"). Use
-      # the DATA_RELEASE_PAT (fine-grained PAT scoped to this repo with
-      # Actions: write + Contents: write) instead.
-      - name: Trigger release-data workflow
-        if: steps.detect.outputs.tag != ''
+      - id: push-tag
+        name: Push the data tag
+        if: steps.state.outputs.tag_exists == 'false' && steps.state.outputs.release_exists == 'false'
         env:
           TAG: ${{ steps.detect.outputs.tag }}
-          GH_TOKEN: ${{ secrets.DATA_RELEASE_PAT }}
-        run: gh workflow run release-data.yml -f tag="${TAG}"
+          # Bound through the environment rather than interpolated into the
+          # script body, per the house rule from #289: `${{ }}` is textual
+          # substitution before bash parses the line.
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          BOT="${APP_SLUG:-github-actions}"
+          git config user.name "${BOT}[bot]"
+          git config user.email "${BOT}[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Auto-tagged from data/catalog.json::data_version on merge"
+          # `origin` carries the App installation token from checkout, so this
+          # push fires release-data.yml's `on: push: tags: [data-*]` trigger.
+          # That is the entire release mechanism — there is no second step.
+          git push origin "${TAG}"
+          # Assigned and checked rather than inlined into the echo: a failing
+          # command substitution inside an `echo` argument does not trip `set -e`,
+          # so an empty `sha=` would sail through and blind the confirmation step
+          # below — which is the only thing watching for a tag with no release.
+          SHA=$(git rev-parse "${TAG}^{commit}")
+          if [ -z "${SHA}" ]; then
+            echo "::error::could not resolve ${TAG} to a commit after pushing it"
+            exit 1
+          fi
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+      # The #344 state, reached by any route: tagged, not released. Re-trigger
+      # rather than refuse. The old workflow's "refusing to re-tag" was correct
+      # about not moving the tag and wrong about what to do instead, so the one
+      # state that most needed a retry was the one state that could not have one.
+      - name: Re-trigger the release for a tagged-but-unreleased version
+        if: steps.state.outputs.tag_exists == 'true' && steps.state.outputs.release_exists == 'false'
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ steps.detect.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "::warning::${TAG} is tagged but has no published release — re-triggering release-data.yml."
+          if GH_TOKEN="${APP_TOKEN}" gh workflow run release-data.yml -f tag="${TAG}"; then
+            echo "Dispatched release-data.yml for ${TAG}."
+            exit 0
+          fi
+          # Dispatching needs Actions: write on the App installation, which the
+          # normal path above deliberately does not require. If it has not been
+          # granted, say exactly which command a human should run.
+          echo "::error::${TAG} is tagged but has no release, and this job could not dispatch" \
+               "release-data.yml. Automatic recovery needs 'Actions: Read and write' on the" \
+               "nucl-parquet-release-bot App installation. Until then, recover by hand with:" \
+               "  gh workflow run release-data.yml -f tag=${TAG}"
+          exit 1
+
+      # Assert the trigger, do not assume it. The whole point of pushing with an
+      # App token is that `on: push` fires; the failure this workflow exists to
+      # prevent is a tagged version with no release, and it is invisible unless
+      # something looks. If the run never appears, the error carries the remedy.
+      - name: Confirm release-data.yml started
+        if: steps.push-tag.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.detect.outputs.tag }}
+          TAG_SHA: ${{ steps.push-tag.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # `head_branch` is the tag name for a tag-triggered run — verified
+          # against this repository's own history, where the push-triggered
+          # release-data runs carry head_branch=data-2026.5.0 / data-2026.5.1.
+          # The API can return it null, though, so `head_sha` is the suspenders:
+          # the tag's commit is unique per release, since data_version has to
+          # move for a tag to exist at all.
+          DEADLINE=$((SECONDS + 300))
+          while :; do
+            # `|| true`, and a shape check on the result: the tag is already
+            # pushed by now, so a transient API error must not kill this step
+            # under `set -e`. That would fail the job without ever reaching the
+            # remedy below — a red run that does not say what to do is the
+            # thing #344 was.
+            FOUND=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-data.yml/runs?per_page=100" \
+              --jq '[.workflow_runs[]
+                     | select(.event == "push"
+                              and (.head_branch == $ENV.TAG or .head_sha == $ENV.TAG_SHA))]
+                    | length' 2>/dev/null || true)
+            [[ "${FOUND}" =~ ^[0-9]+$ ]] || FOUND=0
+            if [ "${FOUND}" -gt 0 ]; then
+              echo "release-data.yml is running for ${TAG}."
+              exit 0
+            fi
+            if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
+              break
+            fi
+            sleep 15
+          done
+          echo "::error::Tag ${TAG} was pushed but release-data.yml did not start within 300s." \
+               "data/catalog.json now claims a version with no release, tarball or signature," \
+               "and consumers resolving 'latest' will silently get the previous one. Recover with:" \
+               "  gh workflow run release-data.yml -f tag=${TAG}"
+          exit 1
