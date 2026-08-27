@@ -58,6 +58,16 @@ import duckdb
 import numpy as np
 
 from .download import data_dir as _resolve_data_dir
+from .state_vocabulary import GROUND, LEGACY_UNSPECIFIED
+
+# Two ground-state spellings are live at once, and which one a helper defaults to
+# depends on the table it reads. `meta/ensdf/radiation`, `nuclides` and
+# `beta_spectra` migrated to `'g'` in the 2026.8.5 release; `coincidences`,
+# `summing_partners` and `emissions` key on `parent_state`, which did not and
+# still holds `''` (8.7M rows). Both spellings come from `state_vocabulary` so
+# the asymmetry is greppable rather than a bare literal, and so the next
+# vocabulary move updates them from one place. When those three tables migrate,
+# their defaults become GROUND and this note goes with the ledger entry.
 
 # Element symbol → Z lookup for dynamic heavy-ion projectile resolution
 _SYMBOL_TO_Z: dict[str, int] = {
@@ -611,15 +621,20 @@ def gamma_lines(
     db: duckdb.DuckDBPyConnection,
     z: int | None = None,
     a: int | None = None,
-    state: str = "",
+    state: str = GROUND,
     min_intensity: float = 0.0,
 ) -> duckdb.DuckDBPyRelation:
     """Gamma lines for a parent nuclide, scoped to a single nuclear state.
 
-    Mirrors the Rust `DecayDb::modes(z, a, state)` shape: `state=""` is
-    ground state, `"m"`/`"m2"` are isomeric states. An aged calibration
-    source corresponds to `state=""`; a freshly activated isomer source to
-    `state="m"`.
+    Mirrors the Rust `DecayDb::modes(z, a, state)` shape: `state="g"` is the
+    ground state, `"m"`/`"m2"` are isomeric states. An aged calibration source
+    corresponds to `state="g"`; a freshly activated isomer source to `"m"`.
+
+    The default was `""` until the 2026.8.5 release, and `meta/ensdf/radiation`
+    no longer holds that value — so the default silently returned **zero rows**
+    for every caller who did not pass one. Taken from
+    `state_vocabulary.GROUND` now rather than spelled here, so the next
+    vocabulary move cannot leave this behind again (#357/#378).
 
     Returns a DuckDB relation — call `.pl()` for Polars, `.df()` for Pandas,
     `.fetchall()` for tuples, `.arrow()` for an Arrow table.
@@ -648,7 +663,7 @@ def coincidences(
     db: duckdb.DuckDBPyConnection,
     z: int,
     a: int,
-    parent_state: str = "",
+    parent_state: str = LEGACY_UNSPECIFIED,
     parent_decay_mode: str | None = None,
     emission1_rad_type: str | None = None,
     emission2_rad_type: str | None = None,
@@ -700,13 +715,17 @@ def identify_gamma(
     db: duckdb.DuckDBPyConnection,
     energy: float,
     tolerance: float = 2.0,
-    state: str = "",
+    state: str = GROUND,
     min_intensity: float = 0.1,
 ) -> duckdb.DuckDBPyRelation:
     """Candidate nuclides emitting a gamma near `energy` (keV), scoped by state.
 
-    Default `state=""` (ground) is correct for aged calibration sources and
+    Default `state="g"` (ground) is correct for aged calibration sources and
     most spectroscopy workflows. Pass `state="m"` etc. for isomer lookups.
+
+    Was `""`, which `meta/ensdf/radiation` stopped carrying in the 2026.8.5
+    release — `identify_gamma(db, 1173.2)` returned nothing at all rather than
+    the twenty candidates it should. `tests/golden/` caught it.
     """
     sql = """
         SELECT r.Z, r.A, r.state, n.symbol, r.energy_keV, r.intensity_pct,
@@ -741,7 +760,7 @@ def summing_partners(
     a: int,
     primary_energy_keV: float | None = None,
     tolerance_keV: float = 0.5,
-    parent_state: str = "",
+    parent_state: str = LEGACY_UNSPECIFIED,
     emission1_rad_type: str | None = None,
 ) -> duckdb.DuckDBPyRelation:
     """ICC-corrected summing partners for HPGe TCS corrections (#177).
@@ -798,7 +817,7 @@ def emissions(
     db: duckdb.DuckDBPyConnection,
     parent_z: int,
     parent_a: int,
-    parent_state: str = "",
+    parent_state: str = LEGACY_UNSPECIFIED,
     decay_mode: str | None = None,
     energy_keV: float | None = None,
     tolerance_keV: float = 0.5,
