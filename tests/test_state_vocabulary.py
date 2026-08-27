@@ -262,10 +262,23 @@ def test_the_gate_rejects_a_value_from_another_table_kind(monkeypatch):
 
 def test_the_gate_rejects_the_retired_spelling_once_migration_is_done(monkeypatch):
     """While a PENDING_MIGRATION entry stands, `''` is tolerated. Remove the
-    entry and it must be rejected — otherwise the ledger is decorative."""
-    assert LEGACY_UNSPECIFIED in allowed_states("exfor")
-    monkeypatch.delitem(PENDING_MIGRATION, "exfor")
-    assert LEGACY_UNSPECIFIED not in allowed_states("exfor")
+    entry and it must be rejected — otherwise the ledger is decorative.
+
+    The table is taken *from* the ledger rather than named. This test used to
+    hardcode `exfor`, and the 2026.8.5 rebuild migrated it — so the test broke
+    for the same reason the ledger entries did, which is a silly way for a
+    self-cleaning check to need hand-editing. When the ledger finally empties
+    there is nothing left to excuse and this test should be deleted with it.
+    """
+    live = sorted(t for t, p in PENDING_MIGRATION.items() if LEGACY_UNSPECIFIED in p.legacy)
+    assert live, (
+        "PENDING_MIGRATION no longer excuses the retired spelling anywhere. "
+        "The migration is complete — delete this test along with the ledger."
+    )
+    table = live[0]
+    assert LEGACY_UNSPECIFIED in allowed_states(table)
+    monkeypatch.delitem(PENDING_MIGRATION, table)
+    assert LEGACY_UNSPECIFIED not in allowed_states(table)
 
 
 def test_a_pending_entry_excuses_only_the_empty_string(monkeypatch):
