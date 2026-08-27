@@ -37,6 +37,7 @@ from nucl_parquet.state_vocabulary import (  # noqa: E402
     NUCLIDE_STATES,
     PENDING_MIGRATION,
     PENDING_RENAME_TABLES,
+    PHASE_NOT_STATE,
     STATES,
     SUM,
     TABLE_STATES,
@@ -217,12 +218,26 @@ def test_stopping_em_builder_writes_phase_not_state():
     while every other table meant isomeric state. Identical name, unrelated
     concept, and a consumer filtering `state` across a glob crossed the two.
 
-    Asserted against the *builder*, because the shipped parquet keeps the old
-    column until a stopping rebuild — that debt is `PENDING_COLUMN_RENAME`."""
+    Asserted against the builder *and* the shipped file. It used to be the
+    builder alone, because the parquet kept the old column until a stopping
+    rebuild; that rebuild has landed and `PENDING_COLUMN_RENAME` is empty, so
+    the file itself is now the stronger statement — and without it, emptying
+    the ledger would leave nothing checking the data at all."""
     source = (ROOT / "nucl_parquet" / "build_em_stopping.py").read_text()
     assert 'pl.col("state").alias("phase")' in source, (
         "build_em_stopping.py must project strata's `state` as `phase` (#357)"
     )
+
+    for target in PHASE_NOT_STATE:
+        path = DATA / target
+        if not path.is_file():
+            continue
+        columns = pl.read_parquet_schema(path)
+        assert "state" not in columns, f"{target} still calls a phase of matter a `state`"
+        assert "phase" in columns, f"{target} lost its `phase` column"
+        values = set(pl.read_parquet(path, columns=["phase"])["phase"].unique().to_list())
+        assert values <= {"solid", "liquid", "gas"}, f"{target}.phase holds {sorted(values)}"
+        assert values, f"{target}.phase is empty"
 
 
 def test_the_column_rename_ledger_is_self_cleaning(tables):

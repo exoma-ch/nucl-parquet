@@ -320,14 +320,30 @@ PENDING_MIGRATION: dict[str, PendingMigration] = {
 #: also holds `electron_stopping.parquet`, which never had the column. "This
 #: file never had a `state`" and "this file lost its `state`" are different
 #: facts and the ledger must not blur them.
+#: Files whose `state` column never held an isomeric state, so the column must
+#: be spelled `phase`. **Permanent, not a ledger.** The rename is done, but the
+#: rule that these files must not grow a `state` column back outlives the debt
+#: of doing it — `verify` and the migration CLI both key on this, so they keep
+#: working once `PENDING_COLUMN_RENAME` is empty.
+PHASE_NOT_STATE: dict[str, str] = {
+    "stopping/em/density_effect_params.parquet": (
+        "#357: holds phase of matter (solid/liquid/gas), not an isomeric state"
+    ),
+}
+
 PENDING_COLUMN_RENAME: dict[str, str] = {
     # Empty: `stopping/em/density_effect_params.parquet` shipped `state` holding
     # phase of matter, and the rebuild renamed it to `phase`. The file no longer
     # has a `state` column at all, so the entry retired itself — which is the
-    # contract this ledger is for.
+    # contract this ledger is for. The invariant it was enforcing lives on in
+    # `PHASE_NOT_STATE`; only the "still to do" part cleared.
 }
 
 #: The directories those files live in, for checks that work per table.
+#:
+#: Derived from the *debt*, not from `PHASE_NOT_STATE`: this set exempts a table
+#: from the isomeric-state gate while it is mid-migration, and an exemption that
+#: outlived its migration is exactly what the self-cleaning contract forbids.
 PENDING_RENAME_TABLES: frozenset[str] = frozenset(f.rsplit("/", 1)[0] for f in PENDING_COLUMN_RENAME)
 
 
