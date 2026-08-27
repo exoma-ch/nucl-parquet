@@ -23,7 +23,7 @@ path = "src/main.rs"
 #
 # tests/test_release_config.py fails if this drifts, so the release PR says what
 # to fix rather than surfacing a cargo resolution error.
-nucl-parquet = { path = "../nucl-parquet", version = "0.17.0" }
+nucl-parquet = { path = "../nucl-parquet", version = "0.16.1" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["full"] }
