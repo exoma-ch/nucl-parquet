@@ -25,6 +25,7 @@ import duckdb
 import pytest
 
 from nucl_parquet.loader import gamma_lines, identify_gamma
+from nucl_parquet.state_vocabulary import GROUND, ISOMERS
 
 # ---------------------------------------------------------------------------
 # Synthetic fixture — one ground-state nuclide plus two isomers (m, m2).
@@ -35,7 +36,10 @@ from nucl_parquet.loader import gamma_lines, identify_gamma
 def iso_db() -> duckdb.DuckDBPyConnection:
     """DuckDB with `radiation` and `nuclides` tables built via SQL.
 
-    Isotope Z=99, A=199 — fictional. Gamma lines:
+    Isotope Z=99, A=199 — fictional. Ground state is `'g'`: this fixture stands
+    in for `meta/ensdf/radiation` and `nuclides`, both of which migrated off `''`
+    in the 2026.8.5 release, and a fixture on the retired spelling would assert
+    against a vocabulary nothing ships. Gamma lines:
       100 keV, 14% — ground only
       200 keV,  8% — ground (and 2% on the m isomer: different intensity)
       300 keV, 20% — m only
@@ -51,8 +55,8 @@ def iso_db() -> duckdb.DuckDBPyConnection:
             parent_level_keV DOUBLE
         );
         INSERT INTO radiation VALUES
-            (99, 199, '',   'gamma', 100.0, 14.0, 'B-', NULL, 0.0,   0.0),
-            (99, 199, '',   'gamma', 200.0,  8.0, 'B-', NULL, 0.0,   0.0),
+            (99, 199, 'g',  'gamma', 100.0, 14.0, 'B-', NULL, 0.0,   0.0),
+            (99, 199, 'g',  'gamma', 200.0,  8.0, 'B-', NULL, 0.0,   0.0),
             (99, 199, 'm',  'gamma', 200.0,  2.0, 'B-', NULL, 0.0,  45.0),
             (99, 199, 'm',  'gamma', 300.0, 20.0, 'B-', NULL, 0.0,  45.0),
             (99, 199, 'm2', 'gamma', 400.0, 50.0, 'B-', NULL, 0.0, 150.0);
@@ -62,7 +66,7 @@ def iso_db() -> duckdb.DuckDBPyConnection:
             symbol VARCHAR, half_life_s DOUBLE
         );
         INSERT INTO nuclides VALUES
-            (99, 199, '',   'Xx', 1e7),
+            (99, 199, 'g',  'Xx', 1e7),
             (99, 199, 'm',  'Xx', 3600.0),
             (99, 199, 'm2', 'Xx', 60.0);
         """
@@ -148,17 +152,30 @@ def test_radiation_state_subset_of_nuclides(data_dir_path: Path) -> None:
         WHERE nuc.Z IS NULL
         """
     ).fetchall()
-    isomer_orphans = [(z, a, s) for (z, a, s) in bad if s != ""]
+    # Three buckets, not two. `state != ""` used to mean "an isomer"; since
+    # #387 it would also catch NULL, which means "the state could not be
+    # determined" — the opposite of a claim to be an isomer, and something that
+    # cannot join to a catalog keyed on resolved states.
+    isomer_orphans = [(z, a, s) for (z, a, s) in bad if s in ISOMERS]
     assert isomer_orphans == [], (
         f"{len(isomer_orphans)} ISOMER (Z,A,state) triples present in radiation "
-        f"but missing from nuclides — every non-ground state must be backed "
+        f"but missing from nuclides — every isomeric state must be backed "
         f"by the catalog. First 5: {isomer_orphans[:5]}"
     )
-    ground_orphans = [(z, a, s) for (z, a, s) in bad if s == ""]
+    ground_orphans = [(z, a, s) for (z, a, s) in bad if s == GROUND]
     assert len(ground_orphans) <= 30, (
         f"{len(ground_orphans)} ground-state (Z,A) triples present in "
         f"radiation but missing from nuclides — exceeds the 30-row "
         f"G4-coverage-gap budget. First 5: {ground_orphans[:5]}"
+    )
+    # NULL cannot join `USING (Z, A, state)` at all, so every unresolved
+    # radiation row lands here by construction rather than by absence. #387
+    # chose NULL over guessing; the budget bounds how much guessing was
+    # declined, and 13 of the 13 shipped today are that.
+    unresolved = [(z, a, s) for (z, a, s) in bad if s is None]
+    assert len(unresolved) <= 30, (
+        f"{len(unresolved)} radiation (Z,A) with an unresolved state — exceeds "
+        f"the 30-row budget for what #387 declined to guess. First 5: {unresolved[:5]}"
     )
 
 

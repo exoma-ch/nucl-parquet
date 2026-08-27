@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from nucl_parquet.state_vocabulary import GROUND
+
 
 @pytest.fixture(scope="module")
 def data_dir_path() -> Path:
@@ -58,7 +60,7 @@ def test_p32_anchors(data_dir_path: Path) -> None:
     import numpy as np
     import polars as pl
 
-    df = pl.read_parquet(data_dir_path / _DIR / "P.parquet").filter((pl.col("A") == 32) & (pl.col("state") == ""))
+    df = pl.read_parquet(data_dir_path / _DIR / "P.parquet").filter((pl.col("A") == 32) & (pl.col("state") == GROUND))
     assert df["transition_idx"].n_unique() == 1
     assert df["decay_mode"][0] == "BetaMinus"
     assert abs(float(df["endpoint_keV"][0]) - 1710.66) < 0.1
@@ -77,7 +79,7 @@ def test_y90_endpoint(data_dir_path: Path) -> None:
     endpoint 2275.6 keV and branching ~1."""
     import polars as pl
 
-    df = pl.read_parquet(data_dir_path / _DIR / "Y.parquet").filter((pl.col("A") == 90) & (pl.col("state") == ""))
+    df = pl.read_parquet(data_dir_path / _DIR / "Y.parquet").filter((pl.col("A") == 90) & (pl.col("state") == GROUND))
     # Find the dominant transition (highest branching among unique-1st-forbidden)
     dom = (
         df.group_by("transition_idx")
@@ -131,7 +133,7 @@ def test_cumulative_monotone(data_dir_path: Path) -> None:
 
     df = (
         pl.read_parquet(Path("data") / _DIR / "P.parquet")
-        .filter((pl.col("A") == 32) & (pl.col("state") == "") & (pl.col("transition_idx") == 0))
+        .filter((pl.col("A") == 32) & (pl.col("state") == GROUND) & (pl.col("transition_idx") == 0))
         .sort("energy_keV")
     )
     c = df["cumulative"].to_numpy()
@@ -200,7 +202,7 @@ def test_bi210_high_z_anchor(data_dir_path: Path) -> None:
 
     df = (
         pl.read_parquet(data_dir_path / _DIR / "Bi.parquet")
-        .filter((pl.col("A") == 210) & (pl.col("state") == "") & (pl.col("decay_mode") == "BetaMinus"))
+        .filter((pl.col("A") == 210) & (pl.col("state") == GROUND) & (pl.col("decay_mode") == "BetaMinus"))
         .sort("energy_keV")
     )
     t = df.filter(pl.col("transition_idx") == 0).sort("energy_keV")
@@ -232,6 +234,6 @@ def test_view_registered(data_dir_path: Path) -> None:
 
     db = np_lib.connect(data_dir_path)
     # Count rows for P-32 via the unified view
-    n = db.sql("SELECT COUNT(*) FROM beta_spectra WHERE Z=15 AND A=32 AND state=''").fetchall()[0][0]
+    n = db.sql("SELECT COUNT(*) FROM beta_spectra WHERE Z=15 AND A=32 AND state='g'").fetchall()[0][0]
     # P-32 has 1 transition × 200 bins = 200 rows
     assert 100 <= n <= 300, f"P-32 row count via view = {n}"
