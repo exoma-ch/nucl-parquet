@@ -31,6 +31,23 @@ _XS_TYPES = {
 }
 
 
+def _xs_dirs_with_kind() -> list[tuple[str, Path, bool]]:
+    """`_xs_dirs`, plus whether the library is *measured* rather than evaluated.
+
+    EXFOR's MT is assigned by a compiler reading SF-fields, not authored against
+    ENDF-102, so a handful of MT semantics differ there. Checks that assert ENDF
+    meaning have to know which they are looking at.
+    """
+    catalog_path = DATA_DIR / "catalog.json"
+    catalog = json.loads(catalog_path.read_text()) if catalog_path.exists() else {}
+    experimental = {
+        key
+        for key, info in catalog.get("libraries", {}).items()
+        if info.get("data_type") == "experimental_cross_sections"
+    }
+    return [(key, d, key in experimental) for key, d in _xs_dirs()]
+
+
 def _xs_dirs() -> list[tuple[str, Path]]:
     catalog_path = DATA_DIR / "catalog.json"
     if not catalog_path.exists():
@@ -203,26 +220,76 @@ def test_named_residuals_are_reachable_from_the_channel() -> None:
     token was attached to the wrong reaction. Two cases are checkable without a
     full reaction table:
 
-      * MT 1/2/3/4 (total, elastic, nonelastic, inelastic) leave Z unchanged.
+      * MT 1/2/3 (total, elastic, nonelastic) leave Z unchanged.
+      * MT 4 is `(z,n)` — see below, it depends on who wrote the MT.
       * MT 102 (capture) absorbs the projectile whole.
 
     A=0 targets are natural elements, so only Z is constrained for them.
     """
     problems: list[str] = []
     con = duckdb.connect()
-    for key, d in _xs_dirs():
+    for key, d, experimental in _xs_dirs_with_kind():
+        # MT=4 means `(z,n)` — one neutron out — so it leaves Z alone only when
+        # the projectile is itself a neutron. Charged-particle evaluations
+        # transmute: TENDL's a+Al-30 MT=4 makes P-33, Z 13 -> 15, and that is the
+        # definition working. This check asserted `residual_Z = target_Z` for all
+        # of MT=1/2/3/4 and so flagged 329,928 correct rows the moment the rebuild
+        # gave the charged-particle sublibraries their MT column.
+        #
+        # EXFOR does not author MTs, it derives them from SF-fields, and for
+        # charged particles it files *inelastic scattering* under MT=4 — the
+        # residual is the target, which is right for what was measured and not
+        # what ENDF's MT=4 means. So the correct rule differs by provenance, and
+        # each side is pinned to the single convention it actually uses rather
+        # than both being widened to accept either:
+        #
+        #   evaluated       329,928 charged-particle MT=4 rows, all transmuting
+        #   exfor-channels    6,735 charged-particle MT=4 rows, all Z-preserving
+        #
+        # Neither set has a single row on the other side of that line, so an
+        # `OR` here would buy nothing and cost the ability to catch a real swap.
+        mt4_rule = "residual_Z <> target_Z" if experimental else "residual_Z <> target_Z + proj_Z"
         row = con.sql(f"""
             SELECT
-              count(*) FILTER (WHERE MT IN (1,2,3,4) AND residual_Z <> target_Z),
+              count(*) FILTER (WHERE MT IN (1,2,3) AND residual_Z <> target_Z),
+              count(*) FILTER (WHERE MT = 4 AND {mt4_rule}),
               count(*) FILTER (WHERE MT = 102 AND residual_Z <> target_Z + proj_Z),
               count(*) FILTER (WHERE MT = 102 AND target_A > 0 AND residual_A <> target_A + proj_A)
             FROM read_parquet('{d}/*.parquet')
             WHERE residual_Z IS NOT NULL
         """).fetchone()
-        for n, what in zip(row, ("scattering changing Z", "capture changing Z", "capture changing A")):
+        labels = (
+            "total/elastic/nonelastic changing Z",
+            "(z,n) not reaching " + ("the target it scattered off" if experimental else "target+projectile"),
+            "capture changing Z",
+            "capture changing A",
+        )
+        for n, what in zip(row, labels):
             if n:
                 problems.append(f"{key}: {n} rows with {what}")
     assert not problems, "residual contradicts its MT:\n  " + "\n  ".join(problems)
+
+
+@pytest.mark.data
+def test_the_mt_residual_check_actually_reaches_the_rebuilt_channels() -> None:
+    """The check above passes; this proves it passes on rows, not on an empty set.
+
+    Its MT=4 clause was rewritten for the rebuild, and a filter that silently
+    matches nothing is the failure mode a green rewrite hides. Both conventions
+    must be present in the corpus for the split above to be doing any work.
+    """
+    con = duckdb.connect()
+    counts = {}
+    for key, d, experimental in _xs_dirs_with_kind():
+        n = con.sql(f"""
+            SELECT count(*) FROM read_parquet('{d}/*.parquet')
+            WHERE residual_Z IS NOT NULL AND MT = 4 AND proj_Z > 0
+        """).fetchone()[0]
+        counts["experimental" if experimental else "evaluated"] = (
+            counts.get("experimental" if experimental else "evaluated", 0) + n
+        )
+    assert counts.get("evaluated", 0) > 300_000, f"evaluated (z,n) rows vanished: {counts}"
+    assert counts.get("experimental", 0) > 6_000, f"EXFOR (z,n) rows vanished: {counts}"
 
 
 @pytest.mark.data
