@@ -212,7 +212,10 @@ function registerViews(db: duckdb.Database, dataDir: string): void {
   // ground_states: when nuclides.parquet exists, override with filtered view
   const nuclidesPath = join(dataDir, "meta", "ensdf", "nuclides.parquet");
   if (existsSync(nuclidesPath)) {
-    db.run("CREATE OR REPLACE VIEW ground_states AS SELECT * FROM nuclides WHERE state = ''");
+    // `'g'`, not `''`: #380 gave `state` one vocabulary and nuclides.parquet
+    // now reads g=3148 / m=739 / m2=82 / m3=7 / null=13, with no `''` at all.
+    // This view was silently empty against the rebuilt data.
+    db.run("CREATE OR REPLACE VIEW ground_states AS SELECT * FROM nuclides WHERE state = 'g'");
   }
 
   // EADL aliases: eadl_transitions (v0.11 compat) + fluorescence (radiative subset)

@@ -430,3 +430,31 @@ describe("list_libraries payload (#348)", () => {
     expect(payload.libraries[0].version).toBe("eval-7");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Views whose predicate depends on the state vocabulary (#380)
+// ---------------------------------------------------------------------------
+
+describe("ground_states view", () => {
+  const query = (sql: string) =>
+    new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      getDb().all(sql, (err: Error | null, rows: Record<string, unknown>[]) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+  it("selects rows, having been defined as `state = ''` which matches none", async () => {
+    // #380 retired `''`. nuclides.parquet reads g=3148 / m=739 / m2=82 / m3=7
+    // / null=13 and carries no `''` at all, so this view was silently empty —
+    // every caller of `ground_states` got zero rows and no error. Asserting a
+    // count, because "the view exists" was already true while it was broken.
+    const [{ n }] = (await query("SELECT count(*) AS n FROM ground_states")) as [{ n: bigint }];
+    expect(Number(n)).toBe(3148);
+  });
+
+  it("is exactly the ground-state subset of nuclides", async () => {
+    const rows = await query("SELECT DISTINCT state FROM ground_states");
+    expect(rows.map((r) => r.state)).toEqual(["g"]);
+  });
+});

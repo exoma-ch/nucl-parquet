@@ -92,7 +92,9 @@ COMPREHENSIVE_SUBLIBRARIES: frozenset[tuple[str, str]] = frozenset(
 # was written on it also flagged jeff-4.0 n+Ta-180 and jendl-5 n+Ce-140 /
 # n+Ho-165; all three have since been restored by #334 and #336 and their
 # entries are gone, because an exemption for something that is no longer absent
-# is a licence for the next regression to hide behind.
+# is a licence for the next regression to hide behind. The 2026.8.5 rebuild
+# retired two more — jeff-4.0 and jendl-5 n+He-4, see `test_he4_is_covered_
+# again_as_elastic_channels` for what came back in their place.
 _TENDL_H_HE = [("H", 1), ("H", 2), ("He", 3), ("He", 4)]
 
 _TENDL_HHE_REASON = (
@@ -102,28 +104,6 @@ _TENDL_HHE_REASON = (
 
 def _tendl_hhe_gaps(projectiles: list[str]) -> dict[tuple[str, str, int], str]:
     return {(proj, sym, a): _TENDL_HHE_REASON for proj in projectiles for sym, a in _TENDL_H_HE}
-
-
-# n + He-4 is an inert scatterer in JEFF-4.0 and JENDL-5, and this was verified
-# against the upstream tapes rather than assumed. `n_002-He-4_0228` in both IAEA
-# directories carries exactly two MF=3 sections — MT=1 (total) and MT=2
-# (elastic), both peaking at ~7.63 b — and no MF=10 at all. Neither MT names a
-# residual, so there is no transmutation product to tabulate and zero production
-# rows is the right answer, not a dropout.
-#
-# Worth spelling out because these shards *used* to carry He-4 rows and their
-# disappearance is the #334 fix, not a #335-style silent drop: 152 rows in
-# jeff-4.0 and 398 in jendl-5, every one of them a single group at residual
-# (Z=2, A=5) peaking at 7635 mb. He-5 is unbound. That was MT=2 elastic filed as
-# (n,gamma) — precisely the bug #334 removed.
-#
-# These entries clean themselves up: once the re-ingest lands (#345), MT=1 and
-# MT=2 become `kind='channel'` rows under #347, target_A=4 is present again, and
-# `test_known_gaps_still_correspond_to_real_absences` says so.
-_HE4_INERT = (
-    "verified against n_002-He-4_0228: upstream tape has only MT=1/MT=2, no residual and no MF=10. "
-    "The rows that used to be here were the #334 elastic-as-capture artefact at unbound He-5"
-)
 
 
 KNOWN_GAPS: dict[str, dict[tuple[str, str, int], str]] = {
@@ -150,12 +130,6 @@ KNOWN_GAPS: dict[str, dict[tuple[str, str, int], str]] = {
         # OpenMC-processed ENDF/B-VIII.0 HDF5 ships no threshold transmutation
         # product for He-4 — (n,g)He-5 is unbound. Upstream reality.
         ("n", "He", 4): "endfb-8.0 (transmutation-only) has no He-4 channels in the OpenMC source",
-    },
-    "jeff-4.0": {
-        ("n", "He", 4): _HE4_INERT,
-    },
-    "jendl-5": {
-        ("n", "He", 4): _HE4_INERT,
     },
 }
 
@@ -319,6 +293,36 @@ def test_no_undocumented_natural_target_gaps(data_dir_path: Path) -> None:
         f"Either restore the ingested files or add an entry to KNOWN_GAPS with a\n"
         f"verified upstream reason. Ran in {elapsed:.2f}s.\n  " + "\n  ".join(undocumented)
     )
+
+
+@pytest.mark.data
+@pytest.mark.parametrize(("lib", "rows"), [("jeff-4.0", 152), ("jendl-5", 398)])
+def test_he4_is_covered_again_as_elastic_channels(data_dir_path: Path, lib: str, rows: int) -> None:
+    """n+He-4 came back as MT=1/MT=2 channels, which is why its exemption went.
+
+    Deleting a `KNOWN_GAPS` entry is only half the work: the reason it was there
+    was that `xs/n_He.parquet` shipped no target_A=4 rows at all, and "the gap
+    closed" has to be asserted on what is now present or the deletion is just a
+    silenced check.
+
+    The shape matters as much as the count. These shards *used* to carry He-4
+    rows and lost them to the #334 fix: 152 in jeff-4.0 and 398 in jendl-5,
+    every one a production row at residual (Z=2, A=5) — unbound He-5 — peaking
+    at 7635 mb, which was MT=2 elastic mislabelled as (n,gamma). The row counts
+    below are identical because it is the same MF=3 energy grid, so a count
+    alone cannot tell the fix from the bug. `residual IS NULL` can: the upstream
+    tape `n_002-He-4_0228` has only MT=1 and MT=2 and no MF=10, neither MT names
+    a residual, and #347 gives them `kind='channel'` with a null product.
+    """
+    got = _CON.sql(f"""
+        SELECT MT, kind, residual_Z, residual_A, count(*), round(max(xs_mb), 1)
+        FROM read_parquet('{data_dir_path}/{lib}/xs/n_He.parquet')
+        WHERE target_A = 4 GROUP BY 1, 2, 3, 4 ORDER BY 1
+    """).fetchall()
+    assert got == [
+        (1, "channel", None, None, rows, 7635.5 if lib == "jeff-4.0" else 7633.3),
+        (2, "channel", None, None, rows, 7635.5 if lib == "jeff-4.0" else 7633.3),
+    ], f"{lib} n+He-4 is not the corrected elastic scatterer: {got}"
 
 
 @pytest.mark.data

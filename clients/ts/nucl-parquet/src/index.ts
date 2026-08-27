@@ -7,6 +7,6 @@ export { catimaColumns, residualKeyedIndices, stoppingColumns, xsColumns } from 
 export type { CatimaColumns, StoppingColumns, XsColumns } from "./columns.js";
 export { CoincidencesDb } from "./coincidences.js";
 export type { CoincidenceEntry, CoincidenceFilter, Emission } from "./coincidences.js";
-export { RadiationDb } from "./radiation.js";
+export { GROUND, RadiationDb } from "./radiation.js";
 export type { EmissionEntry, GammaCandidate } from "./radiation.js";
 export { zToSymbol } from "./z_symbols.js";

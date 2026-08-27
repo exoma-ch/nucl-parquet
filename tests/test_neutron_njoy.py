@@ -77,8 +77,30 @@ def test_parse_nuclide_stem_skips_metastable_targets():
     assert m.parse_nuclide_stem("Ag110_m1") is None
 
 
+#: Columns the canonical xs schema has that `endfb-8.0` does not, and why.
+#:
+#: `endfb-8.0` comes from `scripts/build_neutron_njoy.py` via OpenMC HDF5, not
+#: from `fetch_endf_libs.py`, so the 2026.8.5 rebuild did not touch it and it
+#: still writes the pre-#338/#353 shape. That is a real divergence, expected
+#: today and not permanent — the builder should learn both columns.
+#:
+#: Named rather than marked xfail, and rather than scoping the test away from
+#: endfb-8.0. Both of those tolerate *any* difference; this tolerates exactly
+#: these two, so a third one still fails. The check exists so shards cannot
+#: silently diverge, and a divergence nobody has to enumerate is a silent one.
+_ENDFB_8_0_MISSING_COLUMNS = {
+    "target_state",  # #353 — the target's own isomeric state
+    "interp_law",  # #338 — the ENDF interpolation law per point
+}
+
+
 def test_shard_schema_matches_other_xs_libraries():
-    """The NJOY shards must carry the exact 6-column xs schema so they auto-union."""
+    """The NJOY shards must carry the canonical xs schema so they auto-union.
+
+    `union_by_name` fills a missing column with nulls rather than failing, so a
+    shard that quietly loses one still unions — which is why this is asserted
+    rather than left to be noticed.
+    """
     import polars as pl
 
     xs_dir = ROOT / "data" / "endfb-8.0" / "xs"
@@ -86,8 +108,20 @@ def test_shard_schema_matches_other_xs_libraries():
         pytest.skip("endfb-8.0 data not present")
     ref = pl.read_parquet_schema(ROOT / "data" / "jendl-5" / "xs" / "n_Cu.parquet")
     got = pl.read_parquet_schema(next(xs_dir.glob("n_*.parquet")))
-    assert list(got.keys()) == list(ref.keys()), f"schema {list(got.keys())} != xs schema {list(ref.keys())}"
-    assert [str(v) for v in got.values()] == [str(v) for v in ref.values()]
+
+    missing = [c for c in ref if c not in got]
+    extra = [c for c in got if c not in ref]
+    assert not extra, f"endfb-8.0 carries columns the canonical schema does not: {extra}"
+    assert set(missing) == _ENDFB_8_0_MISSING_COLUMNS, (
+        f"endfb-8.0 is missing {sorted(missing)} from the canonical xs schema; the known and "
+        f"accepted set is {sorted(_ENDFB_8_0_MISSING_COLUMNS)}. Either build_neutron_njoy.py "
+        "has lost a column it used to write, or it has gained one — update this set with the "
+        "reason, do not widen it silently."
+    )
+
+    # Order and dtype must still match for every column it does carry.
+    assert [c for c in got] == [c for c in ref if c not in missing], f"endfb-8.0 column order diverges: {list(got)}"
+    assert [str(got[c]) for c in got] == [str(ref[c]) for c in got], "endfb-8.0 dtypes diverge"
 
 
 # ---------------------------------------------------------------------------

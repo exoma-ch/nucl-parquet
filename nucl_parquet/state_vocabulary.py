@@ -296,48 +296,16 @@ def _pending(reason: str, *legacy: str) -> PendingMigration:
     return PendingMigration(frozenset(legacy), reason)
 
 
-_ENDF = _pending("#357: '' -> 'sum', pending the ENDF re-ingest", LEGACY_UNSPECIFIED)
-_ENDF_EXT = _pending(
-    "#357: '' -> 'sum'; external-builder, so only scripts/migrate_state_vocabulary.py can fix it",
-    LEGACY_UNSPECIFIED,
-)
-_EXFOR = _pending("#357/#367: '' -> NULL and 'm1' -> 'm', pending the EXFOR re-ingest", LEGACY_UNSPECIFIED, "m1")
-#: The nuclide-identity tables. The migration code exists and is tested
-#: (`scripts/migrate_state_vocabulary.py --table meta/ensdf`); only the run is
-#: outstanding, because rewriting the parquets is a data release and
-#: `test_version_and_sha_co_change_in_pr` rightly forces a `data_version` bump
-#: with it. Run it alongside the next rebuild and delete these four entries.
-_ENSDF = _pending("#378: '' -> 'g'/NULL — migration written and tested, run pending", LEGACY_UNSPECIFIED)
-
 PENDING_MIGRATION: dict[str, PendingMigration] = {
-    "brond-3.1/xs": _ENDF,
-    "cendl-3.2/xs": _ENDF,
-    "endfb-8.0/channels": _ENDF,
-    "endfb-8.0/xs": _ENDF,
-    "endfb-8.1/xs": _ENDF,
-    "fendl-3.2/xs": _ENDF,
-    "iaea-medical/xs": _ENDF,
-    "irdff-2/xs": _ENDF,
-    "jeff-4.0/xs": _ENDF,
-    "jendl-5/xs": _ENDF,
-    "tendl-2025/xs": _ENDF,
-    # No in-repo builder (see data/builder_stamp_exemptions.json), so a rebuild
-    # can never fix these — only the migration script can.
-    "iaea-pd-2019/xs": _ENDF_EXT,
-    "jendl-ad-2017/xs": _ENDF_EXT,
-    "jendl-deu-2020/xs": _ENDF_EXT,
-    "tendl-2023-iso/xs": _ENDF_EXT,
-    "exfor": _EXFOR,
-    "exfor-channels": _EXFOR,
-    # Not fixed by this change. The nuclide-identity tables need their own pass:
-    # five builders, ~100 consumer call sites and one genuinely open question
-    # (meta/ensdf/radiation's '' is documented as "from the ground-band decay
-    # chain", which is not the same claim as "the ground state"). Tracked in its
-    # own issue rather than guessed at here.
-    "meta": _ENSDF,
-    "meta/ensdf": _ENSDF,
-    "meta/ensdf/beta_spectra": _ENSDF,
-    "meta/ensdf/radiation": _ENSDF,
+    # `data/meta/spectrum_xs.parquet` alone still carries `''`. It is built by
+    # `nucl_parquet/build_spectrum_xs.py`, which copies `state` straight from the
+    # xs rows it averages — so the value is now `'sum'` at the source and the
+    # file simply has not been regenerated. One rebuild of that table clears it.
+    #
+    # Every other entry that stood here was retired by the 2026.8.5 rebuild and
+    # the `meta/ensdf` migration, both of which have now run. The ledger is
+    # self-cleaning and this is it cleaning.
+    "meta": _pending("#357: '' -> 'sum', pending a rebuild of meta/spectrum_xs.parquet", LEGACY_UNSPECIFIED),
 }
 
 #: Tables whose shipped `state` column is not an isomeric state at all and is
@@ -352,13 +320,30 @@ PENDING_MIGRATION: dict[str, PendingMigration] = {
 #: also holds `electron_stopping.parquet`, which never had the column. "This
 #: file never had a `state`" and "this file lost its `state`" are different
 #: facts and the ledger must not blur them.
-PENDING_COLUMN_RENAME: dict[str, str] = {
+#: Files whose `state` column never held an isomeric state, so the column must
+#: be spelled `phase`. **Permanent, not a ledger.** The rename is done, but the
+#: rule that these files must not grow a `state` column back outlives the debt
+#: of doing it — `verify` and the migration CLI both key on this, so they keep
+#: working once `PENDING_COLUMN_RENAME` is empty.
+PHASE_NOT_STATE: dict[str, str] = {
     "stopping/em/density_effect_params.parquet": (
-        "#357: `state` holds phase of matter; builder now writes `phase`, pending a stopping rebuild"
+        "#357: holds phase of matter (solid/liquid/gas), not an isomeric state"
     ),
 }
 
+PENDING_COLUMN_RENAME: dict[str, str] = {
+    # Empty: `stopping/em/density_effect_params.parquet` shipped `state` holding
+    # phase of matter, and the rebuild renamed it to `phase`. The file no longer
+    # has a `state` column at all, so the entry retired itself — which is the
+    # contract this ledger is for. The invariant it was enforcing lives on in
+    # `PHASE_NOT_STATE`; only the "still to do" part cleared.
+}
+
 #: The directories those files live in, for checks that work per table.
+#:
+#: Derived from the *debt*, not from `PHASE_NOT_STATE`: this set exempts a table
+#: from the isomeric-state gate while it is mid-migration, and an exemption that
+#: outlived its migration is exactly what the self-cleaning contract forbids.
 PENDING_RENAME_TABLES: frozenset[str] = frozenset(f.rsplit("/", 1)[0] for f in PENDING_COLUMN_RENAME)
 
 
