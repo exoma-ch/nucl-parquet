@@ -8,7 +8,13 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import { CoincidencesDb, RadiationDb, type CoincidenceEntry, type EmissionEntry } from "../src/index.js";
+import {
+  CoincidencesDb,
+  GROUND,
+  RadiationDb,
+  type CoincidenceEntry,
+  type EmissionEntry,
+} from "../src/index.js";
 
 const META_DIR = join(import.meta.dirname, "../../../../data/meta");
 const FIXTURE_DIR = join(import.meta.dirname, "../../../../tests/golden/fixtures");
@@ -138,7 +144,11 @@ describe("golden parity (#176)", () => {
 
   it("Ni-60 emissions match Python fixture (daughter-keyed)", async () => {
     const db = await RadiationDb.open(META_DIR);
-    const lines = (await db.emissions(28, 60, "")).filter((e) => e.intensityPct >= 5.0);
+    // `""` here matched nothing once #380 retired that spelling, so this
+    // compared an empty array against a 619-row fixture. The Python side of
+    // this parity pair defaults to `GROUND` too — that is the point of the
+    // fixture, so both must ask the same question.
+    const lines = (await db.emissions(28, 60, GROUND)).filter((e) => e.intensityPct >= 5.0);
     const actual = lines
       .map((e: EmissionEntry) => ({
         Z: e.z,
