@@ -249,7 +249,10 @@ class TestHalfLifeConversion:
 
 
 class TestStateLabelling:
-    def test_ground_gets_empty_string(self, tmp_path: Path) -> None:
+    def test_ground_gets_the_ground_spelling(self, tmp_path: Path) -> None:
+        # #380 retired `""` as a ground-state marker; the builder now emits
+        # `"g"` directly. Both the pre-#380 spelling and this test used to
+        # match `""`; the migration and this rename move in lockstep.
         df = pl.DataFrame(
             {
                 "parent_z": [43],
@@ -269,7 +272,7 @@ class TestStateLabelling:
             out_col="state",
             m_levels=m_levels,
         )
-        assert out["state"].to_list() == [""]
+        assert out["state"].to_list() == ["g"]
 
     def test_m_state_within_tolerance(self, tmp_path: Path) -> None:
         # Eu-152 G4 emits 45.5998; catalog says 45.6. Diff = 0.0002 < 1.0.

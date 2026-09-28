@@ -501,7 +501,7 @@ async def get_summing_partners(
 async def get_emissions(
     parent_z: int,
     parent_a: int,
-    parent_state: str = "",
+    parent_state: str = "g",
     decay_mode: str | None = None,
     energy_keV: float | None = None,
     tolerance_keV: float = 0.5,
@@ -516,7 +516,7 @@ async def get_emissions(
     Args:
         parent_z: Atomic number of the decaying parent nuclide (e.g. 27 for Co-60).
         parent_a: Mass number of the parent (e.g. 60 for Co-60).
-        parent_state: Nuclear state ('' = ground, 'm' = metastable, 'm2' = 2nd isomer).
+        parent_state: Nuclear state ('g' = ground, default; 'm' = metastable, 'm2' = 2nd isomer).
         decay_mode: Filter by decay mode ('beta-', 'KshellEC', 'IT', etc.).
         energy_keV: Filter to gammas near this energy.
         tolerance_keV: Energy match tolerance in keV (default 0.5).

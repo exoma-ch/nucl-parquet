@@ -643,7 +643,7 @@ server.tool(
   {
     parent_z: z.number().describe("Atomic number of the decaying parent (e.g. 27 for Co-60)"),
     parent_a: z.number().describe("Mass number of the parent (e.g. 60 for Co-60)"),
-    parent_state: z.string().optional().describe("Nuclear state: '' (ground), 'm', 'm2'"),
+    parent_state: z.string().optional().describe("Nuclear state: 'g' (ground, default), 'm', 'm2' — per #380"),
     decay_mode: z.string().optional().describe("Filter by decay mode: 'beta-', 'KshellEC', 'IT', etc."),
     energy_keV: z.number().optional().describe("Filter to gammas near this energy"),
     tolerance_keV: z.number().optional().describe("Energy tolerance (default 0.5 keV)"),
@@ -652,7 +652,10 @@ server.tool(
   },
   async ({ parent_z, parent_a, parent_state, decay_mode, energy_keV, tolerance_keV, min_intensity_pct, max_rows }) => {
     const conditions = ["parent_Z = ?", "parent_A = ?", "parent_state = ?"];
-    const params: unknown[] = [parent_z, parent_a, parent_state ?? ""];
+    // Default to `"g"` (post-#380). The pre-migration `""` matched 8.7M rows
+    // silently and returns zero now — same defect the xs/radiation clients
+    // fixed in b2470400 / ecf5b831.
+    const params: unknown[] = [parent_z, parent_a, parent_state ?? "g"];
     const tol = tolerance_keV ?? 0.5;
 
     if (decay_mode !== undefined) {
@@ -676,7 +679,7 @@ server.tool(
     return {
       content: [{
         type: "text" as const,
-        text: safeStringify({ parent_z, parent_a, parent_state: parent_state ?? "", ...result }, 2),
+        text: safeStringify({ parent_z, parent_a, parent_state: parent_state ?? "g", ...result }, 2),
       }],
     };
   },

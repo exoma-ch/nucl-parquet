@@ -71,20 +71,23 @@ Design choices (per ADR-0002, issue #71)
    (matches the v0.10.x convention). Direct copy.
 
 4. **State labels** (`state`, `daughter_state`):
-   - `parent_ex_kev == 0` → `state = ""` (ground).
+   - `parent_ex_kev == 0` → `state = "g"` (ground, per the #380 vocabulary).
    - Otherwise look up the catalog: if `(Z, A)` has a `state == "m"` row in
      `nuclides.parquet` whose `level_keV` matches `parent_ex_kev` within
      ±1 keV, emit `state = "m"`. (Tolerance allows for G4 vs ENSDF
      rounding, e.g. Eu-152m: G4 45.5998 keV, ENSDF 45.6 keV.)
    - No catalog match for an excited parent → row is dropped from
-     `decay.parquet` (not representable in v0.10.x's `{"", "m"}` enum).
+     `decay.parquet` (not representable in the `{"g", "m"}` enum).
      The detailed sibling table still carries it.
-   - `daughter_state` follows the same rule applied to `daughter_ex_kev`.
-     Daughter at ground gets `""`. Daughter excited but no m-catalog match
-     gets `""` as a fallback (consistent with how v0.10.x stored "decay
-     populates the daughter species" without distinguishing the daughter's
-     internal state in the legacy schema). The detailed table preserves
-     `daughter_ex_kev` exactly for spectroscopy consumers.
+   - `daughter_state` is always NULL. A summary decay row aggregates over
+     every daughter level that decay populates, so no single state names all
+     of them — 2,283 of the 5,855 summary rows with matching detail rows
+     never even reach the daughter's ground state (their `min_daughter_ex_kev
+     > 0`). Before the #357-b migration this column shipped `""` on all
+     6,431 rows as a fallback, which was neither ground nor unresolved but
+     the absence of a determination. NULL is the honest shape. Spectroscopy
+     consumers who need per-transition daughter levels read
+     `decay_detailed.parquet::daughter_ex_kev` instead.
 
 5. **SpFission daughter**: G4 records `daughter_z = -1, daughter_a = -1`
    (no single daughter). We emit `daughter_Z = NULL, daughter_A = NULL` to
@@ -95,8 +98,8 @@ Acceptance invariants (issue #71)
 
 - Eu-152 ground: B- 27.92 % + per-shell EC 72.08 % = 100 % (within 0.1 %).
 - Tc-99m at 142.6836 keV: IT ≈ 99.9963 %, B- ≈ 0.0037 %.
-- No `state == ""` row carries `decay_mode == "IT"` (the v0.10.x IAEA-bug
-  canary — IT-on-ground is unphysical).
+- No `state == "g"` row carries `decay_mode == "IT"` (the v0.10.x IAEA-bug
+  canary — IT-on-ground is unphysical; pre-#380 this said `state == ""`).
 - Branching sums per (Z, A, state) ∈ [0.95, 1.05]. After the IT-on-ground
   filter renormalizes affected groups and the floating-level filter drops
   duplicate ground entries, **all groups satisfy the bound** (verified on
@@ -264,7 +267,7 @@ def _label_state(
 
     distinct_labeled = distinct_parents.join(min_diff_per_za, on=["_z", "_a", "_ex"], how="left").with_columns(
         pl.when(pl.col("_ex") == 0.0)
-        .then(pl.lit(""))
+        .then(pl.lit("g"))  # #380: ground is spelled 'g', not ''
         .when(pl.col("_is_m"))
         .then(pl.lit("m"))
         .otherwise(pl.lit(None, dtype=pl.String))
@@ -338,7 +341,8 @@ def build_decay_table(src: pl.DataFrame, nuclides_path: Path) -> pl.DataFrame:
         m_levels=m_levels,
     )
 
-    # Drop parents that didn't map to "" or "m": not representable in v0.10.x.
+    # Drop parents that didn't map to "g" or "m": not representable in the
+    # {"g", "m"} enum (pre-#380 this said "" instead of "g").
     kept = with_daughter_state.filter(pl.col("state").is_not_null())
 
     out = kept.select(
@@ -350,9 +354,10 @@ def build_decay_table(src: pl.DataFrame, nuclides_path: Path) -> pl.DataFrame:
         # daughter_z=-1 (SpFission) → null; otherwise int32.
         pl.when(pl.col("daughter_z") < 0).then(None).otherwise(pl.col("daughter_z").cast(pl.Int32)).alias("daughter_Z"),
         pl.when(pl.col("daughter_a") < 0).then(None).otherwise(pl.col("daughter_a").cast(pl.Int32)).alias("daughter_A"),
-        # Fall back to "" when daughter has no catalog m-match (legacy schema
-        # can't express "this daughter level is some excited state").
-        pl.col("daughter_state").fill_null("").alias("daughter_state"),
+        # NULL — always. See §4 of the module docstring: a summary row
+        # aggregates over every daughter level, so a single-state label is a
+        # false claim. Pre-#357-b this fell back to `''` on all 6,431 rows.
+        pl.lit(None, dtype=pl.String).alias("daughter_state"),
         pl.col("branching_ratio").alias("branching"),
     )
 
@@ -360,10 +365,10 @@ def build_decay_table(src: pl.DataFrame, nuclides_path: Path) -> pl.DataFrame:
     # source carries a handful (e.g. Br-92) where ground-state IT to itself
     # is recorded — physically meaningless and historically the "fetcher
     # broken" smell. We filter the offending rows AND renormalize the
-    # remaining branching for the affected (Z, A, "") group so the
+    # remaining branching for the affected (Z, A, "g") group so the
     # branching-sum invariant still holds. Log every suppression so the
     # cleanup is auditable.
-    it_on_ground = out.filter((pl.col("state") == "") & (pl.col("decay_mode") == "IT"))
+    it_on_ground = out.filter((pl.col("state") == "g") & (pl.col("decay_mode") == "IT"))
     if it_on_ground.height:
         offenders = it_on_ground.select("Z", "A").unique().sort(["Z", "A"]).to_dicts()
         logger.warning(
@@ -372,20 +377,22 @@ def build_decay_table(src: pl.DataFrame, nuclides_path: Path) -> pl.DataFrame:
             offenders,
         )
         # Drop the offending rows.
-        cleaned = out.filter(~((pl.col("state") == "") & (pl.col("decay_mode") == "IT")))
-        # Renormalize: for each affected (Z, A, "") group, scale remaining
+        cleaned = out.filter(~((pl.col("state") == "g") & (pl.col("decay_mode") == "IT")))
+        # Renormalize: for each affected (Z, A, "g") group, scale remaining
         # branching so it sums to 1.
         affected = it_on_ground.select("Z", "A").unique().with_columns(_affected=pl.lit(True))
         renorm_groups = (
             cleaned.join(affected, on=["Z", "A"], how="left")
-            .filter(pl.col("_affected") & (pl.col("state") == ""))
+            .filter(pl.col("_affected") & (pl.col("state") == "g"))
             .group_by(["Z", "A"])
             .agg(pl.col("branching").sum().alias("_grp_sum"))
         )
         out = (
             cleaned.join(renorm_groups, on=["Z", "A"], how="left")
             .with_columns(
-                branching=pl.when((pl.col("state") == "") & pl.col("_grp_sum").is_not_null() & (pl.col("_grp_sum") > 0))
+                branching=pl.when(
+                    (pl.col("state") == "g") & pl.col("_grp_sum").is_not_null() & (pl.col("_grp_sum") > 0)
+                )
                 .then(pl.col("branching") / pl.col("_grp_sum"))
                 .otherwise(pl.col("branching"))
             )

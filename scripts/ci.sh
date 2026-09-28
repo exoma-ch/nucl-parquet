@@ -94,6 +94,18 @@ cargo clippy --manifest-path clients/rs/Cargo.toml --workspace --all-targets -- 
 # does not provide, so it stays out of this line.)
 cargo clippy --manifest-path clients/rs/Cargo.toml -p nucl-parquet --features fetch --all-targets -- -D warnings
 cargo test --manifest-path clients/rs/Cargo.toml --workspace
+# `--include-ignored` runs the 57 tests marked `#[ignore = "requires
+# nucl-parquet data files"]` in `meta.rs` (plus 7 in `tests/golden.rs`) that
+# assert the crate reads the shipped data correctly — Cu-64 β⁻, I-131 dose,
+# Co-60 β⁻→Ni-60 cascades, identify_gamma(1173.2), the JSON goldens. Before
+# #357-b none of them ran here, so four of them (`decay_cu64_beta`,
+# `dose_i131_positive`, `dose_from_bytes_matches_open`,
+# `radiation_emissions_ni60_has_co60_decay_gammas`) sat red on main
+# unnoticed — every one was defaulting `state` to `""` (a spelling #380
+# removed) and returning empty. Data is on disk in CI, so there is no
+# reason not to check.
+NUCL_PARQUET_DATA="$PWD/data" cargo test \
+  --manifest-path clients/rs/Cargo.toml --workspace -- --include-ignored
 ok "rust clean"
 endgroup
 

@@ -394,10 +394,13 @@ class TestEdgeCases:
     """Edge cases: no feeding, no cascade, etc."""
 
     def test_no_feeding_returns_empty(self):
+        # Post-#380: the ground state passed to `build_for_parent` is `"g"`.
+        # The builder still accepts the pre-#380 `""` as a synonym so a
+        # rebuild against a pre-migration snapshot lands on the same rows.
         result = build_for_parent(
             99,
             999,
-            "",
+            "g",
             _make_decay_detailed([]),
             _make_decay_summary([]),
             _make_nuclides([]),
@@ -424,7 +427,7 @@ class TestEdgeCases:
         result = build_for_parent(
             27,
             60,
-            "",
+            "g",  # #380: ground is `"g"`, not `""`
             decay_detailed,
             _make_decay_summary([]),
             _make_nuclides([]),
@@ -446,7 +449,7 @@ class TestCo60:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter((pl.col("parent_A") == 60) & (pl.col("parent_state") == ""))
+        return df.filter((pl.col("parent_A") == 60) & (pl.col("parent_state") == "g"))
 
     def test_1173_keV(self, co60: pl.DataFrame):
         """1173 keV gamma: NuDat = 99.85%."""
@@ -504,7 +507,7 @@ class TestEu152:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter((pl.col("parent_A") == 152) & (pl.col("parent_state") == ""))
+        return df.filter((pl.col("parent_A") == 152) & (pl.col("parent_state") == "g"))
 
     def _sum_intensity(self, df: pl.DataFrame, e_low: float, e_high: float) -> float:
         """Sum gamma intensity_pct across all decay modes for an energy."""
@@ -570,7 +573,7 @@ class TestNa22:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter((pl.col("parent_A") == 22) & (pl.col("parent_state") == ""))
+        return df.filter((pl.col("parent_A") == 22) & (pl.col("parent_state") == "g"))
 
     def test_511_keV(self, na22: pl.DataFrame):
         """Na-22 511 keV: NuDat = 179.79% (2 photons per β⁺)."""
@@ -596,7 +599,7 @@ class TestCo60Beta:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter((pl.col("parent_A") == 60) & (pl.col("parent_state") == ""))
+        return df.filter((pl.col("parent_A") == 60) & (pl.col("parent_state") == "g"))
 
     def test_beta_minus_endpoint(self, co60: pl.DataFrame):
         """Co-60 β⁻ main: endpoint 317 keV, 99.88%."""
@@ -616,7 +619,7 @@ class TestRa226Alpha:
         if not path.exists():
             pytest.skip("emissions data not built")
         df = pl.read_parquet(path)
-        return df.filter((pl.col("parent_A") == 226) & (pl.col("parent_state") == ""))
+        return df.filter((pl.col("parent_A") == 226) & (pl.col("parent_state") == "g"))
 
     def test_alpha_energy(self, ra226: pl.DataFrame):
         """Ra-226 α: NuDat = 4784.3 keV, 94.45%."""

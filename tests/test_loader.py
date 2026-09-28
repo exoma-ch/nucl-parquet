@@ -359,11 +359,20 @@ def test_state_defaulted_helpers_return_rows_on_the_shipped_data() -> None:
 
     # Co-60 and Cu-64 are stable fixtures: both have a well-populated ground
     # state in every release, so an empty result means the default is wrong.
+    #
+    # `coincidences` and `summing_partners` are keyed by *daughter* (Ni-60,
+    # Z=28, A=60), not parent — for Co-60's iconic 1173/1333 keV pair. Before
+    # #357-b these two calls used (27, 60) and matched because every parent-
+    # unresolved row was fill_null'd to `""`, which collided with the default
+    # filter. Post-migration the null survives as null, so (27, 60) — where
+    # every row is a parent-unresolved daughter — correctly returns nothing
+    # for `parent_state='g'`. The test now uses the daughter Z that actually
+    # carries ground-state parent rows.
     calls = {
         "gamma_lines": lambda: gamma_lines(db, 29, 64),
         "identify_gamma": lambda: identify_gamma(db, 1173.2),
-        "coincidences": lambda: coincidences(db, 27, 60),
-        "summing_partners": lambda: summing_partners(db, 27, 60),
+        "coincidences": lambda: coincidences(db, 28, 60),
+        "summing_partners": lambda: summing_partners(db, 28, 60),
         "emissions": lambda: emissions(db, 27, 60),
     }
     empty = [name for name, call in calls.items() if len(call()) == 0]

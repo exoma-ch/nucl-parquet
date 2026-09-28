@@ -13,7 +13,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000145,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -29,7 +29,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -45,7 +45,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000387,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -61,7 +61,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000287,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -77,7 +77,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00065,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -93,7 +93,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000117,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -109,7 +109,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -125,7 +125,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000133,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -141,7 +141,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001065,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -157,7 +157,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001449,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -173,7 +173,7 @@
     "emission2_shell": null,
     "pair_intensity": 8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -189,7 +189,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00143,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -205,7 +205,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.0008,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -221,7 +221,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001578,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -237,7 +237,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00053,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -253,7 +253,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000173,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -269,7 +269,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.004628,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -285,7 +285,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000125,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -301,7 +301,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00053,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -317,7 +317,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -333,7 +333,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003937,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -349,7 +349,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.007828,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -365,7 +365,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003489,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -381,7 +381,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -397,7 +397,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001039,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -413,7 +413,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000157,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -429,7 +429,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001922,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -445,7 +445,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.015923,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -461,7 +461,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000238,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -477,7 +477,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.004732,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -493,7 +493,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00429,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -509,7 +509,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002358,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -525,7 +525,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001927,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -541,7 +541,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000525,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -557,7 +557,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.0004,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -573,7 +573,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000462,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -589,7 +589,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001434,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -605,7 +605,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002548,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -621,7 +621,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003844,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -637,7 +637,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000712,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -653,7 +653,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000319,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -669,7 +669,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000482,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -685,7 +685,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000677,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -701,7 +701,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000512,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -717,7 +717,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -733,7 +733,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001135,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -749,7 +749,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000408,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -765,7 +765,7 @@
     "emission2_shell": null,
     "pair_intensity": 8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -781,7 +781,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001468,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -797,7 +797,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001942,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -813,7 +813,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002659,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -829,7 +829,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00047,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -845,7 +845,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000963,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -861,7 +861,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000158,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -877,7 +877,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.005127,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -893,7 +893,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000556,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -909,7 +909,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000485,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -925,7 +925,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000394,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -941,7 +941,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000188,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -957,7 +957,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -973,7 +973,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001103,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -989,7 +989,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1005,7 +1005,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000984,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1021,7 +1021,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001642,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1037,7 +1037,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000295,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1053,7 +1053,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000306,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1069,7 +1069,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.016753,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1085,7 +1085,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000231,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1101,7 +1101,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000433,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1117,7 +1117,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1133,7 +1133,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1149,7 +1149,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000218,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1165,7 +1165,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003705,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1181,7 +1181,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001941,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1197,7 +1197,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1213,7 +1213,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00036,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1229,7 +1229,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1245,7 +1245,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000666,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1261,7 +1261,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.0002,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1277,7 +1277,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000255,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1293,7 +1293,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1309,7 +1309,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1325,7 +1325,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000278,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1341,7 +1341,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1357,7 +1357,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000743,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1373,7 +1373,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000551,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1389,7 +1389,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001248,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1405,7 +1405,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000224,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1421,7 +1421,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1437,7 +1437,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000256,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1453,7 +1453,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002044,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1469,7 +1469,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002782,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1485,7 +1485,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000154,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1501,7 +1501,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002747,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1517,7 +1517,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001535,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1533,7 +1533,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003029,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1549,7 +1549,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001018,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1565,7 +1565,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000332,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1581,7 +1581,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.008887,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1597,7 +1597,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000241,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1613,7 +1613,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001017,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1629,7 +1629,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1645,7 +1645,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.007559,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1661,7 +1661,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.015032,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1677,7 +1677,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.0067,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1693,7 +1693,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000121,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1709,7 +1709,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001995,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1725,7 +1725,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000302,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1741,7 +1741,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003691,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1757,7 +1757,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.030574,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1773,7 +1773,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000457,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1789,7 +1789,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.009087,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1805,7 +1805,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.008237,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1821,7 +1821,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.004528,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1837,7 +1837,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.0037,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1853,7 +1853,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001007,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1869,7 +1869,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000768,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1885,7 +1885,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000888,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1901,7 +1901,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002754,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1917,7 +1917,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.004893,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1933,7 +1933,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.007382,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1949,7 +1949,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001368,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1965,7 +1965,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000612,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1981,7 +1981,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000925,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -1997,7 +1997,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001301,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2013,7 +2013,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000984,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2029,7 +2029,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2045,7 +2045,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00218,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2061,7 +2061,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000783,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2077,7 +2077,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000154,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2093,7 +2093,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002818,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2109,7 +2109,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003728,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2125,7 +2125,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.005106,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2141,7 +2141,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000902,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2157,7 +2157,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00185,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2173,7 +2173,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000302,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2189,7 +2189,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.009845,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2205,7 +2205,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2221,7 +2221,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001067,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2237,7 +2237,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000932,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2253,7 +2253,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000756,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2269,7 +2269,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000361,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2285,7 +2285,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2301,7 +2301,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002117,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2317,7 +2317,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000128,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2333,7 +2333,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00189,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2349,7 +2349,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003152,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2365,7 +2365,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000566,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2381,7 +2381,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000588,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2397,7 +2397,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.032169,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2413,7 +2413,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000443,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2429,7 +2429,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000831,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2445,7 +2445,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2461,7 +2461,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000132,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2477,7 +2477,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000419,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2493,7 +2493,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.007114,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2509,7 +2509,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.003728,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2525,7 +2525,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2541,7 +2541,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000692,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2557,7 +2557,7 @@
     "emission2_shell": null,
     "pair_intensity": 3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2573,7 +2573,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001279,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2589,7 +2589,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2605,7 +2605,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000384,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2621,7 +2621,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00049,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2637,7 +2637,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000138,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2653,7 +2653,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000168,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2669,7 +2669,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2685,7 +2685,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2701,7 +2701,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2717,7 +2717,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2733,7 +2733,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2749,7 +2749,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2765,7 +2765,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000155,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2781,7 +2781,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000211,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2797,7 +2797,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2813,7 +2813,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000209,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2829,7 +2829,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000117,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2845,7 +2845,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00023,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2861,7 +2861,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2877,7 +2877,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2893,7 +2893,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000675,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2909,7 +2909,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2925,7 +2925,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2941,7 +2941,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000575,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2957,7 +2957,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001142,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2973,7 +2973,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000509,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -2989,7 +2989,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000152,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3005,7 +3005,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3021,7 +3021,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000281,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3037,7 +3037,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002324,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3053,7 +3053,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3069,7 +3069,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000691,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3085,7 +3085,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000626,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3101,7 +3101,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000344,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3117,7 +3117,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000281,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3133,7 +3133,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3149,7 +3149,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3165,7 +3165,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3181,7 +3181,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000209,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3197,7 +3197,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000372,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3213,7 +3213,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000561,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3229,7 +3229,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000104,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3245,7 +3245,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3261,7 +3261,7 @@
     "emission2_shell": null,
     "pair_intensity": 7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3277,7 +3277,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3293,7 +3293,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3309,7 +3309,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000166,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3325,7 +3325,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3341,7 +3341,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3357,7 +3357,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000214,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3373,7 +3373,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000283,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3389,7 +3389,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000388,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3405,7 +3405,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3421,7 +3421,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000141,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3437,7 +3437,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3453,7 +3453,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000748,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3469,7 +3469,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3485,7 +3485,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3501,7 +3501,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3517,7 +3517,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3533,7 +3533,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000161,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3549,7 +3549,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000144,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3565,7 +3565,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00024,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3581,7 +3581,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3597,7 +3597,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3613,7 +3613,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002445,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3629,7 +3629,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3645,7 +3645,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3661,7 +3661,7 @@
     "emission2_shell": null,
     "pair_intensity": 1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3677,7 +3677,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3693,7 +3693,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000541,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3709,7 +3709,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000283,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3725,7 +3725,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3741,7 +3741,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3757,7 +3757,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3773,7 +3773,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3789,7 +3789,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3805,7 +3805,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3821,7 +3821,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3837,7 +3837,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3853,7 +3853,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00011,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3869,7 +3869,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3885,7 +3885,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000185,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3901,7 +3901,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3917,7 +3917,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3933,7 +3933,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000303,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3949,7 +3949,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000412,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3965,7 +3965,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3981,7 +3981,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000407,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -3997,7 +3997,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000227,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4013,7 +4013,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000449,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4029,7 +4029,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000151,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4045,7 +4045,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4061,7 +4061,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001317,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4077,7 +4077,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4093,7 +4093,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000151,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4109,7 +4109,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00112,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4125,7 +4125,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.002227,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4141,7 +4141,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000993,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4157,7 +4157,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4173,7 +4173,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000296,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4189,7 +4189,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4205,7 +4205,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000547,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4221,7 +4221,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.004529,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4237,7 +4237,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4253,7 +4253,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001346,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4269,7 +4269,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00122,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4285,7 +4285,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000671,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4301,7 +4301,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000548,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4317,7 +4317,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000149,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4333,7 +4333,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000114,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4349,7 +4349,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000132,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4365,7 +4365,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000408,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4381,7 +4381,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000725,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4397,7 +4397,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001094,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4413,7 +4413,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000203,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4429,7 +4429,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4445,7 +4445,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000137,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4461,7 +4461,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000193,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4477,7 +4477,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000146,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4493,7 +4493,7 @@
     "emission2_shell": null,
     "pair_intensity": 1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4509,7 +4509,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000323,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4525,7 +4525,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000116,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4541,7 +4541,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4557,7 +4557,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000418,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4573,7 +4573,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000552,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4589,7 +4589,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000756,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4605,7 +4605,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000134,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4621,7 +4621,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000274,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4637,7 +4637,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4653,7 +4653,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001458,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4669,7 +4669,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000158,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4685,7 +4685,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000138,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4701,7 +4701,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000112,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4717,7 +4717,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4733,7 +4733,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000314,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4749,7 +4749,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4765,7 +4765,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.00028,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4781,7 +4781,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000467,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4797,7 +4797,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4813,7 +4813,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4829,7 +4829,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.004766,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4845,7 +4845,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4861,7 +4861,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000123,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4877,7 +4877,7 @@
     "emission2_shell": null,
     "pair_intensity": 2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4893,7 +4893,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4909,7 +4909,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.001054,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4925,7 +4925,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000552,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4941,7 +4941,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000103,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4957,7 +4957,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000189,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4973,7 +4973,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -4989,7 +4989,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5005,7 +5005,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5021,7 +5021,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5037,7 +5037,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5053,7 +5053,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5069,7 +5069,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5085,7 +5085,7 @@
     "emission2_shell": null,
     "pair_intensity": 2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5101,7 +5101,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5117,7 +5117,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5133,7 +5133,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5149,7 +5149,7 @@
     "emission2_shell": null,
     "pair_intensity": 3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5165,7 +5165,7 @@
     "emission2_shell": null,
     "pair_intensity": 1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5181,7 +5181,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5197,7 +5197,7 @@
     "emission2_shell": null,
     "pair_intensity": 1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5213,7 +5213,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5229,7 +5229,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000148,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5245,7 +5245,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5261,7 +5261,7 @@
     "emission2_shell": null,
     "pair_intensity": 2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5277,7 +5277,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5293,7 +5293,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000301,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5309,7 +5309,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5325,7 +5325,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5341,7 +5341,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5357,7 +5357,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5373,7 +5373,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5389,7 +5389,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5405,7 +5405,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5421,7 +5421,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5437,7 +5437,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5453,7 +5453,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5469,7 +5469,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5485,7 +5485,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5501,7 +5501,7 @@
     "emission2_shell": null,
     "pair_intensity": 5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5517,7 +5517,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5533,7 +5533,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5549,7 +5549,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5565,7 +5565,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5581,7 +5581,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5597,7 +5597,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5613,7 +5613,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000317,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5629,7 +5629,7 @@
     "emission2_shell": null,
     "pair_intensity": 7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5645,7 +5645,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5661,7 +5661,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5677,7 +5677,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5693,7 +5693,7 @@
     "emission2_shell": null,
     "pair_intensity": 1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5709,7 +5709,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5725,7 +5725,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5741,7 +5741,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5757,7 +5757,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5773,7 +5773,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5789,7 +5789,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5805,7 +5805,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5821,7 +5821,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000167,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5837,7 +5837,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5853,7 +5853,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000142,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5869,7 +5869,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000283,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5885,7 +5885,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000126,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5901,7 +5901,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5917,7 +5917,7 @@
     "emission2_shell": null,
     "pair_intensity": 6.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5933,7 +5933,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000576,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5949,7 +5949,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000171,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5965,7 +5965,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000155,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5981,7 +5981,7 @@
     "emission2_shell": null,
     "pair_intensity": 8.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -5997,7 +5997,7 @@
     "emission2_shell": null,
     "pair_intensity": 7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6013,7 +6013,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6029,7 +6029,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6045,7 +6045,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6061,7 +6061,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6077,7 +6077,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6093,7 +6093,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000139,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6109,7 +6109,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6125,7 +6125,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6141,7 +6141,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6157,7 +6157,7 @@
     "emission2_shell": null,
     "pair_intensity": 2.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6173,7 +6173,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6189,7 +6189,7 @@
     "emission2_shell": null,
     "pair_intensity": 4.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6205,7 +6205,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6221,7 +6221,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6237,7 +6237,7 @@
     "emission2_shell": null,
     "pair_intensity": 7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6253,7 +6253,7 @@
     "emission2_shell": null,
     "pair_intensity": 9.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6269,7 +6269,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6285,7 +6285,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.5e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6301,7 +6301,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000185,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6317,7 +6317,7 @@
     "emission2_shell": null,
     "pair_intensity": 2e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6333,7 +6333,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.8e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6349,7 +6349,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6365,7 +6365,7 @@
     "emission2_shell": null,
     "pair_intensity": 4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6381,7 +6381,7 @@
     "emission2_shell": null,
     "pair_intensity": 3.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6397,7 +6397,7 @@
     "emission2_shell": null,
     "pair_intensity": 5.9e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6413,7 +6413,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6429,7 +6429,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.1e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6445,7 +6445,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000606,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6461,7 +6461,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.6e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6477,7 +6477,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.000134,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6493,7 +6493,7 @@
     "emission2_shell": null,
     "pair_intensity": 7e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6509,7 +6509,7 @@
     "emission2_shell": null,
     "pair_intensity": 1.3e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 86,
@@ -6525,6 +6525,6 @@
     "emission2_shell": null,
     "pair_intensity": 2.4e-05,
     "parent_decay_mode": "KshellEC",
-    "parent_state": ""
+    "parent_state": "g"
   }
 ]

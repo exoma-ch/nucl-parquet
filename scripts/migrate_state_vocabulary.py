@@ -57,10 +57,16 @@ from nucl_parquet.state_vocabulary import (  # noqa: E402
     MEASURED_XS_STATES,
     NUCLIDE_STATES,
     PENDING_COLUMN_RENAME,
+    PENDING_DAUGHTER_STATE_MIGRATION,
     PENDING_MIGRATION,
+    PENDING_PARENT_STATE_MIGRATION,
     PHASE_NOT_STATE,
     SUM,
+    TABLE_DAUGHTER_STATES,
+    TABLE_PARENT_STATES,
     TABLE_STATES,
+    allowed_daughter_states,
+    allowed_parent_states,
     allowed_states,
 )
 
@@ -340,6 +346,299 @@ def migrate_table(data_dir: Path, table: str, *, dry_run: bool) -> tuple[int, st
     return changed, "migrated"
 
 
+#: Retired-spelling → new-spelling map for `parent_state` on the g4 tables.
+#:
+#: `''` → `'g'` when the row's parent decay is known (any non-null
+#: `parent_decay_mode`): the g4 builders label `parent_ex_kev == 0` as `''` and
+#: the source distinguishes the ground state from every catalogued isomer, so
+#: `''` unambiguously means ground *for those rows*.
+#:
+#: `''` → NULL when `parent_decay_mode` is null. Those are γ-γ cascade pairs
+#: `annotate_gamma_gamma` could not attribute to a parent channel — the
+#: `parent_state.fill_null("")` was a default, not a determination. Claiming
+#: `'g'` there would invent an attribution the builder never made, exactly the
+#: defect class #326/#351/#377 removed elsewhere.
+#:
+#: The choice hinges on `parent_decay_mode` because it is the only field in the
+#: shipped parquet that records whether the parent was actually resolved. The
+#: ambiguity checked for `radiation` in #386 does not apply the same way here
+#: (see the docstring of `migrate_parent_state_g4`).
+
+
+#: The three tables whose `parent_state` this migration rewrites.
+_PARENT_STATE_TABLES = frozenset(
+    {
+        "meta/ensdf/coincidences",
+        "meta/ensdf/emissions",
+        "meta/ensdf/summing_partners",
+    }
+)
+
+
+def _parent_low_isomer_zA(data_dir: Path) -> set[tuple[int, int]]:
+    """Parent (Z, A) whose ground state and a catalogued isomer coincide within 1 keV.
+
+    The g4 builders label `parent_ex_kev` around zero with `_label_parent_state`,
+    which uses a 1.0 keV tolerance — so a parent nuclide with a catalogued
+    m-state at `level_keV < 1` would collapse ground and isomer under the same
+    `''` label. In the 2026.8.5 catalog exactly two parents qualify: Ga-73m
+    (level 0.3 keV) and U-235m (0.076 keV). Whether a row's `''` is actually
+    ambiguous also depends on `decay_mode` — see `_ambiguous_parent_decay_modes`.
+    """
+    nuclides = data_dir / "meta" / "ensdf" / "nuclides.parquet"
+    if not nuclides.is_file():
+        raise UnmigratableTable("meta/ensdf", "missing", f"{nuclides} is needed to classify parents")
+    df = pl.read_parquet(nuclides, columns=["Z", "A", "state", "level_keV", "floating_level_flag"])
+    ambig: set[tuple[int, int]] = set()
+    for z, a, state, level, floating in df.iter_rows():
+        if state in (LEGACY_UNSPECIFIED, GROUND, None):
+            continue
+        if level is None:
+            continue
+        # Floating-flag levels (`+X`/`+Y`) mean the excitation is relative to an
+        # unknown offset — the 0.0 keV they carry is a placeholder, not a real
+        # coincidence with the ground state.
+        if (floating or "-") != "-":
+            continue
+        if level < 1.0:
+            ambig.add((int(z), int(a)))
+    return ambig
+
+
+def _ambiguous_parent_decay_modes(data_dir: Path) -> set[tuple[int, int, str]]:
+    """`(Z, A, decay_mode)` triples where a `''` parent_state truly cannot be
+    disambiguated.
+
+    A (Z, A) with both a ground state and a low-lying isomer is "geometrically"
+    ambiguous — but `decay_mode` often narrows it. Ga-73g decays by β⁻; Ga-73m
+    decays by IT. A β⁻ row from Ga-73 must be Ga-73g. Only rows where *both*
+    states support the same decay mode are genuinely ambiguous and become NULL;
+    rows where the decay mode uniquely selects a state become `'g'`.
+
+    Consulted against `decay.parquet`, which lists per (Z, A, state) the modes
+    each supports. After the 2026.8.5 rebuild the ground/isomer supports for
+    Ga-73 and U-235 are disjoint, so this returns the empty set. Kept because
+    the invariant is worth naming even when it currently holds trivially — a
+    future ENSDF revision could add an m-decay mode that collides.
+    """
+    low_isomer_parents = _parent_low_isomer_zA(data_dir)
+    if not low_isomer_parents:
+        return set()
+
+    decay = data_dir / "meta" / "decay.parquet"
+    if not decay.is_file():
+        # No decay table means we cannot disambiguate — treat every (Z, A) as
+        # ambiguous for every mode, so the migration errs on the safe side.
+        raise UnmigratableTable("meta", "missing", f"{decay} is needed to disambiguate parent decays")
+
+    df = pl.read_parquet(decay, columns=["Z", "A", "state", "decay_mode"]).unique()
+    per_parent_state: dict[tuple[int, int], dict[str, set[str]]] = {}
+    for z, a, state, mode in df.iter_rows():
+        key = (int(z), int(a))
+        per_parent_state.setdefault(key, {}).setdefault(state, set()).add(mode)
+
+    ambig: set[tuple[int, int, str]] = set()
+    for za in low_isomer_parents:
+        modes_by_state = per_parent_state.get(za, {})
+        ground_modes = modes_by_state.get(GROUND, set())
+        isomer_modes = modes_by_state.get("m", set())
+        for mode in ground_modes & isomer_modes:
+            ambig.add((za[0], za[1], mode))
+    return ambig
+
+
+# G4 decay-mode string -> (delta_Z, delta_A) shift daughter -> parent. `None`
+# means "cannot compute a parent (Z, A) from the daughter" — SF and unknown
+# modes fall through, and the migration then plays it safe.
+_MODE_TO_DA: dict[str, tuple[int, int]] = {
+    "IT": (0, 0),
+    "beta-": (-1, 0),
+    "beta+": (1, 0),
+    "KshellEC": (1, 0),
+    "LshellEC": (1, 0),
+    "MshellEC": (1, 0),
+    "NshellEC": (1, 0),
+    "alpha": (2, 4),
+    "p": (1, 1),
+    "n": (0, 1),
+    "t": (1, 3),
+}
+
+
+def _parent_state_for_row(
+    daughter_z: int | None,
+    daughter_a: int | None,
+    parent_decay_mode: str | None,
+    ambiguous_parent_modes: set[tuple[int, int, str]],
+    parent_z: int | None = None,
+    parent_a: int | None = None,
+) -> str | None:
+    """Migrated `parent_state` for one row that shipped `''`.
+
+    * `parent_decay_mode` null -> NULL (parent was not identified at all).
+    * Parent (Z, A) is `daughter + shift` for a known decay mode, or the
+      explicit `parent_z`/`parent_a` for the emissions table (where the row
+      already carries them). If `(parent, mode)` is in `ambiguous_parent_modes`,
+      NULL — the g4 builder's coarse tolerance cannot tell that (Z, A)'s
+      ground from its low-lying isomer, and both states support this mode.
+    * Otherwise `'g'`.
+    """
+    if parent_decay_mode is None:
+        return None
+    if parent_z is not None and parent_a is not None:
+        parent_zA = (int(parent_z), int(parent_a))
+    else:
+        shift = _MODE_TO_DA.get(parent_decay_mode)
+        if shift is None or daughter_z is None or daughter_a is None:
+            return None  # cannot compute parent -> honest NULL
+        parent_zA = (int(daughter_z) + shift[0], int(daughter_a) + shift[1])
+    if (parent_zA[0], parent_zA[1], parent_decay_mode) in ambiguous_parent_modes:
+        return None
+    return GROUND
+
+
+def migrate_parent_state_g4(data_dir: Path, table: str, *, dry_run: bool) -> tuple[int, str]:
+    """Rewrite `parent_state == ''` in a g4 nuclide-keyed cascade table.
+
+    The three tables this handles (coincidences, emissions, summing_partners)
+    all key on `parent_state` naming the state of the decaying nuclide.
+
+    * emissions is built from `decay_summary.state`, which uses
+      `radioactive_decay._label_state` — an *exact* per-(Z, A, parent_ex_kev)
+      lookup. `''` there unambiguously means `parent_ex_kev == 0`, i.e. ground,
+      because separate rows exist for the isomers. `_parent_ambiguous_zA` is
+      never triggered.
+    * coincidences (via `mixed_coincidences._label_parent_state`) uses a coarse
+      `parent_ex_kev < 1 keV → ''` rule. Ga-73m at 0.3 keV and U-235m at
+      0.076 keV would collide with ground — but the current data ships zero
+      IT-decay coincidence rows for those two parents (they are one-step
+      decays with no cascade), and the other decay modes narrow the parent to
+      ground unambiguously (Ga-73g β⁻ → Ge, U-235g α → Th).
+    * summing_partners inherits from coincidences (`fill_null("")`), so the
+      same rule applies.
+
+    Rows with `parent_decay_mode` null are γ-γ pairs whose parent channel
+    `annotate_gamma_gamma` could not identify; those become NULL because the
+    `''` there was a stand-in default, not a determination.
+    """
+    paths = shards(data_dir, table)
+    if not paths:
+        raise UnmigratableTable(table, "no-shards", "declared but ships no parquet")
+
+    ambiguous = _ambiguous_parent_decay_modes(data_dir)
+    allowed_now = allowed_parent_states(table)
+
+    changed = 0
+    for path in paths:
+        df = pl.read_parquet(path)
+        if "parent_state" not in df.columns:
+            raise UnmigratableTable(table, "no-parent-state-column", str(path))
+        present = {v for v in df["parent_state"].unique().to_list() if v is not None}
+        stray = sorted(present - allowed_now)
+        if stray:
+            raise UnmigratableTable(table, "unknown-parent-state", f"{path.name}: {stray}")
+        if LEGACY_UNSPECIFIED not in present:
+            continue
+
+        blank = pl.col("parent_state") == LEGACY_UNSPECIFIED
+
+        # Emissions carries parent_Z / parent_A explicitly; coincidences and
+        # summing_partners carry only daughter (Z, A) and derive the parent.
+        if table == "meta/ensdf/emissions":
+            new_parent_state = pl.Series(
+                [
+                    _parent_state_for_row(
+                        None,
+                        None,
+                        pdm,
+                        ambiguous,
+                        parent_z=pz,
+                        parent_a=pa,
+                    )
+                    if is_blank
+                    else current
+                    for is_blank, current, pdm, pz, pa in zip(
+                        (df["parent_state"] == LEGACY_UNSPECIFIED).to_list(),
+                        df["parent_state"].to_list(),
+                        df["decay_mode"].to_list(),
+                        df["parent_Z"].to_list(),
+                        df["parent_A"].to_list(),
+                    )
+                ],
+                dtype=pl.Utf8,
+            )
+        else:
+            new_parent_state = pl.Series(
+                [
+                    _parent_state_for_row(dz, da, pdm, ambiguous) if is_blank else current
+                    for is_blank, current, dz, da, pdm in zip(
+                        (df["parent_state"] == LEGACY_UNSPECIFIED).to_list(),
+                        df["parent_state"].to_list(),
+                        df["Z"].to_list(),
+                        df["A"].to_list(),
+                        df["parent_decay_mode"].to_list(),
+                    )
+                ],
+                dtype=pl.Utf8,
+            )
+
+        # A row changed if the string differs OR the nullness flipped. Polars
+        # `!=` between a string Series and a nullable one propagates null, so
+        # `'' != None` returns null, not True — using `ne_missing` treats null
+        # as a peer value and produces the boolean we want. This is the same
+        # subtlety the `xs`-side count formula worked around with an over-count.
+        old = df["parent_state"]
+        differs = old.ne_missing(new_parent_state)
+        _ = blank  # anchor for the reader: only blanks are ever rewritten
+        changed += int(differs.sum())
+        if not dry_run:
+            df.with_columns(new_parent_state.alias("parent_state")).write_parquet(path, compression=COMPRESSION)
+
+    return (changed, "already-migrated" if changed == 0 else "migrated")
+
+
+def migrate_daughter_state_decay(data_dir: Path, *, dry_run: bool) -> tuple[int, str]:
+    """Rewrite `daughter_state == ''` in `meta/decay.parquet` to NULL.
+
+    Every one of the 6,431 shipped rows carries `''` — the builder
+    (`radioactive_decay.py::build_decay_table`) computes a daughter label per
+    `daughter_ex_kev` and *falls back to* `''` when the daughter doesn't match
+    a catalogued m-state. A summary row can populate many daughter levels, so
+    "the daughter state" is not a well-defined single value at this granularity
+    in the first place. The right shape is NULL: "we cannot name a single
+    daughter state from this summary row".
+
+    Not `'g'`: many summary rows never populate the daughter's ground state at
+    all (2,283 of 5,855 rows with detail have `min_daughter_ex_kev > 0`),
+    so relabelling `''` as `'g'` would join to a state the decay may not even
+    reach. NULL joins nothing, which is right.
+    """
+    path = data_dir / "meta" / "decay.parquet"
+    if not path.is_file():
+        raise UnmigratableTable("meta", "missing", str(path))
+    df = pl.read_parquet(path)
+    if "daughter_state" not in df.columns:
+        raise UnmigratableTable("meta", "no-daughter-state-column", str(path))
+
+    allowed_now = allowed_daughter_states("meta")
+    present = {v for v in df["daughter_state"].unique().to_list() if v is not None}
+    stray = sorted(present - allowed_now)
+    if stray:
+        raise UnmigratableTable("meta", "unknown-daughter-state", f"{path.name}: {stray}")
+    if LEGACY_UNSPECIFIED not in present:
+        return 0, "already-migrated"
+
+    changed = int((df["daughter_state"] == LEGACY_UNSPECIFIED).sum())
+    new = (
+        pl.when(pl.col("daughter_state") == LEGACY_UNSPECIFIED)
+        .then(pl.lit(None, dtype=pl.Utf8))
+        .otherwise(pl.col("daughter_state"))
+    )
+    if not dry_run:
+        df.with_columns(new.alias("daughter_state")).write_parquet(path, compression=COMPRESSION)
+    return changed, "migrated"
+
+
 def rename_state_to_phase(data_dir: Path, target: str, *, dry_run: bool) -> tuple[int, str]:
     """`density_effect_params`' `state` column holds solid/liquid/gas.
 
@@ -365,7 +664,13 @@ def rename_state_to_phase(data_dir: Path, target: str, *, dry_run: bool) -> tupl
 
 
 def verify(data_dir: Path) -> list[str]:
-    """Every complaint the new vocabulary has about the tree. Empty is success."""
+    """Every complaint the new vocabulary has about the tree. Empty is success.
+
+    Consults `allowed_*` (which include a table's `PENDING_*` debt) so a table
+    still mid-migration is not double-reported by both the ledger and verify.
+    Once the ledger empties, `allowed_*` shrinks and any lingering retired
+    spelling becomes a real complaint here.
+    """
     problems: list[str] = []
     for table in sorted(TABLE_STATES):
         directory = data_dir / table
@@ -374,10 +679,39 @@ def verify(data_dir: Path) -> list[str]:
             continue
         seen: set[str | None] = set()
         for path in sorted(directory.glob("*.parquet")):
+            if "state" not in pl.read_parquet_schema(path):
+                continue  # sibling with no state column (data/meta is mixed)
             seen.update(pl.read_parquet(path, columns=["state"])["state"].unique().to_list())
-        outside = sorted(v for v in seen if v is not None and v not in TABLE_STATES[table])
+        allowed = allowed_states(table)
+        outside = sorted(v for v in seen if v is not None and v not in allowed)
         if outside:
-            problems.append(f"{table}: {outside} outside its vocabulary")
+            problems.append(f"{table}: state {outside} outside its vocabulary")
+    for table in sorted(TABLE_PARENT_STATES):
+        directory = data_dir / table
+        if not directory.is_dir():
+            problems.append(f"{table}: declared for parent_state but absent")
+            continue
+        seen = set()
+        for path in sorted(directory.glob("*.parquet")):
+            seen.update(pl.read_parquet(path, columns=["parent_state"])["parent_state"].unique().to_list())
+        allowed = allowed_parent_states(table)
+        outside = sorted(v for v in seen if v is not None and v not in allowed)
+        if outside:
+            problems.append(f"{table}: parent_state {outside} outside its vocabulary")
+    for table in sorted(TABLE_DAUGHTER_STATES):
+        directory = data_dir / table
+        if not directory.is_dir():
+            problems.append(f"{table}: declared for daughter_state but absent")
+            continue
+        seen = set()
+        for path in sorted(directory.glob("*.parquet")):
+            if "daughter_state" not in pl.read_parquet_schema(path):
+                continue
+            seen.update(pl.read_parquet(path, columns=["daughter_state"])["daughter_state"].unique().to_list())
+        allowed = allowed_daughter_states(table)
+        outside = sorted(v for v in seen if v is not None and v not in allowed)
+        if outside:
+            problems.append(f"{table}: daughter_state {outside} outside its vocabulary")
     # `PHASE_NOT_STATE`, not `PENDING_COLUMN_RENAME`: the debt ledger empties
     # when the rename lands, but "this file must never call a phase of matter a
     # `state`" is permanent, and a verify that stops checking it the moment it
@@ -417,25 +751,49 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("every table matches the #357 vocabulary")
         return
 
-    wanted = [args.table] if args.table else [*sorted(PENDING_MIGRATION), *sorted(PENDING_COLUMN_RENAME)]
-    unknown = [t for t in wanted if t not in TABLE_STATES and t not in PHASE_NOT_STATE]
+    # `parent_state` and `daughter_state` are tracked as `<table>:<column>` so
+    # a single table can appear once per column and each migration is dispatched
+    # independently. `state` migrations stay as bare `<table>` keys.
+    if args.table:
+        wanted: list[str] = [args.table]
+    else:
+        wanted = [
+            *sorted(PENDING_MIGRATION),
+            *(f"{t}:parent_state" for t in sorted(PENDING_PARENT_STATE_MIGRATION)),
+            *(f"{t}:daughter_state" for t in sorted(PENDING_DAUGHTER_STATE_MIGRATION)),
+            *sorted(PENDING_COLUMN_RENAME),
+        ]
+    unknown = [
+        t
+        for t in wanted
+        if (
+            (":" not in t and t not in TABLE_STATES and t not in PHASE_NOT_STATE)
+            or (t.endswith(":parent_state") and t.split(":")[0] not in TABLE_PARENT_STATES)
+            or (t.endswith(":daughter_state") and t.split(":")[0] not in TABLE_DAUGHTER_STATES)
+        )
+    ]
     if unknown:
         raise SystemExit(f"not a declared table: {unknown}")
 
     total = 0
     statuses: dict[str, str] = {}
-    for table in wanted:
-        if table == "meta/ensdf":
+    for spec in wanted:
+        if spec.endswith(":parent_state"):
+            table = spec.split(":")[0]
+            rows, status = migrate_parent_state_g4(args.data_dir, table, dry_run=args.dry_run)
+        elif spec.endswith(":daughter_state"):
+            rows, status = migrate_daughter_state_decay(args.data_dir, dry_run=args.dry_run)
+        elif spec == "meta/ensdf":
             rows, status = migrate_nuclides(args.data_dir, dry_run=args.dry_run)
-        elif table in _NUCLIDE_KEYED:
-            rows, status = migrate_nuclide_keyed(args.data_dir, table, dry_run=args.dry_run)
-        elif table in PHASE_NOT_STATE:
-            rows, status = rename_state_to_phase(args.data_dir, table, dry_run=args.dry_run)
+        elif spec in _NUCLIDE_KEYED:
+            rows, status = migrate_nuclide_keyed(args.data_dir, spec, dry_run=args.dry_run)
+        elif spec in PHASE_NOT_STATE:
+            rows, status = rename_state_to_phase(args.data_dir, spec, dry_run=args.dry_run)
         else:
-            rows, status = migrate_table(args.data_dir, table, dry_run=args.dry_run)
-        statuses[table] = status
+            rows, status = migrate_table(args.data_dir, spec, dry_run=args.dry_run)
+        statuses[spec] = status
         total += rows
-        logger.info("  %-28s %-16s %8d row(s)", table, status, rows)
+        logger.info("  %-40s %-16s %8d row(s)", spec, status, rows)
 
     bad = {t: s for t, s in statuses.items() if s not in SUCCESS_STATUSES}
     if bad:

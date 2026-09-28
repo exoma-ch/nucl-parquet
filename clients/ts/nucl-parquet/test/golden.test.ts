@@ -93,7 +93,10 @@ describe("golden parity (#176)", () => {
   it("Co-60 β-γ matches Python fixture", async () => {
     const db = await CoincidencesDb.open(META_DIR);
     const rows = await db.pairsFiltered(28, 60, {
-      parentState: "",
+      // #357-b: `parentState` is `"g"` post-migration, not `""`. The
+      // pre-migration default matched 8.7M rows silently; the new spelling
+      // matches zero, which is what a broken filter should do.
+      parentState: GROUND,
       parentDecayMode: "beta-",
       emission1RadType: "beta",
       emission2RadType: "gamma",
@@ -106,7 +109,7 @@ describe("golden parity (#176)", () => {
   it("Y-86 K X-ray ⊗ γ matches Python fixture", async () => {
     const db = await CoincidencesDb.open(META_DIR);
     const rows = await db.pairsFiltered(38, 86, {
-      parentState: "",
+      parentState: GROUND,
       parentDecayMode: "KshellEC",
       emission1RadType: "xray",
       emission2RadType: "gamma",
@@ -120,7 +123,7 @@ describe("golden parity (#176)", () => {
   it("Co-60 γ-γ regression matches Python fixture", async () => {
     const db = await CoincidencesDb.open(META_DIR);
     const rows = await db.pairsFiltered(28, 60, {
-      parentState: "",
+      parentState: GROUND,
       parentDecayMode: "beta-",
       emission1RadType: "gamma",
       emission2RadType: "gamma",

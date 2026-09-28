@@ -35,15 +35,21 @@ from nucl_parquet.state_vocabulary import (  # noqa: E402
     MAX_ISOMER,
     MEASURED_TARGET_STATES,
     NUCLIDE_STATES,
+    PENDING_DAUGHTER_STATE_MIGRATION,
     PENDING_MIGRATION,
+    PENDING_PARENT_STATE_MIGRATION,
     PENDING_RENAME_TABLES,
     PHASE_NOT_STATE,
     STATES,
     SUM,
+    TABLE_DAUGHTER_STATES,
+    TABLE_PARENT_STATES,
     TABLE_STATES,
     TABLE_TARGET_STATES,
     TARGET_STATES,
     UNRESOLVED,
+    allowed_daughter_states,
+    allowed_parent_states,
     allowed_states,
     allowed_target_states,
     is_valid_state,
@@ -55,17 +61,22 @@ from nucl_parquet.state_vocabulary import (  # noqa: E402
 pytestmark = pytest.mark.filterwarnings("ignore")
 
 
-def _tables_with_state() -> dict[str, list[Path]]:
-    """Every shipped table carrying a `state` column -> its shards."""
+def _tables_with_column(column: str) -> dict[str, list[Path]]:
+    """Every shipped table carrying `column` -> its shards, keyed by directory."""
     tables: dict[str, list[Path]] = {}
     for path in sorted(DATA.rglob("*.parquet")):
         try:
             columns = pl.read_parquet_schema(path)
         except Exception:  # a corrupt shard is test_parquet_integrity's problem
             continue
-        if "state" in columns:
+        if column in columns:
             tables.setdefault(str(path.parent.relative_to(DATA)).replace("\\", "/"), []).append(path)
     return tables
+
+
+def _tables_with_state() -> dict[str, list[Path]]:
+    """Every shipped table carrying a `state` column -> its shards."""
+    return _tables_with_column("state")
 
 
 @pytest.fixture(scope="module")
@@ -74,6 +85,24 @@ def tables() -> dict[str, list[Path]]:
         pytest.skip("data tree not available")
     found = _tables_with_state()
     assert found, "no shipped table has a `state` column — the scan is broken, not the data"
+    return found
+
+
+@pytest.fixture(scope="module")
+def parent_state_tables() -> dict[str, list[Path]]:
+    if not (DATA / "catalog.json").exists():
+        pytest.skip("data tree not available")
+    found = _tables_with_column("parent_state")
+    assert found, "no shipped table has a `parent_state` column — the scan is broken, not the data"
+    return found
+
+
+@pytest.fixture(scope="module")
+def daughter_state_tables() -> dict[str, list[Path]]:
+    if not (DATA / "catalog.json").exists():
+        pytest.skip("data tree not available")
+    found = _tables_with_column("daughter_state")
+    assert found, "no shipped table has a `daughter_state` column — the scan is broken, not the data"
     return found
 
 
@@ -432,3 +461,115 @@ def test_no_shipped_target_state_is_outside_its_table_vocabulary():
 def test_an_undeclared_table_raises_for_target_state():
     with pytest.raises(KeyError, match="no entry in TABLE_TARGET_STATES"):
         allowed_target_states("some/new/table")
+
+
+# ---------------------------------------------------------------------------
+# `parent_state` and `daughter_state` — same vocabulary, other column names
+# ---------------------------------------------------------------------------
+#
+# The gate was `state`-only, so every column that carried the same vocabulary
+# under another name — `parent_state` on coincidences/emissions/summing_partners,
+# `daughter_state` on decay.parquet — drifted silently. All 6,431 rows of
+# `daughter_state` and ~18 M rows of `parent_state` shipped `''`, the same
+# retired spelling #357 removed from `state` two releases ago. These tests are
+# the assertion that the scan now covers every `*_state` column.
+
+
+def test_every_table_with_a_parent_state_column_declares_its_vocabulary(parent_state_tables):
+    undeclared = sorted(set(parent_state_tables) - set(TABLE_PARENT_STATES))
+    assert not undeclared, (
+        f"tables with a `parent_state` column and no TABLE_PARENT_STATES entry: {undeclared}\n"
+        "Add them to nucl_parquet/state_vocabulary.py, saying what their parent states mean."
+    )
+
+
+def test_declared_parent_state_tables_still_exist(parent_state_tables):
+    missing = sorted(set(TABLE_PARENT_STATES) - set(parent_state_tables))
+    assert not missing, f"TABLE_PARENT_STATES declares tables that ship no `parent_state` column: {missing}"
+
+
+def test_no_shipped_parent_state_is_outside_its_table_vocabulary(parent_state_tables):
+    """Same load-bearing gate as `state`, applied to `parent_state`."""
+    violations: list[str] = []
+    for table, shards in sorted(parent_state_tables.items()):
+        allowed = allowed_parent_states(table)
+        seen: set[str | None] = set()
+        for shard in shards:
+            seen.update(pl.read_parquet(shard, columns=["parent_state"])["parent_state"].unique().to_list())
+        for value in sorted(v for v in seen if v is not None):
+            if value not in allowed:
+                violations.append(f"{table}: {value!r} not in {sorted(allowed)}")
+    assert not violations, "parent_state values outside their table's vocabulary:\n" + "\n".join(violations)
+
+
+def test_every_table_with_a_daughter_state_column_declares_its_vocabulary(daughter_state_tables):
+    undeclared = sorted(set(daughter_state_tables) - set(TABLE_DAUGHTER_STATES))
+    assert not undeclared, (
+        f"tables with a `daughter_state` column and no TABLE_DAUGHTER_STATES entry: {undeclared}\n"
+        "Add them to nucl_parquet/state_vocabulary.py, saying what their daughter states mean."
+    )
+
+
+def test_declared_daughter_state_tables_still_exist(daughter_state_tables):
+    missing = sorted(set(TABLE_DAUGHTER_STATES) - set(daughter_state_tables))
+    assert not missing, f"TABLE_DAUGHTER_STATES declares tables that ship no `daughter_state` column: {missing}"
+
+
+def test_no_shipped_daughter_state_is_outside_its_table_vocabulary(daughter_state_tables):
+    violations: list[str] = []
+    for table, shards in sorted(daughter_state_tables.items()):
+        allowed = allowed_daughter_states(table)
+        seen: set[str | None] = set()
+        for shard in shards:
+            seen.update(pl.read_parquet(shard, columns=["daughter_state"])["daughter_state"].unique().to_list())
+        for value in sorted(v for v in seen if v is not None):
+            if value not in allowed:
+                violations.append(f"{table}: {value!r} not in {sorted(allowed)}")
+    assert not violations, "daughter_state values outside their table's vocabulary:\n" + "\n".join(violations)
+
+
+def test_pending_parent_state_ledger_is_self_cleaning(parent_state_tables):
+    """Once a table stops shipping `''` its entry must go, per #357/#380's contract."""
+    stale: list[str] = []
+    for table, pending in sorted(PENDING_PARENT_STATE_MIGRATION.items()):
+        if table not in parent_state_tables:
+            stale.append(f"{table}: named in PENDING_PARENT_STATE_MIGRATION but ships no `parent_state` column")
+            continue
+        seen: set[str | None] = set()
+        for shard in parent_state_tables[table]:
+            seen.update(pl.read_parquet(shard, columns=["parent_state"])["parent_state"].unique().to_list())
+        gone = sorted(pending.legacy - {v for v in seen if v is not None})
+        if gone == sorted(pending.legacy):
+            stale.append(
+                f"{table}: no longer ships any of {sorted(pending.legacy)} "
+                "— delete its PENDING_PARENT_STATE_MIGRATION entry"
+            )
+    assert not stale, "\n".join(stale)
+
+
+def test_pending_daughter_state_ledger_is_self_cleaning(daughter_state_tables):
+    stale: list[str] = []
+    for table, pending in sorted(PENDING_DAUGHTER_STATE_MIGRATION.items()):
+        if table not in daughter_state_tables:
+            stale.append(f"{table}: named in PENDING_DAUGHTER_STATE_MIGRATION but ships no `daughter_state` column")
+            continue
+        seen: set[str | None] = set()
+        for shard in daughter_state_tables[table]:
+            seen.update(pl.read_parquet(shard, columns=["daughter_state"])["daughter_state"].unique().to_list())
+        gone = sorted(pending.legacy - {v for v in seen if v is not None})
+        if gone == sorted(pending.legacy):
+            stale.append(
+                f"{table}: no longer ships any of {sorted(pending.legacy)} "
+                "— delete its PENDING_DAUGHTER_STATE_MIGRATION entry"
+            )
+    assert not stale, "\n".join(stale)
+
+
+def test_an_undeclared_table_raises_for_parent_state():
+    with pytest.raises(KeyError, match="no entry in TABLE_PARENT_STATES"):
+        allowed_parent_states("some/new/table")
+
+
+def test_an_undeclared_table_raises_for_daughter_state():
+    with pytest.raises(KeyError, match="no entry in TABLE_DAUGHTER_STATES"):
+        allowed_daughter_states("some/new/table")

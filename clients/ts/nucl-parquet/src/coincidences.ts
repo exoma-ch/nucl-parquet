@@ -47,8 +47,15 @@ export interface CoincidenceEntry {
   z: number;
   /** Daughter A. */
   a: number;
-  /** Parent isomeric state: `""` (ground) | `"m"` | `"m2"`. */
-  parentState: string;
+  /**
+   * Parent isomeric state per #380/#357-b: `"g"` (ground), `"m"` / `"m2"` /
+   * `"m3"` (isomers), or `null` where the parent could not be resolved (γ-γ
+   * pairs whose cascade head does not match a fed daughter level, and the 47
+   * Ga-73 β⁻ rows where both `g` and `m` support β⁻ per decay.parquet).
+   * Pre-#357-b this was a plain `string` with `""` as the ground default —
+   * the same collision `state` had three tables away.
+   */
+  parentState: string | null;
   /** Parent decay channel: `"beta-" | "beta+" | "KshellEC" | ...`. */
   parentDecayMode: string | null;
   /** Daughter level fed by the parent decay (keV). */
@@ -65,9 +72,17 @@ export interface CoincidenceEntry {
   pairIntensity: number;
 }
 
-/** Filter for `CoincidencesDb.pairsFiltered`. */
+/**
+ * Filter for `CoincidencesDb.pairsFiltered`.
+ *
+ * `parentState` is `string | null | undefined`: `undefined` means "don't
+ * filter", `null` matches only the "parent unknown" cohort (the honest read
+ * of the null rows the migration produced), and `"g"` matches ground-state
+ * parents. This mirrors the Rust `CoincidenceFilter` layered-Option; every
+ * filter option is a positive statement rather than a magic empty string.
+ */
 export interface CoincidenceFilter {
-  parentState?: string;
+  parentState?: string | null;
   parentDecayMode?: string;
   emission1RadType?: string;
   emission2RadType?: string;
@@ -180,7 +195,11 @@ export class CoincidencesDb {
     const entries: CoincidenceEntry[] = rows.map((row) => ({
       z: toNum(row["Z"]),
       a: toNum(row["A"]),
-      parentState: (row["parent_state"] as string | null) ?? "",
+      // Null survives — a `??` default would collapse the "parent unknown"
+      // cohort (460,809 γ-γ rows + 47 ambiguous Ga-73 β⁻ per #357-b) into
+      // whatever value the default happened to be, exactly the mistake #380
+      // removed from `radiation.state`.
+      parentState: (row["parent_state"] as string | null) ?? null,
       parentDecayMode: (row["parent_decay_mode"] as string | null) ?? null,
       daughterExKeV: toNumOrNull(row["daughter_ex_keV"]),
       parentLevelKeV: toNumOrNull(row["parent_level_keV"]),

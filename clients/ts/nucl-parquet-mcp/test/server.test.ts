@@ -206,7 +206,7 @@ describe("DuckDB", () => {
     const db = getDb();
     const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
       db.all(
-        "SELECT * FROM emissions WHERE parent_Z = 27 AND parent_A = 60 AND parent_state = '' ORDER BY intensity_pct DESC",
+        "SELECT * FROM emissions WHERE parent_Z = 27 AND parent_A = 60 AND parent_state = 'g' ORDER BY intensity_pct DESC",
         (err: Error | null, rows: Record<string, unknown>[]) => {
           if (err) reject(err); else resolve(rows);
         },
@@ -230,7 +230,7 @@ describe("DuckDB", () => {
       db.all(
         `SELECT energy_keV, SUM(intensity_pct) as total_intensity
          FROM emissions
-         WHERE parent_Z = 63 AND parent_A = 152 AND parent_state = ''
+         WHERE parent_Z = 63 AND parent_A = 152 AND parent_state = 'g'
            AND rad_type = 'gamma'
            AND energy_keV BETWEEN 121.0 AND 122.5
          GROUP BY energy_keV`,

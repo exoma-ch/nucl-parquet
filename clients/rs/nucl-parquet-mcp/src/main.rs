@@ -328,7 +328,7 @@ fn tool_definitions() -> serde_json::Value {
                     "properties": {
                         "parent_z": { "type": "integer", "description": "Atomic number of decaying parent (e.g. 27 for Co-60)" },
                         "parent_a": { "type": "integer", "description": "Mass number of parent" },
-                        "parent_state": { "type": "string", "description": "'' (ground), 'm', 'm2'" },
+                        "parent_state": { "type": "string", "description": "'g' (ground, default), 'm', 'm2' — per #380" },
                         "decay_mode": { "type": "string", "description": "Filter: 'beta-', 'KshellEC', 'IT', etc." },
                         "energy_keV": { "type": "number", "description": "Filter near this energy" },
                         "tolerance_keV": { "type": "number", "description": "Energy tolerance (default 0.5 keV)" },
@@ -652,10 +652,16 @@ fn handle_tool_call(
                 .get("parent_a")
                 .and_then(|v| v.as_i64())
                 .ok_or("missing 'parent_a'")?;
+            // Default to the ground-state spelling the shipped data uses
+            // (post-#380 / #357-b). The pre-#380 default `""` returned zero
+            // rows for every uninstrumented caller once the rebuild landed —
+            // same silent-empty class as clients/rs/nucl-parquet's DecayDb
+            // (fixed in b2470400) and clients/ts/nucl-parquet's radiation.ts
+            // (fixed in ecf5b831).
             let parent_state = args
                 .get("parent_state")
                 .and_then(|v| v.as_str())
-                .unwrap_or("");
+                .unwrap_or(nucl_parquet::GROUND);
             let decay_mode_filter = args.get("decay_mode").and_then(|v| v.as_str());
             let energy_filter = args.get("energy_keV").and_then(|v| v.as_f64());
             let tolerance = args

@@ -41,7 +41,7 @@ Filed by **parent** element symbol (Co-60 emissions live in ``Co.parquet``).
 
     parent_Z              Int32     — decaying nucleus
     parent_A              Int32
-    parent_state          Utf8      — '' | 'm' | 'm2'
+    parent_state          Utf8      — 'g' | 'm' | 'm2' | NULL (per #357-b/#380)
     decay_mode            Utf8      — 'beta-' | 'KshellEC' | 'IT' | 'beta+' | …
     daughter_Z            Int32     — product nucleus
     daughter_A            Int32
@@ -351,8 +351,12 @@ def build_for_parent(
     radiation_cache
         Mapping of daughter_Z → radiation DataFrame (all isotopes for that element).
     """
-    # Determine parent excitation energy
-    if parent_state == "":
+    # Determine parent excitation energy. `state` in decay_summary and nuclides
+    # is now `'g'` for ground and `'m'`/`'m2'`/... for isomers (#380 / 2026.8.5).
+    # The pre-#380 empty-string spelling is treated as a synonym for `'g'` so a
+    # rebuild against a pre-migration snapshot still produces the right rows —
+    # but the ledger keeps the retired spelling out of the *output* parquet.
+    if parent_state in ("g", ""):
         parent_ex_kev = 0.0
     else:
         nuc = nuclides.filter((pl.col("Z") == parent_z) & (pl.col("A") == parent_a) & (pl.col("state") == parent_state))

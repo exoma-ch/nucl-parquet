@@ -58,16 +58,15 @@ import duckdb
 import numpy as np
 
 from .download import data_dir as _resolve_data_dir
-from .state_vocabulary import GROUND, LEGACY_UNSPECIFIED
+from .state_vocabulary import GROUND
 
-# Two ground-state spellings are live at once, and which one a helper defaults to
-# depends on the table it reads. `meta/ensdf/radiation`, `nuclides` and
-# `beta_spectra` migrated to `'g'` in the 2026.8.5 release; `coincidences`,
-# `summing_partners` and `emissions` key on `parent_state`, which did not and
-# still holds `''` (8.7M rows). Both spellings come from `state_vocabulary` so
-# the asymmetry is greppable rather than a bare literal, and so the next
-# vocabulary move updates them from one place. When those three tables migrate,
-# their defaults become GROUND and this note goes with the ledger entry.
+# `state`, `parent_state` and `daughter_state` are one vocabulary — #380 for
+# `state`, #357-b for the other two — so the helpers below all default to
+# `GROUND` when a state filter is omitted. Before the 2026.8.6 release
+# `coincidences`, `summing_partners` and `emissions` kept the pre-#357 default
+# `''`, matching 8.7 M rows silently in a schema where `''` was legacy debt.
+# `GROUND` is imported once, so the next vocabulary move updates every helper
+# from one place instead of hunting down a bare literal.
 
 # Element symbol → Z lookup for dynamic heavy-ion projectile resolution
 _SYMBOL_TO_Z: dict[str, int] = {
@@ -605,7 +604,7 @@ LEFT JOIN (
 ) r2 ON c.Z = r2.Z AND c.A = r2.A AND r2.state = $state
     AND ABS(c.coinc_energy_keV - r2.energy_keV) < 0.5
 WHERE c.Z = $z AND c.A = $a
-  AND COALESCE(c.parent_state, '') = $state
+  AND c.parent_state = $state
   AND c.emission1_rad_type = 'gamma' AND c.emission2_rad_type = 'gamma'
   AND c.gamma_energy_keV < c.coinc_energy_keV  -- avoid symmetric duplicates
 ORDER BY coinc_prob_pct DESC NULLS LAST
@@ -663,7 +662,7 @@ def coincidences(
     db: duckdb.DuckDBPyConnection,
     z: int,
     a: int,
-    parent_state: str = LEGACY_UNSPECIFIED,
+    parent_state: str = GROUND,
     parent_decay_mode: str | None = None,
     emission1_rad_type: str | None = None,
     emission2_rad_type: str | None = None,
@@ -688,7 +687,14 @@ def coincidences(
     params: list[object] = [int(z), int(a), float(min_intensity)]
     # Parent-state filter — coalesce NULL to '' so γ-γ rows without a fed-level
     # match (parent_decay_mode unknown) still surface when caller asks for "".
-    where.append("COALESCE(c.parent_state, '') = ?")
+    # Match the parent state directly. Pre-#357-b this used
+    # `COALESCE(c.parent_state, '') = ?` because γ-γ rows without a resolved
+    # parent were fill_null'd to `""`, and the caller had to know that. Post-
+    # migration those rows carry NULL — an honest "parent could not be
+    # attributed" — and the fill would merge them into whatever state the
+    # caller asked for. Filter directly; callers who want the null cohort
+    # write `c.parent_state IS NULL`.
+    where.append("c.parent_state = ?")
     params.append(parent_state)
     if parent_decay_mode is not None:
         where.append("c.parent_decay_mode = ?")
@@ -760,7 +766,7 @@ def summing_partners(
     a: int,
     primary_energy_keV: float | None = None,
     tolerance_keV: float = 0.5,
-    parent_state: str = LEGACY_UNSPECIFIED,
+    parent_state: str = GROUND,
     emission1_rad_type: str | None = None,
 ) -> duckdb.DuckDBPyRelation:
     """ICC-corrected summing partners for HPGe TCS corrections (#177).
@@ -791,7 +797,9 @@ def summing_partners(
     -------
     DuckDB relation; call ``.pl()`` / ``.df()`` / ``.arrow()`` as usual.
     """
-    where = ["s.Z = ?", "s.A = ?", "COALESCE(s.parent_state, '') = ?"]
+    # See the twin comment in `coincidences()` — direct match, no COALESCE,
+    # so callers who want the null-parent cohort write it explicitly.
+    where = ["s.Z = ?", "s.A = ?", "s.parent_state = ?"]
     params: list[object] = [int(z), int(a), parent_state]
 
     if primary_energy_keV is not None:
@@ -817,7 +825,7 @@ def emissions(
     db: duckdb.DuckDBPyConnection,
     parent_z: int,
     parent_a: int,
-    parent_state: str = LEGACY_UNSPECIFIED,
+    parent_state: str = GROUND,
     decay_mode: str | None = None,
     energy_keV: float | None = None,
     tolerance_keV: float = 0.5,

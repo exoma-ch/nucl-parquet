@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use nucl_parquet::{
     CoincidenceFilter, CoincidencesDb, Emission, EmissionEntry, GammaCandidate, RadiationDb,
-    StoppingDb,
+    StoppingDb, GROUND,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -100,7 +100,12 @@ struct CoincRow {
     z: u32,
     #[serde(rename = "A")]
     a: u32,
-    parent_state: String,
+    /// `Option<String>` to serialize as JSON `null` when the parent could not
+    /// be resolved (see `CoincidenceEntry::parent_state`). Pre-#357-b the
+    /// column was a plain `String` with `""` as the default, and the golden
+    /// fixtures still say `""` — normalization treats them the same via
+    /// `opt_string_to_json`.
+    parent_state: Value,
     parent_decay_mode: Value,
     #[serde(rename = "daughter_ex_keV")]
     daughter_ex_kev: Value,
@@ -124,7 +129,7 @@ struct CoincRow {
 fn coinc_to_json(
     z: u32,
     a: u32,
-    parent_state: &str,
+    parent_state: Option<&str>,
     parent_decay_mode: Option<&str>,
     daughter_ex_kev: Option<f64>,
     emission1: &Emission,
@@ -134,7 +139,7 @@ fn coinc_to_json(
     serde_json::to_value(CoincRow {
         z,
         a,
-        parent_state: parent_state.to_string(),
+        parent_state: opt_string_to_json(parent_state),
         parent_decay_mode: opt_string_to_json(parent_decay_mode),
         daughter_ex_kev: opt_f64_to_json(daughter_ex_kev),
         emission1_rad_type: emission1.rad_type.clone(),
@@ -197,7 +202,7 @@ fn coincidences_filtered_rows(
             coinc_to_json(
                 e.z,
                 e.a,
-                &e.parent_state,
+                e.parent_state.as_deref(),
                 e.parent_decay_mode.as_deref(),
                 e.daughter_ex_kev,
                 &e.emission1,
@@ -219,7 +224,7 @@ fn golden_co60_beta_gamma() {
         28,
         60,
         CoincidenceFilter {
-            parent_state: Some(String::new()),
+            parent_state: Some(Some(GROUND.into())), // #380: "" -> "g" for ground
             parent_decay_mode: Some("beta-".into()),
             emission1_rad_type: Some("beta".into()),
             emission2_rad_type: Some("gamma".into()),
@@ -239,7 +244,7 @@ fn golden_y86_kshell_xray_gamma() {
         38,
         86,
         CoincidenceFilter {
-            parent_state: Some(String::new()),
+            parent_state: Some(Some(GROUND.into())),
             parent_decay_mode: Some("KshellEC".into()),
             emission1_rad_type: Some("xray".into()),
             emission2_rad_type: Some("gamma".into()),
@@ -263,7 +268,7 @@ fn golden_co60_gamma_gamma() {
         28,
         60,
         CoincidenceFilter {
-            parent_state: Some(String::new()),
+            parent_state: Some(Some(GROUND.into())),
             parent_decay_mode: Some("beta-".into()),
             emission1_rad_type: Some("gamma".into()),
             emission2_rad_type: Some("gamma".into()),
@@ -298,7 +303,7 @@ fn golden_sr90_y90_negative() {
             coinc_to_json(
                 e.z,
                 e.a,
-                &e.parent_state,
+                e.parent_state.as_deref(),
                 e.parent_decay_mode.as_deref(),
                 e.daughter_ex_kev,
                 &e.emission1,
@@ -319,7 +324,7 @@ fn emission_to_json(e: &EmissionEntry) -> Value {
     json!({
         "Z": e.z,
         "A": e.a,
-        "state": e.state,
+        "state": opt_string_to_json(e.state.as_deref()),
         "rad_type": e.rad_type,
         "energy_keV": f64_to_json(e.energy_kev),
         "intensity_pct": f64_to_json(e.intensity_pct),
@@ -334,7 +339,10 @@ fn emission_to_json(e: &EmissionEntry) -> Value {
 #[ignore = "requires nucl-parquet data files and committed golden fixtures"]
 fn golden_ni60_emissions() {
     let db = RadiationDb::open(meta_dir()).unwrap();
-    let lines = db.emissions(28, 60, "").unwrap();
+    // Post-#380 the ground state is `"g"`, not `""`; passing `""` here
+    // matches no shipped row and made this diff `[]` against a 619-row
+    // fixture. Matches the Python-side default (loader.py::gamma_lines).
+    let lines = db.emissions(28, 60, GROUND).unwrap();
     let mut rows: Vec<Value> = lines
         .iter()
         .filter(|e| e.intensity_pct >= 5.0)
@@ -364,7 +372,7 @@ fn gamma_to_json(c: &GammaCandidate) -> Value {
     json!({
         "Z": c.z,
         "A": c.a,
-        "state": c.state,
+        "state": opt_string_to_json(c.state.as_deref()),
         "energy_keV": f64_to_json(c.energy_kev),
         "intensity_pct": f64_to_json(c.intensity_pct),
         "delta_keV": f64_to_json(c.delta_kev),

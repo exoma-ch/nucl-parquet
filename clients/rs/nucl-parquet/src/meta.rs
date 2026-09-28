@@ -8,6 +8,13 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use arrow::array::{Array, Float32Array, Float64Array, Int32Array, Int64Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
+/// The ground state, spelled `"g"` since #380. Pre-2026.8.5 releases spelled it
+/// `""`, and every entry point below used `""` as the default; the migration
+/// removed that spelling from the shipped data. Naming the constant here means
+/// callers who want "the ground state" write [`GROUND`] rather than a literal
+/// that will silently miss every row on the next vocabulary move.
+pub const GROUND: &str = "g";
+
 /// IUPAC element symbols indexed by Z (1..=118). Empty string for Z=0
 /// (never used). Matches the file-naming convention of
 /// `meta/ensdf/{coincidences,radiation,levels}/{Symbol}.parquet`.
@@ -139,8 +146,11 @@ impl AbundancesDb {
 pub struct DecayEntry {
     pub z: u32,
     pub a: u32,
-    /// Nuclear isomeric state (empty string for ground state).
-    pub state: String,
+    /// Parent nuclear isomeric state — `"g"` for ground, `"m"`/`"m2"`/… for
+    /// isomers (see [`GROUND`] and the #380 vocabulary). `None` where ENSDF
+    /// does not state one; pre-#380 this was `""` (a spelling that also meant
+    /// "summed" on xs and "not stated" on EXFOR, so it was retired).
+    pub state: Option<String>,
     /// Half-life in seconds. `None` for stable nuclides or unknown.
     pub half_life_s: Option<f64>,
     /// Decay mode string (e.g. "beta-", "beta+", "alpha", "EC", "stable").
@@ -149,8 +159,14 @@ pub struct DecayEntry {
     pub daughter_z: Option<u32>,
     /// Mass number of daughter nucleus. `None` for stable nuclides.
     pub daughter_a: Option<u32>,
-    /// Isomeric state of daughter nucleus.
-    pub daughter_state: String,
+    /// Isomeric state of daughter nucleus — always `None` today. A summary
+    /// decay row aggregates over every daughter level the decay populates, so
+    /// no single state names them (2,283 of 5,855 summary rows never even
+    /// reach the daughter's ground state). Pre-#357-b this fell back to `""`
+    /// on all 6,431 rows; NULL is the honest shape. Spectroscopy consumers
+    /// read `decay_detailed.parquet::daughter_ex_kev` for per-transition
+    /// daughter levels.
+    pub daughter_state: Option<String>,
     /// Branching fraction (0–1).
     pub branching: f64,
 }
@@ -243,7 +259,13 @@ impl DecayDb {
                     let entry = DecayEntry {
                         z: z_val,
                         a: a_val,
-                        state: state[i].unwrap_or("").to_string(),
+                        // The `unwrap_or("")` default that lived here (twice)
+                        // coerced 26 genuinely-null `state` rows and every
+                        // `daughter_state` NULL to a `""` that #380 removed
+                        // from the data itself. Both surfaces now expose the
+                        // NULL as `None` — the honest answer to "we can't
+                        // name a state" — and callers filter accordingly.
+                        state: state[i].map(|s| s.to_string()),
                         half_life_s: if hl.is_null(i) {
                             None
                         } else {
@@ -260,7 +282,7 @@ impl DecayDb {
                         } else {
                             Some(da.value(i) as u32)
                         },
-                        daughter_state: ds[i].unwrap_or("").to_string(),
+                        daughter_state: ds[i].map(|s| s.to_string()),
                         branching: br.value(i),
                     };
                     data.entry((z_val, a_val)).or_default().push(entry);
@@ -272,10 +294,21 @@ impl DecayDb {
     }
 
     /// All decay branches for a given nuclide (Z, A, state).
+    ///
+    /// `state` is `"g"` for ground (see [`GROUND`]), `"m"`/`"m2"`/… for
+    /// isomers, matching the #380 vocabulary the shipped `decay.parquet`
+    /// uses. Pre-#380 the ground state was `""`, and `modes(z, a, "")` would
+    /// return every branch; that spelling now matches nothing at all, which
+    /// is exactly the point of naming a state.
     pub fn modes(&self, z: u32, a: u32, state: &str) -> Vec<&DecayEntry> {
         self.data
             .get(&(z, a))
-            .map(|entries| entries.iter().filter(|e| e.state == state).collect())
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter(|e| e.state.as_deref() == Some(state))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 }
@@ -298,8 +331,11 @@ pub struct DoseConstant {
 /// Thread-safe: `Send + Sync`. Share via `Arc<DoseDb>`.
 #[derive(Clone)]
 pub struct DoseDb {
-    /// (Z, A, state) -> (dose constant, source)
-    data: HashMap<(u32, u32, String), DoseConstant>,
+    /// `(Z, A, state)` -> (dose constant, source). `state` is `Some("g")` for
+    /// ground and `Some("m")`/… for isomers per the #380 vocabulary; `None`
+    /// where the source did not name one. Pre-#380 rows keyed by the empty
+    /// string as ground — that stopped joining the moment the data moved.
+    data: HashMap<(u32, u32, Option<String>), DoseConstant>,
 }
 
 unsafe impl Send for DoseDb {}
@@ -321,7 +357,7 @@ impl DoseDb {
     fn parse(
         reader_source: impl parquet::file::reader::ChunkReader + 'static,
     ) -> crate::Result<Self> {
-        let mut data: HashMap<(u32, u32, String), DoseConstant> = HashMap::new();
+        let mut data: HashMap<(u32, u32, Option<String>), DoseConstant> = HashMap::new();
 
         let reader = ParquetRecordBatchReaderBuilder::try_new(reader_source)?.build()?;
 
@@ -354,7 +390,7 @@ impl DoseDb {
                         (
                             z.value(i) as u32,
                             a.value(i) as u32,
-                            state[i].unwrap_or("").to_string(),
+                            state[i].map(|s| s.to_string()),
                         ),
                         DoseConstant {
                             k: k.value(i),
@@ -370,9 +406,12 @@ impl DoseDb {
 
     /// Dose rate constant with source attribution for nuclide (Z, A, state).
     ///
-    /// Returns `None` if the nuclide is not in the database.
+    /// `state` is `"g"` for ground (see [`GROUND`]), `"m"`/`"m2"`/… for
+    /// isomers. Returns `None` if the (Z, A, state) triple is not in the
+    /// database. Pre-#380 the ground state was `""`, and passing `""` now
+    /// silently returns `None` because no shipped row keys on that spelling.
     pub fn dose_constant(&self, z: u32, a: u32, state: &str) -> Option<&DoseConstant> {
-        self.data.get(&(z, a, state.to_string()))
+        self.data.get(&(z, a, Some(state.to_string())))
     }
 }
 
@@ -410,8 +449,14 @@ pub struct CoincidenceEntry {
     pub z: u32,
     /// Daughter A.
     pub a: u32,
-    /// Parent isomeric state: `""` (ground) | `"m"` | `"m2"`.
-    pub parent_state: String,
+    /// Parent isomeric state per the #380/#357-b vocabulary: `Some("g")` for
+    /// ground, `Some("m")`/`Some("m2")` for isomers. `None` where the parent
+    /// could not be resolved — a γ-γ cascade pair whose cascade head does
+    /// not match a fed daughter level in `annotate_gamma_gamma`, or the 47
+    /// Ga-73 β⁻ rows where both `g` and `m` support β⁻ per decay.parquet so
+    /// neither can be claimed. Pre-#357-b this was a plain `String` with
+    /// `""` as the ground-state default; NULL now surfaces those honestly.
+    pub parent_state: Option<String>,
     /// Parent decay channel that fed the cascade.
     ///
     /// `None` for γ-γ rows where the parent_level couldn't be matched to a
@@ -437,9 +482,16 @@ pub struct CoincidenceEntry {
 /// Filter for [`CoincidencesDb::pairs_filtered`].
 ///
 /// All fields default to `None` (no filter). Filters compose via AND.
+///
+/// `parent_state` is `Option<Option<String>>`: outer `None` means "don't filter",
+/// `Some(None)` matches only rows whose parent could not be resolved (the
+/// `parent_state IS NULL` cohort — 460,809 γ-γ rows plus the 47 Ga-73 β⁻
+/// ambiguity), and `Some(Some("g"))` matches ground-state parents. This is
+/// the honest split for the #357-b vocabulary — every filter option is a
+/// positive statement rather than a magic empty string.
 #[derive(Debug, Clone, Default)]
 pub struct CoincidenceFilter {
-    pub parent_state: Option<String>,
+    pub parent_state: Option<Option<String>>,
     pub parent_decay_mode: Option<String>,
     pub emission1_rad_type: Option<String>,
     pub emission2_rad_type: Option<String>,
@@ -629,7 +681,11 @@ impl CoincidencesDb {
                 let entry = CoincidenceEntry {
                     z: z_val,
                     a: a_val,
-                    parent_state: ps[i].unwrap_or("").to_string(),
+                    // NULL parent survives as `None` — a γ-γ pair whose parent
+                    // could not be identified is genuinely unattributed. The
+                    // pre-#357-b default coerced it to `""` and joined it to
+                    // the ground-state cohort.
+                    parent_state: ps[i].map(|s| s.to_string()),
                     parent_decay_mode: parent_decay_mode
                         .as_ref()
                         .and_then(|c| c[i].map(|s| s.to_string())),
@@ -730,8 +786,8 @@ impl CoincidencesDb {
 
 impl CoincidenceFilter {
     fn matches(&self, e: &CoincidenceEntry) -> bool {
-        if let Some(s) = &self.parent_state {
-            if &e.parent_state != s {
+        if let Some(want) = &self.parent_state {
+            if e.parent_state.as_deref() != want.as_deref() {
                 return false;
             }
         }
@@ -761,12 +817,15 @@ impl CoincidenceFilter {
 /// A single radiation emission line (γ, X-ray, or Auger).
 ///
 /// Schema mirrors `data/meta/ensdf/radiation/{Symbol}.parquet`. The `state`
-/// field follows the v0.10.x empty-string convention for ground state.
+/// field is `Option<String>` under the #380 vocabulary — `Some("g")` for
+/// ground, `Some("m")`/`Some("m2")`/`Some("m3")` for isomers, `None` for the
+/// 26 rows across 13 nuclides whose ground-band cascade coincides with a
+/// catalogued isomer and cannot be attributed by an energy alone (#386).
 #[derive(Debug, Clone)]
 pub struct EmissionEntry {
     pub z: u32,
     pub a: u32,
-    pub state: String,
+    pub state: Option<String>,
     pub rad_type: String,
     pub energy_kev: f64,
     pub intensity_pct: f64,
@@ -781,7 +840,9 @@ pub struct EmissionEntry {
 pub struct GammaCandidate {
     pub z: u32,
     pub a: u32,
-    pub state: String,
+    /// `Some("g")` for ground per the #380 vocabulary; `Some("m")`/`Some("m2")`
+    /// for isomers; `None` for the rare rows whose state ENSDF did not state.
+    pub state: Option<String>,
     pub energy_kev: f64,
     pub intensity_pct: f64,
     pub delta_kev: f64,
@@ -802,7 +863,10 @@ struct GammaIndexEntry {
     intensity_pct: f64,
     z: u16,
     a: u16,
-    /// 0=ground, 1=m, 2=m2, 255=other (rare).
+    /// 0=g (ground), 1=m, 2=m2, 3=m3, 254=NULL, 255=other (rare).
+    /// Pre-#380 the ground state was `""`; index_idx 0 now means the `"g"`
+    /// spelling that replaced it, so the index does not need re-emitting when
+    /// consumers move.
     state_idx: u8,
 }
 
@@ -948,7 +1012,9 @@ impl RadiationDb {
             for i in 0..batch.num_rows() {
                 let z_val = z.value(i) as u32;
                 let a_val = a.value(i) as u32;
-                let state_val = st[i].unwrap_or("").to_string();
+                // `state` may be genuinely NULL (26 rows across 13 nuclides
+                // per #386); the `unwrap_or("")` default lost that.
+                let state_val = st[i].map(|s| s.to_string());
                 let rt_val = rt[i].unwrap_or("").to_string();
                 out.push(EmissionEntry {
                     z: z_val,
@@ -972,12 +1038,15 @@ impl RadiationDb {
         Ok(out)
     }
 
-    /// All emissions for nuclide (Z, A, state). `state=""` for ground.
+    /// All emissions for nuclide (Z, A, state). `state` is `"g"` for ground
+    /// (see [`GROUND`]), `"m"`/`"m2"`/`"m3"` for isomers. Pre-#380 this was
+    /// `""` for ground, and the shipped data no longer carries that spelling
+    /// at all — passing it now silently returns an empty vec.
     pub fn emissions(&self, z: u32, a: u32, state: &str) -> crate::Result<Vec<EmissionEntry>> {
         Ok(self
             .emissions_for_element(z)?
             .iter()
-            .filter(|e| e.a == a && e.state == state)
+            .filter(|e| e.a == a && e.state.as_deref() == Some(state))
             .cloned()
             .collect())
     }
@@ -994,7 +1063,7 @@ impl RadiationDb {
         Ok(self
             .emissions_for_element(z)?
             .iter()
-            .filter(|e| e.a == a && e.state == state)
+            .filter(|e| e.a == a && e.state.as_deref() == Some(state))
             .filter(|e| {
                 if let Some(rt) = rad_type {
                     if e.rad_type != rt {
@@ -1035,10 +1104,12 @@ impl RadiationDb {
                 z: e.z as u32,
                 a: e.a as u32,
                 state: match e.state_idx {
-                    0 => String::new(),
-                    1 => "m".to_string(),
-                    2 => "m2".to_string(),
-                    _ => "?".to_string(),
+                    0 => Some(GROUND.to_string()),
+                    1 => Some("m".to_string()),
+                    2 => Some("m2".to_string()),
+                    3 => Some("m3".to_string()),
+                    254 => None,
+                    _ => Some("?".to_string()),
                 },
                 energy_kev: e.energy_kev,
                 intensity_pct: e.intensity_pct,
@@ -1125,10 +1196,16 @@ impl RadiationDb {
                 if rt[i] != Some("gamma") {
                     continue;
                 }
-                let state_idx = match st[i].unwrap_or("") {
-                    "" => 0u8,
-                    "m" => 1,
-                    "m2" => 2,
+                // Post-#380 the ground state is `"g"`; the pre-#380 empty
+                // string still maps to slot 0 so an unmigrated shard reads
+                // back as ground rather than falling into the `255` bucket
+                // (which `identify_gamma` reports as `Some("?")`).
+                let state_idx = match st[i] {
+                    Some(GROUND) | Some("") => 0u8,
+                    Some("m") => 1,
+                    Some("m2") => 2,
+                    Some("m3") => 3,
+                    None => 254,
                     _ => 255,
                 };
                 idx.push(GammaIndexEntry {
@@ -1174,7 +1251,8 @@ mod tests {
     #[ignore = "requires nucl-parquet data files"]
     fn decay_cu64_beta() {
         let db = DecayDb::open(meta_dir()).unwrap();
-        let modes = db.modes(29, 64, ""); // Cu-64 ground state
+        // The pre-#380 spelling was `""`; that returns nothing today.
+        let modes = db.modes(29, 64, GROUND); // Cu-64 ground state, spelled "g"
         assert!(!modes.is_empty(), "Cu-64 should have decay modes");
         let has_beta = modes.iter().any(|m| m.decay_mode.starts_with("beta"));
         assert!(has_beta, "Cu-64 should have beta decay");
@@ -1266,7 +1344,7 @@ mod tests {
         // (de-exciting after Co-60 β⁻ decay), so they're filed under
         // (Z=28, A=60) — same daughter-keyed convention as coincidences.
         let db = RadiationDb::open(meta_dir()).unwrap();
-        let lines = db.emissions(28, 60, "").unwrap();
+        let lines = db.emissions(28, 60, GROUND).unwrap(); // "g" post-#380
         assert!(!lines.is_empty(), "Ni-60 radiation lines must exist");
         let has_1173 = lines
             .iter()
@@ -1300,7 +1378,7 @@ mod tests {
     #[ignore = "requires nucl-parquet data files"]
     fn dose_i131_positive() {
         let db = DoseDb::open(meta_dir()).unwrap();
-        let dc = db.dose_constant(53, 131, ""); // I-131
+        let dc = db.dose_constant(53, 131, GROUND); // I-131 ground, "g"
         assert!(dc.is_some(), "I-131 should have a dose constant");
         let dc = dc.unwrap();
         assert!(dc.k > 0.0, "I-131 dose constant should be positive");
@@ -1330,8 +1408,8 @@ mod tests {
         let db_file = DecayDb::open(meta_dir()).unwrap();
         let data = std::fs::read(&path).unwrap();
         let db_bytes = DecayDb::from_bytes(&data).unwrap();
-        let modes_file = db_file.modes(29, 64, "");
-        let modes_bytes = db_bytes.modes(29, 64, "");
+        let modes_file = db_file.modes(29, 64, GROUND); // "g"
+        let modes_bytes = db_bytes.modes(29, 64, GROUND);
         assert_eq!(
             modes_file.len(),
             modes_bytes.len(),
@@ -1346,8 +1424,8 @@ mod tests {
         let db_file = DoseDb::open(meta_dir()).unwrap();
         let data = std::fs::read(&path).unwrap();
         let db_bytes = DoseDb::from_bytes(&data).unwrap();
-        let dc_file = db_file.dose_constant(53, 131, "").unwrap();
-        let dc_bytes = db_bytes.dose_constant(53, 131, "").unwrap();
+        let dc_file = db_file.dose_constant(53, 131, GROUND).unwrap();
+        let dc_bytes = db_bytes.dose_constant(53, 131, GROUND).unwrap();
         assert!(
             (dc_file.k - dc_bytes.k).abs() < 1e-12,
             "I-131 dose constant mismatch: {} vs {}",
@@ -1382,7 +1460,7 @@ mod tests {
     #[ignore = "requires nucl-parquet data files"]
     fn radiation_from_element_bytes() {
         let db = RadiationDb::open(meta_dir()).unwrap();
-        let lines_file = db.emissions(28, 60, "").unwrap();
+        let lines_file = db.emissions(28, 60, GROUND).unwrap();
         let path = meta_dir()
             .join("ensdf")
             .join("radiation")
@@ -1390,7 +1468,7 @@ mod tests {
         let data = std::fs::read(&path).unwrap();
         let db2 = RadiationDb::open(meta_dir()).unwrap();
         db2.from_element_bytes(28, &data).unwrap();
-        let lines_bytes = db2.emissions(28, 60, "").unwrap();
+        let lines_bytes = db2.emissions(28, 60, GROUND).unwrap();
         assert_eq!(
             lines_file.len(),
             lines_bytes.len(),
