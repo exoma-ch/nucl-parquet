@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.19.0...nucl-parquet-py-v0.19.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **deps:** Pycatima is a build-time dependency, not a runtime one ([#236](https://github.com/exoma-ch/nucl-parquet/issues/236)) ([#406](https://github.com/exoma-ch/nucl-parquet/issues/406)) ([2d14919](https://github.com/exoma-ch/nucl-parquet/commit/2d14919b9d504a91ace9ee2774eb893531c689ea))
+* **ts:** Build @nucl-parquet/core with TypeScript 5, and build it in CI ([#409](https://github.com/exoma-ch/nucl-parquet/issues/409)) ([ae89e11](https://github.com/exoma-ch/nucl-parquet/commit/ae89e116cfaa0812dabd0a8c2633654445cdf851))
+
 ## [0.19.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.18.1...nucl-parquet-py-v0.19.0) (2026-09-28)
 
 
