@@ -59,13 +59,21 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # TypeScript 7 is the native port and has no JS compiler API, which tsup's
-    # `dts: true` build needs. #302 took this bump and broke the release build
-    # of 0.17.0. Lift this once tsup (or its replacement) emits .d.ts under TS 7;
-    # scripts/ci.sh now runs `npm run build`, so the bump would fail in its PR.
-    ignore:
-      - dependency-name: typescript
-        update-types: ["version-update:semver-major"]
+    groups:
+      js-minor-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Watched separately: nothing covered this package, so it sat three majors
+  # behind on TypeScript, vitest and zod while the core package moved on.
+  - package-ecosystem: npm
+    directory: /clients/ts/nucl-parquet-mcp
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
     groups:
       js-minor-patch:
         update-types:
@@ -87,6 +95,21 @@ updates:
   # dev deps carry the build and test surface, including pycatima.
   - package-ecosystem: pip
     directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  # The Python MCP server is its own distribution with its own pyproject.toml;
+  # the root entry above does not reach it.
+  - package-ecosystem: pip
+    directory: /clients/py/nucl-parquet-mcp
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
