@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.15.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.14.2...nucl-parquet-mcp-rs-v0.15.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **data:** rebuild all nine ENDF libraries, and bring every consumer up to the new shape ([#399](https://github.com/exoma-ch/nucl-parquet/issues/399))
+* **mcp:** report the data release, not just each evaluation's version ([#385](https://github.com/exoma-ch/nucl-parquet/issues/385))
+
+### Features
+
+* **mcp:** Report the data release, not just each evaluation's version ([#385](https://github.com/exoma-ch/nucl-parquet/issues/385)) ([df66a0a](https://github.com/exoma-ch/nucl-parquet/commit/df66a0a7e893edf1ed11205a16d11e2bd46f3f91))
+
+
+### Bug Fixes
+
+* **data:** Rebuild all nine ENDF libraries, and bring every consumer up to the new shape ([#399](https://github.com/exoma-ch/nucl-parquet/issues/399)) ([3e16c5d](https://github.com/exoma-ch/nucl-parquet/commit/3e16c5d378d64852b2c5c8fbae25eb37b88fa3b8))
+
 ## [0.14.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-rs-v0.14.1...nucl-parquet-mcp-rs-v0.14.2) (2026-08-19)
 
 
