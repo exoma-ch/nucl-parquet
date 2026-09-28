@@ -76,8 +76,8 @@ updates:
       prefix: "chore(deps)"
 
   # --- Python ---------------------------------------------------------------
-  # The runtime deps are few and load-bearing (duckdb, numpy, pycatima,
-  # zstandard); dev deps carry the build and test surface.
+  # The runtime deps are few and load-bearing (duckdb, numpy, zstandard);
+  # dev deps carry the build and test surface, including pycatima.
   - package-ecosystem: pip
     directory: /
     schedule:

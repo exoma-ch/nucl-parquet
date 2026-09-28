@@ -12,12 +12,17 @@ requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.5.0",
     "numpy>=1.24",
-    "pycatima>=1.981",
     "zstandard>=0.22",
 ]
 
 [project.optional-dependencies]
 dev = ["polars>=1.0", "pytest>=8.0", "requests>=2.31"]
+# pycatima wraps catima, which is AGPL-3.0. Only nucl_parquet.build_heavy_ions
+# imports it, to regenerate the stopping/catima_*.parquet shards; the loader
+# reads those shards and never needs it. As a runtime dependency it put AGPL
+# code into every `pip install nucl-parquet` while NOTICE said catima is not
+# distributed (#236). tests/test_runtime_dependencies.py keeps it out.
+build = ["pycatima>=1.981"]
 
 [dependency-groups]
 dev = [
@@ -34,6 +39,9 @@ dev = [
     # runs rather than skips; a guard that skips is the failure it guards against.
     "pandas>=2.0",
     "polars>=1.0",
+    # nucl_parquet.build_heavy_ions regenerates the catima shards. Build-time
+    # only — see the `build` extra for why it is not a runtime dependency.
+    "pycatima>=1.981",
     "pytest>=8.0",
     # tests/test_data_signing.py parses the release workflow. Available
     # transitively today (via huggingface-hub), declared here because the
