@@ -94,6 +94,21 @@ export interface XsColumns {
    */
   targetAValid: Uint8Array;
   /**
+   * Isomeric state of the *target* (#353).
+   *
+   * `target_A` alone is not the target: Br-80 and Br-80m share it and are
+   * different nuclei. 37,316 residual keys in the shipped tables carry more
+   * than one `target_state`, so a consumer that keys on `targetA` alone merges
+   * two evaluations — which is what the Rust client did until 0.17.
+   *
+   * `null` means one of two things, and the difference is not recoverable
+   * here: the row is a natural element (`target_A = 0`, which has no one
+   * isomeric state — the equivalence holds exactly across every shard carrying
+   * the column), or the shard predates the column entirely (endfb-8.0 and the
+   * EXFOR tables). Check `targetA` to tell them apart.
+   */
+  targetState: (string | null)[];
+  /**
    * ENDF MT reaction number — the canonical channel identity (principle 2).
    * Null where the source carries none; evaluated production tables are
    * entirely null today and gain MT with the #347 rebuild.
@@ -291,6 +306,28 @@ function getStrings(cols: Map<string, number[] | string[]>, name: string): strin
  * state" depending on which table you read — and would merge the 6.5M rows that
  * currently ship `null` into the 38M legacy `''` rows on sight.
  */
+/**
+ * A nullable string column that need not be there at all.
+ *
+ * `target_state` is absent from the shards `fetch_endf_libs.py` no longer
+ * rebuilds — endfb-8.0 comes via OpenMC, the EXFOR tables via their own
+ * builder. Absent is not the same as null, but neither states a target state,
+ * so both surface as `null` and `targetA` distinguishes them.
+ */
+function optionalNullableStrings(
+  cols: Map<string, number[] | string[]>,
+  name: string,
+): (string | null)[] {
+  const src = cols.get(name) as (string | null)[] | undefined;
+  if (src === undefined) {
+    const n = (cols.get("energy_MeV") as unknown[] | undefined)?.length ?? 0;
+    return new Array<string | null>(n).fill(null);
+  }
+  const out = new Array<string | null>(src.length);
+  for (let i = 0; i < src.length; i++) out[i] = src[i] ?? null;
+  return out;
+}
+
 function getNullableStrings(
   cols: Map<string, number[] | string[]>,
   name: string,
@@ -382,6 +419,7 @@ export async function xsColumns(buffer: ArrayBuffer): Promise<XsColumns> {
     targetZ: getI32(cols, "target_Z"),
     targetA: targetA.values,
     targetAValid: targetA.valid,
+    targetState: optionalNullableStrings(cols, "target_state"),
     mt: mt.values,
     mtValid: mt.valid,
     residualZ: rz.values,
@@ -407,7 +445,8 @@ export async function xsColumns(buffer: ArrayBuffer): Promise<XsColumns> {
  * ```ts
  * const cols = await xsColumns(buf);
  * for (const i of residualKeyedIndices(cols)) {
- *   key(cols.targetA[i], cols.residualZ[i], cols.residualA[i], cols.state[i]);
+ *   key(cols.targetA[i], cols.targetState[i], cols.residualZ[i],
+ *       cols.residualA[i], cols.state[i]);
  * }
  * ```
  */

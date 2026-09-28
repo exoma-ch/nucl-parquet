@@ -33,6 +33,7 @@ const DATA_DIR = join(import.meta.dirname, "../../../../data");
  */
 interface SyntheticRow {
   targetA: number | null;
+  targetState?: string | null;
   residualZ: number | null;
   residualA: number | null;
   mt?: number | null;
@@ -53,6 +54,12 @@ function syntheticXs(rows: SyntheticRow[]): ArrayBuffer {
       { name: "proj_A", data: col(() => 1), type: "INT32" },
       { name: "target_Z", data: col(() => 29), type: "INT32" },
       { name: "target_A", data: col((r) => r.targetA), type: "INT32", nullable: true },
+      {
+        name: "target_state",
+        data: col((r) => (r.targetState === undefined ? "g" : r.targetState)),
+        type: "STRING",
+        nullable: true,
+      },
       { name: "MT", data: col((r) => r.mt ?? null), type: "INT32", nullable: true },
       { name: "residual_Z", data: col((r) => r.residualZ), type: "INT32", nullable: true },
       { name: "residual_A", data: col((r) => r.residualA), type: "INT32", nullable: true },
@@ -65,7 +72,11 @@ function syntheticXs(rows: SyntheticRow[]): ArrayBuffer {
 
 /** A channels file: every (n,tot)/(n,el)/(n,f) row has a null residual. */
 const CHANNELS = join(DATA_DIR, "endfb-8.0/channels/n_U.parquet");
-/** A production file: every row names a product. */
+/**
+ * An evaluated xs file. Called PRODUCTION because before #347 every row in it
+ * was a production row; the rebuild added the per-MT channels alongside, so it
+ * now carries 4,280 production rows and 73,536 channel rows in one table.
+ */
 const PRODUCTION = join(DATA_DIR, "jendl-5/xs/n_Cu.parquet");
 /**
  * Heavy-ion fragment production: every row has a **null `state`**, because the
@@ -141,13 +152,26 @@ describe("null residuals", () => {
 });
 
 describe("production rows are unaffected", () => {
-  it("keeps every row of a file that names a product on each one", async () => {
+  it("keeps every row that names a product", async () => {
+    // This asserted `residualKeyedIndices(cols).length === n`, which held only
+    // while the file was pure production. #347 added 73,536 channel rows to it,
+    // 45,923 of which name no product, so the identity is now false and the
+    // real invariant is the one it was standing in for: the index is exactly
+    // the rows that name a product, and it drops no production row.
     const cols = await columnsOf(PRODUCTION);
     const n = cols.energyMeV.length;
-    expect(n).toBeGreaterThan(100);
-    expect(residualKeyedIndices(cols).length).toBe(n);
-    // Every residual is marked valid, and none of them is the (0,0) key.
-    expect(Array.from(cols.residualValid).every((v) => v === 1)).toBe(true);
+    expect(n).toBe(77816);
+
+    const keyed = new Set(residualKeyedIndices(cols));
+    const namesProduct = [...Array(n).keys()].filter(
+      (i) => cols.residualValid[i] === 1 && cols.targetAValid[i] === 1,
+    );
+    expect(keyed.size).toBe(31893);
+    expect(namesProduct.every((i) => keyed.has(i))).toBe(true);
+
+    const production = [...Array(n).keys()].filter((i) => cols.kind[i] === "production");
+    expect(production).toHaveLength(4280);
+    expect(production.every((i) => keyed.has(i))).toBe(true);
   });
 });
 
@@ -189,8 +213,16 @@ describe("kind and MT", () => {
     const chan = await columnsOf(CHANNELS);
     expect(new Set(chan.kind)).toEqual(new Set(["channel"]));
 
+    // An evaluated file used to be pure production. Since #347 it carries both
+    // kinds, which is precisely why `kind` has to be exposed: summing xs_mb
+    // over this file without splitting on it double-counts every reaction.
     const prod = await columnsOf(PRODUCTION);
-    expect(new Set(prod.kind)).toEqual(new Set(["production"]));
+    expect(new Set(prod.kind)).toEqual(new Set(["production", "channel"]));
+    const counts = prod.kind.reduce<Record<string, number>>((acc, k) => {
+      acc[k] = (acc[k] ?? 0) + 1;
+      return acc;
+    }, {});
+    expect(counts).toEqual({ production: 4280, channel: 73536 });
   });
 
   it("does not treat kind as a proxy for residual nullity", async () => {
@@ -229,11 +261,16 @@ describe("kind and MT", () => {
     }
     expect(byMt.size).toBeGreaterThan(1);
 
-    // The evaluated production table has no MT at all yet (it arrives with the
-    // #347 rebuild), so the mask must be able to say "absent" rather than 0 —
-    // MT=0 is not a valid ENDF reaction number, and would be a sentinel.
+    // "no MT at all yet (it arrives with the #347 rebuild)" — it has arrived.
+    // The mask is still what matters, and now says something sharper than
+    // "absent everywhere": MT is present on exactly the channel rows and absent
+    // on exactly the production rows, which is the #347 contract. MT=0 is not a
+    // valid ENDF number, so the mask carries that and not a sentinel.
     const prod = await columnsOf(PRODUCTION);
-    expect(Array.from(prod.mtValid).every((v) => v === 0)).toBe(true);
+    for (let i = 0; i < prod.mt.length; i++) {
+      expect(prod.mtValid[i] === 1).toBe(prod.kind[i] === "channel");
+    }
+    expect(Array.from(prod.mtValid).filter((v) => v === 1)).toHaveLength(73536);
   });
 });
 
@@ -386,5 +423,51 @@ describe("column accessors refuse to invent data", () => {
     const buf = await readFile(join(DATA_DIR, "stopping/PSTAR.parquet"));
     const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     await expect(xsColumns(ab)).rejects.toThrow(/not in this parquet file/);
+  });
+});
+
+describe("target_state (#353)", () => {
+  it("is surfaced, so a consumer can tell two isomers of one target apart", async () => {
+    // Br-80 and Br-80m share target_A. Keyed on targetA alone these two rows
+    // are one channel; 37,316 residual keys in the shipped tables collide that
+    // way. The extractor has to expose the column for a consumer to do better.
+    const buf = syntheticXs([
+      { targetA: 80, targetState: "g", residualZ: 35, residualA: 79, xsMb: 100 },
+      { targetA: 80, targetState: "m", residualZ: 35, residualA: 79, xsMb: 250 },
+    ]);
+    const cols = await xsColumns(buf);
+    expect(cols.targetState).toEqual(["g", "m"]);
+
+    const keys = new Set(
+      [...residualKeyedIndices(cols)].map((i) =>
+        [cols.targetA[i], cols.targetState[i], cols.residualZ[i], cols.residualA[i]].join("/"),
+      ),
+    );
+    expect(keys.size).toBe(2);
+  });
+
+  it("is null for a natural element, which has no one isomeric state", async () => {
+    // `target_state IS NULL` <=> `target_A = 0` across every shipped shard
+    // carrying the column. A null, not a stand-in "g" (principle 3).
+    const cols = await xsColumns(
+      syntheticXs([{ targetA: 0, targetState: null, residualZ: 30, residualA: 64 }]),
+    );
+    expect(cols.targetState).toEqual([null]);
+  });
+
+  it("is all-null, not a throw, when the shard predates the column", async () => {
+    // endfb-8.0 and the EXFOR tables have no target_state column at all.
+    // `required()` throws on a missing column, so this needs the tolerant path
+    // or those three libraries stop loading entirely.
+    const cols = await columnsOf(CHANNELS);
+    expect(cols.targetState).toHaveLength(cols.energyMeV.length);
+    expect(cols.targetState.every((s) => s === null)).toBe(true);
+  });
+
+  it("carries the real states on a shard that has them", async () => {
+    // Not a fixture: the shipped jendl-5 Cu table. An extractor that silently
+    // returned all-null everywhere would pass the three tests above.
+    const cols = await columnsOf(PRODUCTION);
+    expect(new Set(cols.targetState).has("g")).toBe(true);
   });
 });

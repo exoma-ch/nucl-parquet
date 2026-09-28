@@ -25,6 +25,7 @@ committed tree only — no network.
 from __future__ import annotations
 
 import dataclasses
+import glob
 import json
 import re
 import subprocess
@@ -34,6 +35,7 @@ import jsonschema
 import pytest
 
 import nucl_parquet
+from nucl_parquet.state_vocabulary import SUM
 
 _REPO_ROOT = Path(__file__).parent.parent
 _DATA_DIR = _REPO_ROOT / "data"
@@ -351,6 +353,28 @@ class Anchor:
     libraries: frozenset[str]
     witness: float
     witness_note: str
+    #: Which rows answer this anchor's question. Every anchor keyed on a
+    #: *residual* wants `production` — the sum over each MT reaching that
+    #: nuclide, which is what "the cross-section for making Mn-56" means and
+    #: what these all measured before `kind='channel'` rows existed (#347).
+    #: An anchor keyed on an `MT` wants `channel`: that is the ENDF datum
+    #: itself. Averaging across both is how Fe-56(n,p) read 18.96 mb — 943
+    #: channel rows outvoting 89 production ones — against a production value
+    #: of 114.05 and a textbook 113.
+    kind: str = "production"
+    #: And which *state*. Same trap one level down, and the one the `kind` fix
+    #: uncovers rather than solves: `sum` is a sum **over** `g`/`m`/`m2`, not a
+    #: peer of them (#354). Averaging all four halves the answer — Au-197(n,2n)
+    #: read 1046 mb from tendl-2025 and 1085 from jendl-5 against a textbook
+    #: 2120, while their `sum` rows say 2092 and 2170. An anchor asking about a
+    #: specific isomer would set this to `'m'`; none does yet.
+    state: str = SUM
+    #: When true, only `libraries` are band-checked; others are ignored rather
+    #: than judged. Off by default, because checking every library that ships a
+    #: value is what caught cendl-3.2's 1e-14 (#328) — a library nobody had
+    #: listed. Set it only where a non-listed library's number is known to mean
+    #: something else, and say what.
+    libraries_are_exhaustive: bool = False
 
     def in_band(self, xs: float) -> bool:
         return self.expected_mb / self.factor < xs < self.expected_mb * self.factor
@@ -465,22 +489,65 @@ PHYSICAL_ANCHORS: tuple[Anchor, ...] = (
         witness=1160.0,
         witness_note="no historical regression — a 10x error",
     ),
-    # U-235(n,f) thermal (585 b) and U-235 total thermal are the obvious
-    # additions and cannot be written: `mt_to_residual` returns None for
-    # fission, total, elastic and inelastic, and the caller drops the row rather
-    # than emitting it with a null residual. Across 17.3M evaluated rows there
-    # are zero null-residual rows and zero MT values. Tracked in #347; add both
-    # anchors here when the ingest carries those channels.
+    # The two #347 was for. They could not be written while fission and total
+    # were dropped for naming no residual; the ingest carries them now, so they
+    # are keyed on `MT` and read `kind='channel'` — the only two anchors here
+    # that do.
+    #
+    # `libraries_are_exhaustive` because a *thermal* channel anchor asks
+    # something most libraries cannot answer. Below ~2.25 keV U-235's cross
+    # section lives in MF=2 resonance parameters, and this ingest reads MF=3
+    # only — so tendl-2025 tabulates 0.00051 mb there, which is the background
+    # term faithfully carried, not a defect. Only libraries that reconstruct
+    # resonances (endfb-8.0-channels, via NJOY) or ship pointwise dosimetry data
+    # (irdff-2) have a number to be judged on, and those two agree to 3%.
+    Anchor(
+        name="U-235(n,f) thermal",
+        element="U",
+        where="target_Z=92 AND target_A=235 AND MT=18 AND energy_MeV BETWEEN 2.0e-8 AND 3.0e-8",
+        expected_mb=585_000.0,  # 585 b, the most-cited number in neutron physics
+        factor=2.0,
+        libraries=frozenset({"endfb-8.0-channels", "irdff-2"}),
+        libraries_are_exhaustive=True,
+        kind="channel",
+        witness=0.514331,
+        witness_note="the MF=3 background alone, without the resonance region — what a "
+        "library that does not reconstruct MF=2 tabulates at thermal (#347)",
+    ),
+    Anchor(
+        name="U-235 total thermal",
+        element="U",
+        where="target_Z=92 AND target_A=235 AND MT=1 AND energy_MeV BETWEEN 2.0e-8 AND 3.0e-8",
+        expected_mb=700_000.0,  # 700 b
+        factor=2.0,
+        libraries=frozenset({"endfb-8.0-channels", "irdff-2"}),
+        libraries_are_exhaustive=True,
+        kind="channel",
+        witness=0.514331,
+        witness_note="as above — tendl-2025 ships exactly this for MT=1 at thermal, and it "
+        "is the MF=3 background rather than a wrong total",
+    ),
 )
 
 
 def _anchor_rows(anchor: Anchor) -> list[tuple[str, float]]:
     import duckdb
 
+    # Both layouts: evaluated libraries live in `<lib>/xs/`, and the
+    # NJOY-processed transport channels in `endfb-8.0/channels/`. The `kind`
+    # filter keeps them from mixing — without it a channel-only library would
+    # answer a production anchor and vice versa.
+    globs = [
+        f"{_DATA_DIR}/*/xs/n_{anchor.element}.parquet",
+        f"{_DATA_DIR}/*/channels/n_{anchor.element}.parquet",
+    ]
+    globs = [g for g in globs if glob.glob(g)]
+    if not globs:
+        return []
     return duckdb.sql(f"""
         SELECT library, avg(xs_mb)
-        FROM read_parquet('{_DATA_DIR}/*/xs/n_{anchor.element}.parquet', union_by_name=true)
-        WHERE {anchor.where}
+        FROM read_parquet({globs!r}, union_by_name=true)
+        WHERE kind = '{anchor.kind}' AND state = '{anchor.state}' AND ({anchor.where})
         GROUP BY library
     """).fetchall()
 
@@ -506,7 +573,8 @@ def test_well_known_reactions_are_physically_plausible(anchor: Anchor) -> None:
         "and passes is the failure mode #342 exists to prevent."
     )
 
-    bad = {lib: xs for lib, xs in rows if xs is not None and not anchor.in_band(xs)}
+    judged = anchor.libraries if anchor.libraries_are_exhaustive else present
+    bad = {lib: xs for lib, xs in rows if lib in judged and xs is not None and not anchor.in_band(xs)}
     assert not bad, (
         f"{anchor.name} is implausible in {bad} — expected ~{anchor.expected_mb:,.4g} mb "
         f"within a factor of {anchor.factor:g} (libraries checked: {sorted(present)})."
@@ -536,87 +604,14 @@ def test_every_anchor_rejects_the_value_it_was_written_against(anchor: Anchor) -
 # ---------------------------------------------------------------------------
 # Channel anchors — the numbers #347 exists to make queryable
 # ---------------------------------------------------------------------------
-
-#: (MT, label, expected mb at 0.0253 eV, reference)
-_U235_THERMAL_ANCHORS = (
-    (18, "U-235(n,f)", 585_000.0),
-    (1, "U-235 total", 700_000.0),
-)
-
-
-def _loglog_at(rows: list[tuple[float, float]], energy_MeV: float) -> float | None:
-    """Interpolate sigma at one energy in log-log.
-
-    Thinned grids drop interior points of a 1/v region, which is a straight line
-    in log-log and a badly-curved one in lin-lin — interpolating linearly across
-    a decade of thermal data reads high by tens of percent (#271).
-    """
-    import numpy as np
-
-    if len(rows) < 2:
-        return None
-    e = np.array([r[0] for r in rows])
-    s = np.array([r[1] for r in rows])
-    keep = (e > 0) & (s > 0)
-    e, s = e[keep], s[keep]
-    if len(e) < 2 or not (e[0] <= energy_MeV <= e[-1]):
-        return None
-    return float(np.exp(np.interp(np.log(energy_MeV), np.log(e), np.log(s))))
-
-
-def test_u235_channel_anchors_are_physically_right() -> None:
-    """U-235 thermal fission is 585 b and the total is 700 b — the two most
-    quoted numbers in neutron physics, and the reason #347 was filed.
-
-    Both need `kind='channel'` rows: fission and total name no single residual,
-    so `mt_to_residual` returns None for them and the ingest used to drop the
-    row entirely. 17.3M evaluated rows carried zero of either, and this anchor
-    could not be written at all — it is checked in as part of the fix.
-
-    Asserted over every library that carries the channel, and at least one must.
-    Before the #347 re-ingest that is `endfb-8.0-channels` alone; afterwards the
-    evaluated libraries join it, and each is then held to the same number.
-    """
-    import duckdb
-
-    con = duckdb.connect()
-    checked: dict[str, dict[int, float]] = {}
-    for key, info in json.loads(_CATALOG.read_text()).get("libraries", {}).items():
-        path = info.get("path")
-        if not path or not (_DATA_DIR / path).exists():
-            continue
-        u_files = list((_DATA_DIR / path).glob("n_U.parquet"))
-        if not u_files:
-            continue
-        for mt, _label, _expected in _U235_THERMAL_ANCHORS:
-            try:
-                rows = con.sql(f"""
-                    SELECT energy_MeV, xs_mb FROM read_parquet('{u_files[0]}')
-                    WHERE target_Z = 92 AND target_A = 235 AND MT = {mt}
-                      AND kind = 'channel' AND xs_mb > 0
-                    ORDER BY energy_MeV
-                """).fetchall()
-            except duckdb.Error:
-                continue  # library predates the canonical schema
-            value = _loglog_at(rows, 2.53e-8)
-            if value is not None:
-                checked.setdefault(key, {})[mt] = value
-
-    assert checked, (
-        "no library carries U-235 MT=1 or MT=18 as a channel row. Either the "
-        "#347 re-ingest has not run and endfb-8.0-channels is missing, or the "
-        "ingest has stopped emitting null-residual channels again."
-    )
-
-    bad = []
-    for key, values in sorted(checked.items()):
-        for mt, label, expected in _U235_THERMAL_ANCHORS:
-            got = values.get(mt)
-            if got is None:
-                continue
-            if not (expected * 0.8 < got < expected * 1.2):
-                bad.append(f"{key} {label}: {got:,.0f} mb, expected ~{expected:,.0f} mb")
-    assert not bad, "U-235 thermal anchors are off:\n  " + "\n  ".join(bad)
+#
+# U-235(n,f) and U-235 total now live in `PHYSICAL_ANCHORS` with `kind="channel"`,
+# which is what the comment there asked for once the ingest carried the channels.
+# The bespoke pair that stood here in the interim is gone rather than kept
+# alongside: two tests asserting the same two numbers by different methods is one
+# test and one thing to forget to update, and the anchor version gains the
+# witness check — `test_every_anchor_rejects_the_value_it_was_written_against`
+# now proves both bands reject the bare MF=3 background.
 
 
 def test_fission_is_queryable_at_all() -> None:

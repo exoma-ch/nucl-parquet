@@ -57,6 +57,22 @@ describe("xsColumns", () => {
     // Cu-63 and Cu-65 should be present
     expect(Array.from(new Set(cols.targetA))).toEqual(expect.arrayContaining([63, 65]));
   });
+
+  it("carries target_state alongside target_A, which does not identify a target", async () => {
+    // #353. Br-80 and Br-80m share target_A, so anything keyed on targetA alone
+    // merges two evaluations — the Rust client did exactly that until 0.17.
+    // This file is in the audit's `_TARGET_KEYED_READERS` because it builds
+    // fixtures column by column, so the column has to appear here too.
+    const buf = await readFile(join(DATA_DIR, "jendl-5/xs/n_Cu.parquet"));
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const cols = await xsColumns(ab);
+
+    expect(cols.targetState).toHaveLength(cols.targetA.length);
+    expect(new Set(cols.targetState)).toContain("g");
+    // Never `""`: #380 retired that spelling, and a null here would be a
+    // natural element rather than a stand-in ground state.
+    expect(cols.targetState).not.toContain("");
+  });
 });
 
 describe("catimaColumns", () => {

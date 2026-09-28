@@ -24,11 +24,33 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_DIR = REPO_ROOT / "tests" / "golden" / "fixtures"
 
 
-def _write(name: str, data: object) -> Path:
+def _write(name: str, data: object, *, allow_empty: bool = False) -> Path:
+    """Write one fixture, refusing to write an unexpectedly empty one.
+
+    Every generator here filters on `state`, and when the 2026.8.5 release moved
+    `meta/ensdf/radiation` from `''` to `'g'` two of them silently matched
+    nothing. Re-running this script would then have *blessed* the emptiness:
+    zero-row fixtures, golden tests green, and the cross-language check for
+    `identify_gamma` and `emissions` reduced to comparing [] against []. The
+    instruction in the failure message is "re-run generate.py", so that is
+    exactly the hole a stale filter falls into.
+
+    `allow_empty=True` is for the fixtures whose *point* is that they match
+    nothing — `sr90_y90_negative` asserts Sr-90 has no mixed β/γ pairs. "Empty
+    on purpose" and "empty by accident" have to be told apart at the point of
+    writing, because afterwards they are the same two bytes on disk.
+    """
+    rows = len(data) if isinstance(data, list) else 1
+    if rows == 0 and not allow_empty:
+        raise SystemExit(
+            f"refusing to write an empty fixture {name!r}. The query matched nothing — "
+            "check its `state` filter against nucl_parquet/state_vocabulary.py before "
+            "re-running, rather than committing a fixture that asserts nothing."
+        )
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     path = FIXTURE_DIR / f"{name}.json"
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-    print(f"wrote {path.relative_to(REPO_ROOT)} ({len(data) if isinstance(data, list) else 1} rows)")
+    print(f"wrote {path.relative_to(REPO_ROOT)} ({rows} rows)")
     return path
 
 
@@ -111,7 +133,7 @@ def gen_identify_gamma_1173(db) -> object:
         SELECT r.Z, r.A, r.state, r.energy_keV, MAX(r.intensity_pct) AS intensity_pct,
                r.energy_keV - 1173.2 AS delta_keV
           FROM radiation r
-         WHERE r.rad_type='gamma' AND r.state=''
+         WHERE r.rad_type='gamma' AND r.state='g'
            AND r.energy_keV BETWEEN 1172.2 AND 1174.2
            AND r.intensity_pct > 0.1
         GROUP BY r.Z, r.A, r.state, r.energy_keV
@@ -135,7 +157,7 @@ def gen_ni60_emissions(db) -> object:
         SELECT Z, A, state, rad_type, energy_keV, intensity_pct,
                decay_mode, rad_subtype, icc_total, vacancy_shell
           FROM radiation
-         WHERE Z=28 AND A=60 AND state=''
+         WHERE Z=28 AND A=60 AND state='g'
            AND intensity_pct >= 5.0
          ORDER BY rad_type, energy_keV
         """
@@ -205,7 +227,8 @@ def main() -> int:
     _write("co60_beta_gamma", gen_co60_beta_gamma(db))
     _write("y86_kshell_xray_gamma", gen_y86_kshell_xray_gamma(db))
     _write("co60_gamma_gamma", gen_co60_gamma_gamma(db))
-    _write("sr90_y90_negative", gen_sr90_y90_negative(db))
+    # Empty by design: the assertion is that there are no mixed pairs.
+    _write("sr90_y90_negative", gen_sr90_y90_negative(db), allow_empty=True)
     _write("identify_gamma_1173keV", gen_identify_gamma_1173(db))
     _write("ni60_emissions", gen_ni60_emissions(db))
     _write("catima_stopping", gen_catima_stopping(db))

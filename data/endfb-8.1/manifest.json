@@ -1,7 +1,234 @@
 {
   "library": "endfb-8.1",
-  "files": 33,
-  "total_rows": 21749,
+  "ingest": {
+    "a": {
+      "source_files": 4,
+      "files": 3,
+      "total_rows": 8370,
+      "elements": [
+        "Be",
+        "Li",
+        "O"
+      ],
+      "mf3_sections": 33,
+      "signed_sections_dropped": {
+        "2": 5
+      },
+      "negative_points_dropped": {
+        "4": 5,
+        "16": 1,
+        "22": 3,
+        "50": 5,
+        "51": 4,
+        "52": 3,
+        "53": 2,
+        "54": 1,
+        "91": 4,
+        "201": 5,
+        "600": 1,
+        "650": 1,
+        "651": 1
+      },
+      "charged_particle_elastic": "not represented \u2014 MF=3 MT=2 is the Rutherford interference term, not sigma; the elastic distribution is in MF=6 LAW=5, which this ingest does not read (#377)",
+      "mf3_usable_sections": 28,
+      "mf3_residual_sections": 25,
+      "mf3_rows": 1730,
+      "mf10_sections": 0,
+      "mf10_product_sections": 0,
+      "mf10_rows": 0,
+      "mf9_sections": 0,
+      "mf9_product_sections": 0,
+      "mf9_rows": 0,
+      "mf9_yield_overshoots": {},
+      "channel_rows": 6640,
+      "null_residual_rows": 1441,
+      "summed_without_law": 0,
+      "states": {
+        "sum": 8370
+      }
+    },
+    "d": {
+      "source_files": 6,
+      "files": 3,
+      "total_rows": 2560,
+      "elements": [
+        "H",
+        "He",
+        "Li"
+      ],
+      "mf3_sections": 20,
+      "signed_sections_dropped": {
+        "2": 6
+      },
+      "negative_points_dropped": {
+        "16": 1,
+        "28": 1,
+        "51": 1,
+        "103": 1,
+        "700": 1
+      },
+      "charged_particle_elastic": "not represented \u2014 MF=3 MT=2 is the Rutherford interference term, not sigma; the elastic distribution is in MF=6 LAW=5, which this ingest does not read (#377)",
+      "mf3_usable_sections": 14,
+      "mf3_residual_sections": 13,
+      "mf3_rows": 1155,
+      "mf10_sections": 0,
+      "mf10_product_sections": 0,
+      "mf10_rows": 0,
+      "mf9_sections": 0,
+      "mf9_product_sections": 0,
+      "mf9_rows": 0,
+      "mf9_yield_overshoots": {},
+      "channel_rows": 1405,
+      "null_residual_rows": 29,
+      "summed_without_law": 1,
+      "states": {
+        "sum": 2560
+      }
+    },
+    "h": {
+      "source_files": 4,
+      "files": 2,
+      "total_rows": 1116,
+      "elements": [
+        "He",
+        "Li"
+      ],
+      "mf3_sections": 14,
+      "signed_sections_dropped": {
+        "2": 4
+      },
+      "negative_points_dropped": {
+        "45": 1,
+        "105": 1,
+        "111": 1,
+        "112": 1,
+        "600": 3,
+        "800": 1,
+        "802": 1
+      },
+      "charged_particle_elastic": "not represented \u2014 MF=3 MT=2 is the Rutherford interference term, not sigma; the elastic distribution is in MF=6 LAW=5, which this ingest does not read (#377)",
+      "mf3_usable_sections": 10,
+      "mf3_residual_sections": 10,
+      "mf3_rows": 553,
+      "mf10_sections": 0,
+      "mf10_product_sections": 0,
+      "mf10_rows": 0,
+      "mf9_sections": 0,
+      "mf9_product_sections": 0,
+      "mf9_rows": 0,
+      "mf9_yield_overshoots": {},
+      "channel_rows": 563,
+      "null_residual_rows": 0,
+      "summed_without_law": 0,
+      "states": {
+        "sum": 1116
+      }
+    },
+    "p": {
+      "source_files": 47,
+      "files": 21,
+      "total_rows": 38957,
+      "elements": [
+        "Al",
+        "B",
+        "Be",
+        "Bi",
+        "C",
+        "Ca",
+        "Cr",
+        "Cu",
+        "Fe",
+        "H",
+        "He",
+        "Hg",
+        "Li",
+        "N",
+        "Nb",
+        "Ni",
+        "O",
+        "P",
+        "Pb",
+        "Si",
+        "W"
+      ],
+      "mf3_sections": 108,
+      "signed_sections_dropped": {
+        "2": 49
+      },
+      "negative_points_dropped": {
+        "5": 59,
+        "28": 1,
+        "50": 3,
+        "51": 2,
+        "52": 1,
+        "53": 1,
+        "54": 1,
+        "55": 1,
+        "650": 3,
+        "750": 2
+      },
+      "charged_particle_elastic": "not represented \u2014 MF=3 MT=2 is the Rutherford interference term, not sigma; the elastic distribution is in MF=6 LAW=5, which this ingest does not read (#377)",
+      "mf3_usable_sections": 59,
+      "mf3_residual_sections": 19,
+      "mf3_rows": 16030,
+      "mf10_sections": 0,
+      "mf10_product_sections": 0,
+      "mf10_rows": 0,
+      "mf9_sections": 0,
+      "mf9_product_sections": 0,
+      "mf9_rows": 0,
+      "mf9_yield_overshoots": {},
+      "channel_rows": 22927,
+      "null_residual_rows": 6739,
+      "summed_without_law": 0,
+      "states": {
+        "sum": 38957
+      }
+    },
+    "t": {
+      "source_files": 5,
+      "files": 3,
+      "total_rows": 4330,
+      "elements": [
+        "H",
+        "He",
+        "Li"
+      ],
+      "mf3_sections": 20,
+      "signed_sections_dropped": {
+        "2": 5
+      },
+      "negative_points_dropped": {
+        "16": 1,
+        "17": 1,
+        "28": 1,
+        "50": 2,
+        "51": 1,
+        "52": 1,
+        "600": 2,
+        "650": 3
+      },
+      "charged_particle_elastic": "not represented \u2014 MF=3 MT=2 is the Rutherford interference term, not sigma; the elastic distribution is in MF=6 LAW=5, which this ingest does not read (#377)",
+      "mf3_usable_sections": 15,
+      "mf3_residual_sections": 15,
+      "mf3_rows": 2108,
+      "mf10_sections": 0,
+      "mf10_product_sections": 0,
+      "mf10_rows": 0,
+      "mf9_sections": 0,
+      "mf9_product_sections": 0,
+      "mf9_rows": 0,
+      "mf9_yield_overshoots": {},
+      "channel_rows": 2222,
+      "null_residual_rows": 0,
+      "summed_without_law": 1,
+      "states": {
+        "sum": 4330
+      }
+    }
+  },
+  "files": 32,
+  "total_rows": 55333,
   "projectiles": [
     "a",
     "d",
@@ -31,5 +258,11 @@
     "Pb",
     "Si",
     "W"
-  ]
+  ],
+  "builder": {
+    "script": "scripts/fetch_endf_libs.py",
+    "sha256": "48b3ae3461fb23083ae0a8c50202c451a96d06a7045063c8f848753297ddec94",
+    "commit": "91dd4c2ae91b4b7a0448e2306e9f8142f88444aa",
+    "dirty": false
+  }
 }

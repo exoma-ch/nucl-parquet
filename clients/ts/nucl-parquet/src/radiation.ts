@@ -19,10 +19,24 @@ import { parquetRead } from "hyparquet";
 import { compressors } from "hyparquet-compressors";
 import { zToSymbol } from "./z_symbols.js";
 
+/**
+ * The ground state, as `meta/ensdf/radiation` spells it since #380.
+ *
+ * It used to be `""`, and the defaults here still said so — so `emissions()`
+ * and `emissionsFiltered()` filtered on a token that no shipped row carries
+ * and returned nothing at all. The vocabulary is now `g` / `m` / `m2` / `m3`,
+ * every value a positive statement, with `null` for "not stated" (26 rows).
+ *
+ * Note `parent_state` on `coincidences` / `summing_partners` / `emissions` did
+ * NOT migrate and still holds `''`. `coincidences.ts` is right to keep using it.
+ */
+export const GROUND = "g";
+
 export interface EmissionEntry {
   z: number;
   a: number;
-  state: string;
+  /** `g` | `m` | `m2` | `m3`, or `null` where ENSDF does not state one. */
+  state: string | null;
   radType: string;
   energyKeV: number;
   intensityPct: number;
@@ -35,7 +49,8 @@ export interface EmissionEntry {
 export interface GammaCandidate {
   z: number;
   a: number;
-  state: string;
+  /** `g` | `m` | `m2` | `m3`, or `null` where ENSDF does not state one. */
+  state: string | null;
   energyKeV: number;
   intensityPct: number;
   deltaKeV: number;
@@ -46,7 +61,7 @@ interface GammaIndexEntry {
   intensityPct: number;
   z: number;
   a: number;
-  state: string;
+  state: string | null;
 }
 
 async function loadFileAsArrayBuffer(path: string): Promise<ArrayBuffer> {
@@ -105,7 +120,7 @@ function rowToEmission(row: Record<string, unknown>): EmissionEntry {
   return {
     z: toNum(row["Z"]),
     a: toNum(row["A"]),
-    state: (row["state"] as string | null) ?? "",
+    state: (row["state"] as string | null) ?? null,
     radType: (row["rad_type"] as string | null) ?? "",
     energyKeV: toNum(row["energy_keV"]),
     intensityPct: toNum(row["intensity_pct"]),
@@ -160,8 +175,12 @@ export class RadiationDb {
     return entries;
   }
 
-  /** All emissions for nuclide (Z, A, state). `state=""` for ground. */
-  async emissions(z: number, a: number, state = ""): Promise<EmissionEntry[]> {
+  /**
+   * All emissions for nuclide (Z, A, state). Defaults to the ground state.
+   *
+   * Pass `null` for the nuclides whose state ENSDF does not give.
+   */
+  async emissions(z: number, a: number, state: string | null = GROUND): Promise<EmissionEntry[]> {
     const all = await this.emissionsForElement(z);
     return all.filter((e) => e.a === a && e.state === state);
   }
@@ -170,7 +189,7 @@ export class RadiationDb {
   async emissionsFiltered(
     z: number,
     a: number,
-    state = "",
+    state: string | null = GROUND,
     radType?: string,
     minIntensityPct = 0,
   ): Promise<EmissionEntry[]> {
@@ -243,7 +262,7 @@ export class RadiationDb {
               intensityPct: toNum(row["intensity_pct"]),
               z: toNum(row["Z"]),
               a: toNum(row["A"]),
-              state: (row["state"] as string | null) ?? "",
+              state: (row["state"] as string | null) ?? null,
             });
           }
         }

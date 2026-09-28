@@ -58,6 +58,7 @@ from nucl_parquet.state_vocabulary import (  # noqa: E402
     NUCLIDE_STATES,
     PENDING_COLUMN_RENAME,
     PENDING_MIGRATION,
+    PHASE_NOT_STATE,
     SUM,
     TABLE_STATES,
     allowed_states,
@@ -97,6 +98,28 @@ def shards(data_dir: Path, table: str) -> list[Path]:
     return sorted(directory.glob("*.parquet"))
 
 
+def legacy_mapping(table: str) -> dict[str, str | None]:
+    """The retired spellings this migration converts for `table`, and to what.
+
+    Deliberately independent of `PENDING_MIGRATION`. That ledger records which
+    tables *still ship* a retired value and empties as they are rebuilt, which
+    is the right contract for a ledger and the wrong one for a converter: a
+    migration that loses the ability to migrate the moment the tree is clean
+    cannot be re-run on a fresh ingest, and cannot be tested at all. Reading
+    `legacy` off the ledger made emptying it break six of this file's tests.
+
+    `''` meant "summed over states" in an evaluated table and "not stated" in a
+    measured one — one token, two meanings, which is the whole reason #380
+    retired it — so the target depends on the table.
+    """
+    measured = TABLE_STATES[table] == MEASURED_XS_STATES
+    mapping: dict[str, str | None] = {LEGACY_UNSPECIFIED: None if measured else SUM}
+    if measured:
+        # EXFOR writes the first isomer as `m1`; the vocabulary spells it `m`.
+        mapping["m1"] = "m"
+    return mapping
+
+
 def migrated_state_column(table: str, states: pl.Series) -> pl.Series:
     """Map one table's `state` column onto the new vocabulary.
 
@@ -106,11 +129,7 @@ def migrated_state_column(table: str, states: pl.Series) -> pl.Series:
     defect.
     """
     target = TABLE_STATES[table]
-    measured = target == MEASURED_XS_STATES
-
-    mapping: dict[str, str | None] = {LEGACY_UNSPECIFIED: None if measured else SUM}
-    if measured:
-        mapping["m1"] = "m"
+    mapping = legacy_mapping(table)
 
     unknown = sorted(v for v in states.unique().to_list() if v is not None and v not in target and v not in mapping)
     if unknown:
@@ -291,8 +310,11 @@ def migrate_table(data_dir: Path, table: str, *, dry_run: bool) -> tuple[int, st
     if not paths:
         raise UnmigratableTable(table, "no-shards", "declared in TABLE_STATES but ships no parquet")
 
-    allowed_now = allowed_states(table)
-    legacy = PENDING_MIGRATION[table].legacy if table in PENDING_MIGRATION else frozenset()
+    # What the converter handles, not what the tree happens to still ship — see
+    # `legacy_mapping`. `allowed_states` is still consulted so an undeclared
+    # table raises, and it contributes any legacy value the ledger is tracking.
+    legacy = frozenset(legacy_mapping(table))
+    allowed_now = allowed_states(table) | legacy
 
     changed = 0
     for path in paths:
@@ -356,7 +378,11 @@ def verify(data_dir: Path) -> list[str]:
         outside = sorted(v for v in seen if v is not None and v not in TABLE_STATES[table])
         if outside:
             problems.append(f"{table}: {outside} outside its vocabulary")
-    for target in sorted(PENDING_COLUMN_RENAME):
+    # `PHASE_NOT_STATE`, not `PENDING_COLUMN_RENAME`: the debt ledger empties
+    # when the rename lands, but "this file must never call a phase of matter a
+    # `state`" is permanent, and a verify that stops checking it the moment it
+    # passes would not notice the column coming back.
+    for target in sorted(PHASE_NOT_STATE):
         path = data_dir / target
         if path.is_file() and "state" in pl.read_parquet_schema(path):
             problems.append(f"{target}: still has a `state` column")
@@ -392,7 +418,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     wanted = [args.table] if args.table else [*sorted(PENDING_MIGRATION), *sorted(PENDING_COLUMN_RENAME)]
-    unknown = [t for t in wanted if t not in TABLE_STATES and t not in PENDING_COLUMN_RENAME]
+    unknown = [t for t in wanted if t not in TABLE_STATES and t not in PHASE_NOT_STATE]
     if unknown:
         raise SystemExit(f"not a declared table: {unknown}")
 
@@ -403,7 +429,7 @@ def main(argv: list[str] | None = None) -> None:
             rows, status = migrate_nuclides(args.data_dir, dry_run=args.dry_run)
         elif table in _NUCLIDE_KEYED:
             rows, status = migrate_nuclide_keyed(args.data_dir, table, dry_run=args.dry_run)
-        elif table in PENDING_COLUMN_RENAME:
+        elif table in PHASE_NOT_STATE:
             rows, status = rename_state_to_phase(args.data_dir, table, dry_run=args.dry_run)
         else:
             rows, status = migrate_table(args.data_dir, table, dry_run=args.dry_run)

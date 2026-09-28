@@ -27,6 +27,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from nucl_parquet.state_vocabulary import GROUND, ISOMERS
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA = REPO_ROOT / "data"
 RAD_DIR = DATA / "meta" / "ensdf" / "radiation"
@@ -118,7 +120,7 @@ def test_stable_isotope_is_positive_infinity(nuclides: pl.DataFrame, z: int, a: 
     """Per ADR-0002: stable nuclides ship `half_life_s = +inf`, NOT NULL.
     The NULL conflation was a v0.10.x DQ flaw; v0.11 distinguishes
     'stable per physical observation' from 'unknown/unmeasured'."""
-    rows = nuclides.filter((pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == ""))
+    rows = nuclides.filter((pl.col("Z") == z) & (pl.col("A") == a) & (pl.col("state") == GROUND))
     assert rows.height == 1, f"{label}: missing ground-state row"
     hl = rows["half_life_s"][0]
     assert hl is not None, f"{label}: half_life_s is NULL (should be +inf for stable)"
@@ -179,7 +181,7 @@ def test_no_it_on_ground_in_decay(decay: pl.DataFrame) -> None:
     """v0.10.x had ~49 IT-on-ground rows from IAEA fetcher. IT decays
     require a metastable parent by definition; ground-state IT is
     unphysical. v0.11 must show zero."""
-    offenders = decay.filter((pl.col("state") == "") & (pl.col("decay_mode").str.to_uppercase() == "IT"))
+    offenders = decay.filter((pl.col("state") == GROUND) & (pl.col("decay_mode").str.to_uppercase() == "IT"))
     assert offenders.height == 0, (
         f"IT-on-ground regression: {offenders.height} rows "
         f"(IAEA-fetcher bug class re-emerged?): {offenders.head(5).to_dicts()}"
@@ -192,12 +194,15 @@ def test_no_phantom_isomers_in_nuclides(nuclides: pl.DataFrame) -> None:
     Every isomer in v0.11 must be backed by either a decay-mode entry
     (G4 RadioactiveDecay) or a level-scheme entry (G4 PhotonEvaporation),
     surfaced via non-NULL `level_keV`."""
-    phantom = nuclides.filter((pl.col("state") != "") & pl.col("level_keV").is_null())
+    # "An isomer" is a named set now, not "anything but the empty string" —
+    # the latter would sweep in NULL, which #387 uses for "state not
+    # determined" and which is not a claim to be an isomer at all.
+    phantom = nuclides.filter(pl.col("state").is_in(sorted(ISOMERS)) & pl.col("level_keV").is_null())
     # A few legitimate isomer rows from RadioactiveDecay don't have a
     # level_keV (G4 omits the energy for some short-lived states); allow
     # a small bound rather than zero. Zero would over-specify.
     assert phantom.height < 50, (
-        f"phantom isomers in nuclides (state != '' AND level_keV IS NULL): "
+        f"phantom isomers in nuclides (state in ISOMERS AND level_keV IS NULL): "
         f"{phantom.height} (v0.10.x baseline was 146; v0.11 should be much lower)"
     )
 

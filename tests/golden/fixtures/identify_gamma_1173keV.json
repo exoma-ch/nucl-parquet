@@ -5,7 +5,7 @@
     "delta_keV": 0.0,
     "energy_keV": 1173.2,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 143,
@@ -13,7 +13,7 @@
     "delta_keV": -0.01,
     "energy_keV": 1173.19,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 91,
@@ -21,7 +21,7 @@
     "delta_keV": -0.01,
     "energy_keV": 1173.19,
     "intensity_pct": 24.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 154,
@@ -29,7 +29,7 @@
     "delta_keV": 0.023,
     "energy_keV": 1173.223,
     "intensity_pct": 8.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 184,
@@ -37,7 +37,7 @@
     "delta_keV": -0.03,
     "energy_keV": 1173.17,
     "intensity_pct": 8.4,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 60,
@@ -45,7 +45,7 @@
     "delta_keV": 0.039,
     "energy_keV": 1173.239,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 154,
@@ -53,7 +53,7 @@
     "delta_keV": -0.05,
     "energy_keV": 1173.15,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 127,
@@ -61,7 +61,7 @@
     "delta_keV": -0.07,
     "energy_keV": 1173.13,
     "intensity_pct": 87.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 132,
@@ -69,7 +69,7 @@
     "delta_keV": -0.073,
     "energy_keV": 1173.127,
     "intensity_pct": 42.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 87,
@@ -77,7 +77,7 @@
     "delta_keV": -0.09,
     "energy_keV": 1173.11,
     "intensity_pct": 34.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 116,
@@ -85,7 +85,7 @@
     "delta_keV": 0.1,
     "energy_keV": 1173.3,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 167,
@@ -93,7 +93,7 @@
     "delta_keV": -0.1,
     "energy_keV": 1173.1,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 50,
@@ -101,7 +101,7 @@
     "delta_keV": 0.1,
     "energy_keV": 1173.3,
     "intensity_pct": 96.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 118,
@@ -109,7 +109,7 @@
     "delta_keV": 0.103,
     "energy_keV": 1173.303,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 69,
@@ -117,7 +117,7 @@
     "delta_keV": -0.107,
     "energy_keV": 1173.093,
     "intensity_pct": 90.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 133,
@@ -125,7 +125,7 @@
     "delta_keV": -0.11,
     "energy_keV": 1173.09,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 88,
@@ -133,7 +133,7 @@
     "delta_keV": 0.13,
     "energy_keV": 1173.33,
     "intensity_pct": 32.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 125,
@@ -141,7 +141,7 @@
     "delta_keV": -0.136,
     "energy_keV": 1173.064,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 113,
@@ -149,7 +149,7 @@
     "delta_keV": -0.14,
     "energy_keV": 1173.06,
     "intensity_pct": 100.0,
-    "state": ""
+    "state": "g"
   },
   {
     "A": 109,
@@ -157,6 +157,6 @@
     "delta_keV": -0.14,
     "energy_keV": 1173.06,
     "intensity_pct": 77.0,
-    "state": ""
+    "state": "g"
   }
 ]

@@ -324,3 +324,50 @@ def test_sql_constants_are_strings() -> None:
     for sql in (DECAY_CHAIN_SQL, GAMMA_LINES_SQL, IDENTIFY_GAMMA_SQL, COINCIDENCE_SQL):
         assert isinstance(sql, str)
         assert len(sql) > 50
+
+
+# ---------------------------------------------------------------------------
+# The public helpers must return rows for their own default state
+# ---------------------------------------------------------------------------
+
+
+def test_state_defaulted_helpers_return_rows_on_the_shipped_data() -> None:
+    """Every `state`/`parent_state` default must match what its table ships.
+
+    The 2026.8.5 release migrated `meta/ensdf/radiation` from `''` to `'g'` and
+    left `coincidences`/`summing_partners`/`emissions` on `''`. The defaults did
+    not move, so `identify_gamma(db, 1173.2)` — the documented one-liner — went
+    from twenty candidates to **zero**, silently, for anyone who did not pass
+    `state=`. Nothing in the suite asserted on a default call; `tests/golden/`
+    caught it only because its fixtures happen to use one.
+
+    Asserts a positive row count, not the absence of an exception: returning an
+    empty relation is exactly the failure, and it raises nothing.
+    """
+    from nucl_parquet.loader import (
+        coincidences,
+        connect,
+        emissions,
+        gamma_lines,
+        identify_gamma,
+        summing_partners,
+    )
+
+    db = connect()
+    if not db.sql("SELECT count(*) FROM information_schema.tables WHERE table_name='radiation'").fetchone()[0]:
+        pytest.skip("data tree not available")
+
+    # Co-60 and Cu-64 are stable fixtures: both have a well-populated ground
+    # state in every release, so an empty result means the default is wrong.
+    calls = {
+        "gamma_lines": lambda: gamma_lines(db, 29, 64),
+        "identify_gamma": lambda: identify_gamma(db, 1173.2),
+        "coincidences": lambda: coincidences(db, 27, 60),
+        "summing_partners": lambda: summing_partners(db, 27, 60),
+        "emissions": lambda: emissions(db, 27, 60),
+    }
+    empty = [name for name, call in calls.items() if len(call()) == 0]
+    assert not empty, (
+        f"{empty} return no rows for their own default state. The default no longer "
+        "matches what the table ships — see nucl_parquet/state_vocabulary.py."
+    )

@@ -4,34 +4,24 @@
     "",
     "Every entry is a debt, not a decision: `reason` says why the guard in",
     "nucl_parquet/builder_stamp.py cannot check this library, and `issue` names the",
-    "issue that removes the entry. The ledger is self-cleaning — once a library",
+    "issue that removes the entry. The ledger is self-cleaning \u2014 once a library",
     "passes on its own, tests/test_builder_staleness.py fails on the leftover entry",
     "(kind `dead-exemption`) until it is deleted.",
     "",
     "Accepted reasons (the guard rejects anything else):",
     "  unstamped        built before manifest.json carried a builder stamp; the next",
     "                   re-ingest writes one and the entry goes away",
-    "  external-builder catalog.json declares `\"builder\": null` — produced by a",
+    "  external-builder catalog.json declares `\"builder\": null` \u2014 produced by a",
     "                   pipeline that is not in this repository, so there is nothing",
     "                   here to compare against",
     "  stale-accepted   the builder has changed and we are knowingly shipping",
     "                   pre-change data; must name the issue that re-ingests it",
     "",
     "A `reason` only covers the finding it names. An `unstamped` entry does not",
-    "start covering a `stale` finding once the library is finally stamped —",
+    "start covering a `stale` finding once the library is finally stamped \u2014",
     "widening an exemption is an edit someone has to make on purpose."
   ],
   "exemptions": {
-    "brond-3.1": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
-    },
-    "cendl-3.2": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
-    },
     "endfb-8.0": {
       "reason": "unstamped",
       "issue": 345,
@@ -41,11 +31,6 @@
       "reason": "unstamped",
       "issue": 345,
       "note": "Built by scripts/build_channels.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
-    },
-    "endfb-8.1": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
     },
     "exfor": {
       "reason": "unstamped",
@@ -57,11 +42,6 @@
       "issue": 345,
       "note": "Built by scripts/fetch_exfor_master.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
     },
-    "fendl-3.2": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
-    },
     "hi-xs": {
       "reason": "unstamped",
       "issue": 345,
@@ -72,30 +52,10 @@
       "issue": 346,
       "note": "Geant4 11.3.2 FTFP_INCLXX fragment-production run, executed outside the repository (commits e287295f, aa84d898)."
     },
-    "iaea-medical": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
-    },
     "iaea-pd-2019": {
       "reason": "external-builder",
       "issue": 346,
       "note": "Dropped in by the data-only commit b48a293b; no ingest script was ever committed."
-    },
-    "irdff-2": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
-    },
-    "jeff-4.0": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
-    },
-    "jendl-5": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
     },
     "jendl-ad-2017": {
       "reason": "external-builder",
@@ -110,12 +70,7 @@
     "tendl-2023-iso": {
       "reason": "external-builder",
       "issue": 346,
-      "note": "Staged into the repo by a root-level build.py --import-xs (deleted in e84ba665), which copied parquets that had already been produced elsewhere rather than producing them — the ENDF conversion for this library has always been external. The bulk of the library still comes from that import, so there is nothing in the tree to stamp it against. scripts/backfill_xs_nuclides.py landed with #339 but only patches seven target nuclides into an already-imported tree; a stamp naming it would claim provenance over 8.08 M rows it did not produce, which is worse than no stamp. See catalog.json::provenance for the evidence. The entry clears when #346 gives the library a real in-repo builder."
-    },
-    "tendl-2025": {
-      "reason": "unstamped",
-      "issue": 345,
-      "note": "Built by scripts/fetch_endf_libs.py before manifests recorded a builder stamp. Leaves this ledger on the next re-ingest, which writes the stamp itself."
+      "note": "Staged into the repo by a root-level build.py --import-xs (deleted in e84ba665), which copied parquets that had already been produced elsewhere rather than producing them \u2014 the ENDF conversion for this library has always been external. The bulk of the library still comes from that import, so there is nothing in the tree to stamp it against. scripts/backfill_xs_nuclides.py landed with #339 but only patches seven target nuclides into an already-imported tree; a stamp naming it would claim provenance over 8.08 M rows it did not produce, which is worse than no stamp. See catalog.json::provenance for the evidence. The entry clears when #346 gives the library a real in-repo builder."
     }
   }
 }

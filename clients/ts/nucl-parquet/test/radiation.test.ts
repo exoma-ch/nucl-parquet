@@ -1,6 +1,6 @@
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import { RadiationDb } from "../src/radiation.js";
+import { GROUND, RadiationDb } from "../src/radiation.js";
 
 const META_DIR = join(import.meta.dirname, "../../../../data/meta");
 
@@ -9,8 +9,8 @@ const META_DIR = join(import.meta.dirname, "../../../../data/meta");
 describe("RadiationDb (#175 acceptance)", { timeout: 60_000 }, () => {
   it("Ni-60 emissions include the 1173 + 1333 keV γ (Co-60 β⁻ daughter convention)", async () => {
     const db = await RadiationDb.open(META_DIR);
-    const lines = await db.emissions(28, 60, "");
-    expect(lines.length).toBeGreaterThan(0);
+    const lines = await db.emissions(28, 60, GROUND);
+    expect(lines.length).toBe(758);
     const has1173 = lines.some(
       (e) => e.radType === "gamma" && Math.abs(e.energyKeV - 1173.2) < 0.5,
     );
@@ -28,5 +28,26 @@ describe("RadiationDb (#175 acceptance)", { timeout: 60_000 }, () => {
       foundNi60,
       `identifyGamma(1173.2) must include Ni-60 (got ${candidates.length} candidates)`,
     ).toBe(true);
+  });
+  it("the default state reaches rows on the shipped data", async () => {
+    // The default was `""`, which #380 retired. Every rebuilt row carries
+    // `g`/`m`/`m2`/`m3` or null, so `emissions(28, 60)` matched nothing and
+    // returned an empty array — the same defect this repo fixed in
+    // `nucl_parquet/loader.py`. Asserting a count, not `toBeDefined()`:
+    // an empty array is exactly what the bug produced.
+    const db = await RadiationDb.open(META_DIR);
+    expect(await db.emissions(28, 60)).toHaveLength(758);
+    expect(await db.emissionsFiltered(28, 60, undefined, "gamma")).not.toHaveLength(0);
+    expect(await db.emissions(28, 60, "")).toHaveLength(0);
+  });
+
+  it("keeps a null state null rather than spelling it as the ground state", async () => {
+    // 26 radiation rows state no isomeric state. Coercing them to `""` — or to
+    // `g` — would assert something ENSDF does not, and `columns.ts` already
+    // refuses that for the same column.
+    const db = await RadiationDb.open(META_DIR);
+    const lines = await db.emissions(28, 60, GROUND);
+    expect(lines.every((e) => e.state === GROUND)).toBe(true);
+    expect(await db.emissions(28, 60, null)).toHaveLength(0);
   });
 }); // 60s: the eager γ index build dominates this suite
