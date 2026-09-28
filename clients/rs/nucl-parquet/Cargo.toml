@@ -10,7 +10,7 @@ categories = ["science", "data-structures"]
 
 [features]
 default = []
-fetch = ["dep:reqwest", "dep:tar", "dep:zstd", "reqwest/rustls-tls"]
+fetch = ["dep:reqwest", "dep:tar", "dep:zstd", "reqwest/rustls"]
 fetch-native-tls = ["fetch", "reqwest/native-tls"]
 
 [dependencies]
@@ -19,9 +19,9 @@ arrow = { workspace = true }
 serde_json = { workspace = true }
 bytes = "1"
 thiserror = { workspace = true }
-reqwest = { version = "0.12", default-features = false, features = ["blocking"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["blocking"], optional = true }
 tar = { version = "0.4", optional = true }
-zstd = { version = "0.13", optional = true }
+zstd = { version = "0.14", optional = true }
 
 [dev-dependencies]
 approx = "0.5"
