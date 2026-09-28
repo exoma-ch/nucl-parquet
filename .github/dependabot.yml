@@ -59,6 +59,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # TypeScript 7 is the native port and has no JS compiler API, which tsup's
+    # `dts: true` build needs. #302 took this bump and broke the release build
+    # of 0.17.0. Lift this once tsup (or its replacement) emits .d.ts under TS 7;
+    # scripts/ci.sh now runs `npm run build`, so the bump would fail in its PR.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       js-minor-patch:
         update-types:

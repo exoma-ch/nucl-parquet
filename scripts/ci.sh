@@ -82,15 +82,21 @@ ok "rust clean"
 endgroup
 
 # ---------------------------------------------------------------------------
-group "typescript (tsc + vitest)"
+group "typescript (tsc + vitest + build)"
 # Both TS packages. `clients/ts/nucl-parquet-mcp` was absent from this line, so
 # its 25 tests and its typecheck never ran here — the same allowlist shape #355
 # removed from the Python section, one directory up. It is one of the three MCP
 # servers, and #348's whole point is that a claim nothing checks is weaker than
 # one that can be checked; shipping the data-release fix into a package CI does
 # not build would have reproduced that inside the fix.
+#
+# `npm run build` is what release.yml runs before `npm publish`, and it is not
+# the same check as `tsc --noEmit`: tsup's `dts: true` drives the TypeScript
+# compiler API, which TypeScript 7 (the native port) no longer ships. #302
+# moved core to TS 7, tsc kept passing, and the break surfaced only at publish
+# time, after the approval gate: @nucl-parquet/core 0.17.0 never reached npm.
 for pkg in nucl-parquet nucl-parquet-mcp; do
-  (cd "clients/ts/${pkg}" && npm ci && npx tsc --noEmit && npx vitest run)
+  (cd "clients/ts/${pkg}" && npm ci && npx tsc --noEmit && npx vitest run && npm run build)
 done
 ok "typescript passed"
 endgroup
