@@ -111,39 +111,12 @@ def test_python_loader_keeps_transport_channels_distinguishable() -> None:
     assert {1, 2, 18} <= mts, f"expected the transport channels to be present, got {sorted(mts)[:20]}"
 
 
-@pytest.mark.data
-def test_duckdb_to_pandas_preserves_the_null() -> None:
-    """The MCP server's `fetchdf()` hop is the one place a null could become 0.
-
-    DuckDB maps an INTEGER column with nulls to pandas' nullable `Int32`, so the
-    null survives as `None`. Had it mapped to numpy int32 it would have become
-    0 and reproduced #362 one client over; had it mapped to float64 the residual
-    would silently become `30.0`. Neither is hypothetical enough to leave
-    unpinned.
-    """
-    # Imported, not `importorskip`-ed. pandas is a declared dev dependency
-    # precisely so this runs; skipping when it is absent would turn the audit
-    # into the silence it exists to detect.
-    #
-    # Note this pins a DuckDB/pandas property, not ours — which is the point.
-    # The Python MCP server relies on that mapping and would reproduce #362 if
-    # it ever changed, without a line of our code being touched.
-    import duckdb
-    import pandas  # noqa: F401
-
-    df = (
-        duckdb.connect()
-        .sql(
-            f"SELECT residual_Z FROM read_parquet('{_REPO_ROOT}/data/endfb-8.0/channels/n_U.parquet') "
-            "WHERE residual_Z IS NULL LIMIT 1"
-        )
-        .fetchdf()
-    )
-    assert str(df["residual_Z"].dtype) == "Int32", (
-        f"expected pandas nullable Int32, got {df['residual_Z'].dtype} — "
-        "a numpy int dtype would have turned the null into 0"
-    )
-    assert df.to_dict(orient="records")[0]["residual_Z"] is None
+# The Python MCP server used to reach callers through `.fetchdf()`, and a test
+# here pinned pandas' choice of a nullable Int32 so a null residual could not
+# become 0 on the way. The server now builds rows from DuckDB's own values
+# (`nucl_parquet_mcp.server._records`), so there is no dtype choice left to pin.
+# Its own suite asserts the null survives
+# (`clients/py/nucl-parquet-mcp/tests/test_server.py::test_a_null_survives_as_none`).
 
 
 # --- The tripwire: who reads residual_Z at all ------------------------------
@@ -159,6 +132,11 @@ _RESIDUAL_READERS = {
     "ts/nucl-parquet/src/columns.ts",
     # The tests for both of the above.
     "ts/nucl-parquet/test/xs_nulls.test.ts",
+    # Passes rows through: `_records` builds them from DuckDB's values, so a
+    # null residual_Z reaches the MCP caller as JSON null, never 0.
+    "py/nucl-parquet-mcp/nucl_parquet_mcp/server.py",
+    # ...and asserts it (`test_a_null_survives_as_none`).
+    "py/nucl-parquet-mcp/tests/test_server.py",
 }
 
 _SOURCE_SUFFIXES = {".rs", ".ts", ".go", ".py"}

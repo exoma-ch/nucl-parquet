@@ -118,9 +118,7 @@ def test_ci_runs_pytest_exactly_once_over_the_suite() -> None:
     invocations means two filters to keep in step — the next gate lands under
     whichever one its author happened to read.
     """
-    invocations = [
-        inv for inv in _pytest_command_lines() if not any(pkg in inv for pkg in _PY_CLIENT_PACKAGES)
-    ]
+    invocations = [inv for inv in _pytest_command_lines() if not any(pkg in inv for pkg in _PY_CLIENT_PACKAGES)]
     assert len(invocations) == 1, (
         f"scripts/ci.sh has {len(invocations)} pytest invocations; expected 1 over tests/:\n  "
         + "\n  ".join(inv.strip() for inv in invocations)
@@ -140,7 +138,9 @@ def test_ci_runs_every_python_client_package() -> None:
     invocations = _pytest_command_lines()
     for pkg in _PY_CLIENT_PACKAGES:
         runs = [inv.strip() for inv in invocations if pkg in inv]
-        assert len(runs) == 1, f"scripts/ci.sh runs {pkg}'s tests {len(runs)} times; expected once:\n  " + "\n  ".join(runs)
+        assert len(runs) == 1, f"scripts/ci.sh runs {pkg}'s tests {len(runs)} times; expected once:\n  " + "\n  ".join(
+            runs
+        )
 
 
 def test_ci_does_not_filter_out_the_data_marker() -> None:

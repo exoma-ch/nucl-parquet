@@ -124,7 +124,9 @@ def _require_read_only(sql: str) -> None:
         _require_read_only(_EXPLAIN_PREFIX.sub("", stripped, count=1))
         return
     if kind != duckdb.StatementType.SELECT:
-        raise RequestError(f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got a {kind.name} statement.")
+        raise RequestError(
+            f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got a {kind.name} statement."
+        )
 
 
 def _records(rel: duckdb.DuckDBPyRelation) -> list[dict[str, Any]]:
