@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.17.0...nucl-parquet-rs-v0.17.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **rs:** DataDir::ensure() downloads the data release, not a crate-version URL ([#423](https://github.com/exoma-ch/nucl-parquet/issues/423)) ([38c6cdb](https://github.com/exoma-ch/nucl-parquet/commit/38c6cdb8af890f0423fea79aac356bca8077fe09))
+
 ## [0.17.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.16.1...nucl-parquet-rs-v0.17.0) (2026-09-28)
 
 

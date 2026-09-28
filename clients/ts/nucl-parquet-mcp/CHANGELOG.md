@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-ts-v0.14.0...nucl-parquet-mcp-ts-v0.15.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **py-mcp:** nucl-parquet-mcp now requires mcp>=2.2.0.
+
+### Bug Fixes
+
+* **py-mcp:** Port to mcp 2, and make the server work at all ([b9ac8b3](https://github.com/exoma-ch/nucl-parquet/commit/b9ac8b3b8f986a8f323a856f683d5a6ec48d6789))
+* **ts-mcp:** Confine sql_query's connection to the data tree ([#424](https://github.com/exoma-ch/nucl-parquet/issues/424)) ([45adeaa](https://github.com/exoma-ch/nucl-parquet/commit/45adeaa01ae37ecdd622dc40c33236d8f6348deb))
+* **ts:** Build on TypeScript 7, ship CJS types for require, catch mcp up on every major ([#412](https://github.com/exoma-ch/nucl-parquet/issues/412)) ([59ee6af](https://github.com/exoma-ch/nucl-parquet/commit/59ee6af1b3b2ba366b4bdb8ba2986a67c34c75e9))
+
 ## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-ts-v0.13.4...nucl-parquet-mcp-ts-v0.14.0) (2026-09-28)
 
 
