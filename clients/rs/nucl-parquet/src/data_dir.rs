@@ -71,13 +71,12 @@ impl DataDir {
         // Fetch catalog.json from main to discover data_version + base_url.
         // The catalog's base_url template resolves to a versioned tag, so
         // actual data files are fetched from the pinned data release, not main.
-        let catalog_url = format!(
-            "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/catalog.json"
-        );
+        let catalog_url =
+            "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/catalog.json";
         let catalog_path = cache.join("catalog.json");
         if !catalog_path.exists() {
             eprintln!("Fetching catalog from {catalog_url} ...");
-            Self::fetch_url(&catalog_url, &catalog_path)?;
+            Self::fetch_url(catalog_url, &catalog_path)?;
         }
 
         // Parse catalog to build versioned base_url
