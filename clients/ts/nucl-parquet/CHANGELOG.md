@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.17.0...nucl-parquet-ts-v0.17.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **ts:** Build @nucl-parquet/core with TypeScript 5, and build it in CI ([#409](https://github.com/exoma-ch/nucl-parquet/issues/409)) ([ae89e11](https://github.com/exoma-ch/nucl-parquet/commit/ae89e116cfaa0812dabd0a8c2633654445cdf851))
+
 ## [0.17.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.16.1...nucl-parquet-ts-v0.17.0) (2026-09-28)
 
 
