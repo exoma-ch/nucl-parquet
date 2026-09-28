@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.20.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.19.1...nucl-parquet-py-v0.20.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **py-mcp:** nucl-parquet-mcp now requires mcp>=2.2.0.
+
+### Features
+
+* **licensing:** Generate per-library LICENSE.txt from data/licenses.toml, and fail CI on unclaimed data ([#232](https://github.com/exoma-ch/nucl-parquet/issues/232)) ([#421](https://github.com/exoma-ch/nucl-parquet/issues/421)) ([580f5c7](https://github.com/exoma-ch/nucl-parquet/commit/580f5c7c5de353c342609471c4669153cc1e2769))
+
+
+### Bug Fixes
+
+* **py-mcp:** Port to mcp 2, and make the server work at all ([b9ac8b3](https://github.com/exoma-ch/nucl-parquet/commit/b9ac8b3b8f986a8f323a856f683d5a6ec48d6789))
+* **ts:** Build on TypeScript 7, ship CJS types for require, catch mcp up on every major ([#412](https://github.com/exoma-ch/nucl-parquet/issues/412)) ([59ee6af](https://github.com/exoma-ch/nucl-parquet/commit/59ee6af1b3b2ba366b4bdb8ba2986a67c34c75e9))
+
 ## [0.19.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-py-v0.19.0...nucl-parquet-py-v0.19.1) (2026-09-28)
 
 

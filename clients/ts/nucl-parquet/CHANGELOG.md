@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.17.1...nucl-parquet-ts-v0.17.2) (2026-09-28)
+
+
+### Bug Fixes
+
+* **ts:** Build on TypeScript 7, ship CJS types for require, catch mcp up on every major ([#412](https://github.com/exoma-ch/nucl-parquet/issues/412)) ([59ee6af](https://github.com/exoma-ch/nucl-parquet/commit/59ee6af1b3b2ba366b4bdb8ba2986a67c34c75e9))
+
 ## [0.17.1](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.17.0...nucl-parquet-ts-v0.17.1) (2026-09-28)
 
 

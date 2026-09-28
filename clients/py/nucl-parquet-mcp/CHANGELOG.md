@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-py-v0.13.3...nucl-parquet-mcp-py-v0.14.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **py-mcp:** nucl-parquet-mcp now requires mcp>=2.2.0.
+
+### Bug Fixes
+
+* **py-mcp:** Port to mcp 2, and make the server work at all ([b9ac8b3](https://github.com/exoma-ch/nucl-parquet/commit/b9ac8b3b8f986a8f323a856f683d5a6ec48d6789))
+
 ## [0.13.3](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-mcp-py-v0.13.2...nucl-parquet-mcp-py-v0.13.3) (2026-05-21)
 
 
