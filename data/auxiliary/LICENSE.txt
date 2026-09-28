@@ -1,0 +1,34 @@
+data/auxiliary/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+Isotopic compositions / abundances (IUPAC)
+------------------------------------------------------------------------------
+  custodian       : IUPAC (Commission on Isotopic Abundances and Atomic Weights)
+  licence         : Published reference data, citation requested
+  redistributable : attribution
+  terms           : https://www.degruyter.com/document/doi/10.1515/pac-2015-0503/html
+  cite            : J. Meija et al., 'Isotopic compositions of the elements 2013', Pure Appl. Chem. 88 (2016) 293.
+
+------------------------------------------------------------------------------
+Atomic masses / binding energies (AME2020) + element symbol table
+------------------------------------------------------------------------------
+  custodian       : Atomic Mass Data Center (AMDC) — AME2020
+  licence         : Openly distributed evaluated data, citation requested
+  redistributable : attribution
+  terms           : https://www-nds.iaea.org/amdc/
+  cite            : W.J. Huang, M. Wang, F.G. Kondev, G. Audi, S. Naimi, 'The AME 2020 atomic mass evaluation', Chinese Phys. C 45 (2021) 030002/030003.
+  notes           : elements.parquet is a small Z→IUPAC-symbol lookup shipped alongside AME2020 — treated as the same reference-data class.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

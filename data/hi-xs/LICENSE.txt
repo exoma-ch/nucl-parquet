@@ -1,0 +1,24 @@
+data/hi-xs/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+HI-XS total reaction (Tripathi 1997)
+------------------------------------------------------------------------------
+  custodian       : Computed by exoma-ch (Tripathi 1997 parameterization)
+  licence         : Computed output (data) from a published parameterization
+  redistributable : yes
+  terms           : https://doi.org/10.1016/S0168-583X(96)00331-X
+  cite            : R.K. Tripathi, F.A. Cucinotta, J.W. Wilson, 'Accurate universal parameterization of absorption cross sections', Nucl. Instrum. Meth. B 117 (1996) 347.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.
