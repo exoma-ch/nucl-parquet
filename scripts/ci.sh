@@ -77,12 +77,17 @@ group "rust (fmt + clippy + test)"
 # crates cannot disagree about a shared dependency's version.
 cargo fmt --manifest-path clients/rs/Cargo.toml --all --check
 cargo clippy --manifest-path clients/rs/Cargo.toml --workspace --all-targets -- -D warnings
+# `fetch` is the download path consumers enable, and nothing above compiles it:
+# it is off by default. A breaking reqwest/zstd bump would otherwise reach
+# crates.io unbuilt. (`fetch-native-tls` needs a system OpenSSL the devShell
+# does not provide, so it stays out of this line.)
+cargo clippy --manifest-path clients/rs/Cargo.toml -p nucl-parquet --features fetch --all-targets -- -D warnings
 cargo test --manifest-path clients/rs/Cargo.toml --workspace
 ok "rust clean"
 endgroup
 
 # ---------------------------------------------------------------------------
-group "typescript (tsc + vitest + build)"
+group "typescript (tsc + vitest + build + attw)"
 # Both TS packages. `clients/ts/nucl-parquet-mcp` was absent from this line, so
 # its 25 tests and its typecheck never ran here — the same allowlist shape #355
 # removed from the Python section, one directory up. It is one of the three MCP
@@ -91,13 +96,19 @@ group "typescript (tsc + vitest + build)"
 # not build would have reproduced that inside the fix.
 #
 # `npm run build` is what release.yml runs before `npm publish`, and it is not
-# the same check as `tsc --noEmit`: tsup's `dts: true` drives the TypeScript
-# compiler API, which TypeScript 7 (the native port) no longer ships. #302
-# moved core to TS 7, tsc kept passing, and the break surfaced only at publish
-# time, after the approval gate: @nucl-parquet/core 0.17.0 never reached npm.
+# the same check as `tsc --noEmit`. #302 moved core to TypeScript 7 while tsup's
+# `dts: true` still drove the compiler API TS 7 does not ship; tsc kept passing,
+# and the break surfaced only at publish time, after the approval gate:
+# @nucl-parquet/core 0.17.0 never reached npm. Declarations now come from
+# `tsc --emitDeclarationOnly`, and this line is what proves the build builds.
 for pkg in nucl-parquet nucl-parquet-mcp; do
   (cd "clients/ts/${pkg}" && npm ci && npx tsc --noEmit && npx vitest run && npm run build)
 done
+# A build that succeeds can still ship types consumers cannot resolve: 0.17.1
+# gave `require` ESM declarations ("Masquerading as ESM" under node16).
+# arethetypeswrong packs the library as npm would and checks every resolution
+# mode. Core only: the MCP server is a CLI with no importable API.
+(cd clients/ts/nucl-parquet && npx attw --pack .)
 ok "typescript passed"
 endgroup
 

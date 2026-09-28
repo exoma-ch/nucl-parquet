@@ -34,7 +34,7 @@ members = [
 # members is always a bug — inheriting them makes that unrepresentable, and
 # means Dependabot's grouped bump touches one line instead of two.
 [workspace.dependencies]
-arrow = { version = "59", default-features = false, features = ["ffi"] }
-parquet = { version = "59", default-features = false, features = ["arrow", "zstd"] }
+arrow = { version = "60", default-features = false, features = ["ffi"] }
+parquet = { version = "60", default-features = false, features = ["arrow", "zstd"] }
 serde_json = "1"
 thiserror = "2"
