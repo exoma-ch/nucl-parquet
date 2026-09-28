@@ -9,6 +9,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  ALLOWED_FIRST_WORDS,
+  BLOCKED_FUNCTIONS,
   ensureCatalog,
   getDb,
   instructions,
@@ -258,61 +260,94 @@ describe("DuckDB", () => {
 // ---------------------------------------------------------------------------
 
 describe("SQL security", () => {
-  // These test the BLOCKED_FUNCTIONS and ALLOWED_FIRST_WORDS logic.
-  // We test against the module's validation, not against DuckDB directly.
+  // The module's own BLOCKED_FUNCTIONS / ALLOWED_FIRST_WORDS, imported. These
+  // tests used to re-declare their own copy of each and test the copy, so they
+  // kept passing whatever the server's guard said.
 
   it("blocks DDL (DROP TABLE)", () => {
     // We can't easily call the MCP tool directly, so we test the validation
     // logic indirectly. The tool checks first word + blocked functions.
     const sql = "DROP TABLE decay";
     const firstWord = sql.trim().split(/\s/)[0].toUpperCase();
-    const allowed = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
+    const allowed = ALLOWED_FIRST_WORDS;
     expect(allowed.has(firstWord)).toBe(false);
   });
 
   it("blocks COPY", () => {
     const sql = "COPY radiation TO '/tmp/exfil.csv'";
-    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
+    const blocked = BLOCKED_FUNCTIONS;
     expect(blocked.test(sql)).toBe(true);
   });
 
   it("blocks read_parquet in SELECT", () => {
     const sql = "SELECT * FROM read_parquet('/etc/passwd')";
-    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
+    const blocked = BLOCKED_FUNCTIONS;
     expect(blocked.test(sql)).toBe(true);
   });
 
   it("blocks parquet_scan alias", () => {
     const sql = "SELECT * FROM parquet_scan('/etc/passwd')";
-    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
+    const blocked = BLOCKED_FUNCTIONS;
     expect(blocked.test(sql)).toBe(true);
   });
 
   it("blocks read_blob", () => {
     const sql = "SELECT * FROM read_blob('/etc/passwd')";
-    const blocked = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
+    const blocked = BLOCKED_FUNCTIONS;
     expect(blocked.test(sql)).toBe(true);
   });
 
   it("blocks ATTACH", () => {
     const sql = "ATTACH '/tmp/evil.db' AS x";
     const firstWord = sql.trim().split(/\s/)[0].toUpperCase();
-    const allowed = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
+    const allowed = ALLOWED_FIRST_WORDS;
     expect(allowed.has(firstWord)).toBe(false);
   });
 
   it("blocks INSTALL", () => {
     const sql = "INSTALL httpfs";
     const firstWord = sql.trim().split(/\s/)[0].toUpperCase();
-    const allowed = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
+    const allowed = ALLOWED_FIRST_WORDS;
     expect(allowed.has(firstWord)).toBe(false);
   });
 
   it("blocks EXPORT", () => {
     const sql = "EXPORT DATABASE '/tmp/dump'";
     const firstWord = sql.trim().split(/\s/)[0].toUpperCase();
-    const allowed = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
+    const allowed = ALLOWED_FIRST_WORDS;
     expect(allowed.has(firstWord)).toBe(false);
+  });
+});
+
+describe("connection confinement", () => {
+  // The keyword blocklist is a first filter, not the boundary: it cannot name
+  // every DuckDB function that opens a file, and sniff_csv / read_json_objects
+  // both got past it. The connection itself must refuse, whatever the SQL.
+  const all = (sql: string) =>
+    new Promise<Record<string, unknown>[]>((resolve, reject) =>
+      getDb().all(sql, (err: Error | null, rows: Record<string, unknown>[]) => (err ? reject(err) : resolve(rows))),
+    );
+
+  it("cannot read a file outside the data tree, by any reader", async () => {
+    for (const sql of [
+      "SELECT * FROM sniff_csv('/etc/passwd')",
+      "SELECT * FROM read_json_objects('/etc/hostname')",
+      "SELECT * FROM read_ndjson_objects('/etc/hostname')",
+    ]) {
+      await expect(all(sql), sql).rejects.toThrow(/Permission Error|disabled by configuration/);
+    }
+  });
+
+  it("cannot switch the confinement back off", async () => {
+    await expect(all("SET enable_external_access = true")).rejects.toThrow();
+    await expect(all("SET autoload_known_extensions = true")).rejects.toThrow();
+    const [row] = await all("SELECT current_setting('enable_external_access') AS ext");
+    expect(row.ext).toBe(false);
+  });
+
+  it("still reads the data tree through the views", async () => {
+    const [row] = await all("SELECT CAST(COUNT(*) AS INTEGER) AS n FROM decay");
+    expect(row.n).toBeGreaterThan(0);
   });
 });
 
