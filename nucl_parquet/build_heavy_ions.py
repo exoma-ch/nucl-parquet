@@ -194,7 +194,14 @@ def build(data_dir: Path | None = None) -> None:
         data_dir = _resolve_data_dir()
     data_dir = Path(data_dir)
 
-    import pycatima as catima
+    try:
+        import pycatima as catima
+    except ImportError as exc:
+        raise ImportError(
+            "build_heavy_ions needs pycatima, a build-time-only dependency "
+            "(catima is AGPL-3.0, so it is not installed with nucl-parquet). "
+            "Install it with `pip install 'nucl-parquet[build]'`, or `uv sync --dev`."
+        ) from exc
 
     isotopes = _resolve_projectile_isotopes(data_dir)
     n_target = 92
