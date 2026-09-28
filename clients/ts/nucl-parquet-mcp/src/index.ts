@@ -226,11 +226,38 @@ function registerViews(db: duckdb.Database, dataDir: string): void {
   }
 }
 
+/**
+ * Confine the connection to reading the data tree, then freeze its settings.
+ *
+ * `sql_query` hands callers a SQL prompt, and its keyword blocklist cannot list
+ * every DuckDB function that opens a file: `sniff_csv('/etc/passwd')` and
+ * `read_json_objects(...)` both got past it and read outside the data tree. The
+ * connection itself must not be able to, whatever the SQL says:
+ *
+ * - `allowed_directories` first, because the views read Parquet files, which is
+ *   itself external access; without the exception every tool fails.
+ * - `enable_external_access = false`: no other files, no network, no INSTALL.
+ * - extension auto-install and auto-load off.
+ * - `lock_configuration` last, so a caller cannot `SET` any of it back.
+ *
+ * Queued on the same connection after `registerViews`, so it takes effect
+ * before the first caller query.
+ */
+function harden(db: duckdb.Database, dataDir: string): void {
+  const quoted = dataDir.replaceAll("'", "''");
+  db.run(`SET allowed_directories = ['${quoted}']`);
+  db.run("SET enable_external_access = false");
+  db.run("SET autoinstall_known_extensions = false");
+  db.run("SET autoload_known_extensions = false");
+  db.run("SET lock_configuration = true");
+}
+
 export function getDb(): duckdb.Database {
   if (_db) return _db;
   const dataDir = resolveDataDir();
   const db = new duckdb.Database(":memory:");
   registerViews(db, dataDir);
+  harden(db, dataDir);
   _db = db;
   return db;
 }
@@ -756,9 +783,9 @@ server.tool(
 // Patterns that indicate file-access functions — blocked in user SQL to prevent
 // read_parquet('/etc/passwd') style attacks. The pre-registered DuckDB views
 // already expose all nuclear data; there's no legitimate need for raw file access.
-const BLOCKED_FUNCTIONS = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
+export const BLOCKED_FUNCTIONS = /\b(read_parquet|parquet_scan|parquet_metadata|parquet_schema|read_csv|read_csv_auto|read_json|read_json_auto|read_text|read_blob|glob|copy|export|attach|load|install|create|drop|alter|insert|update|delete|truncate|query_table|pragma)\b/i;
 
-const ALLOWED_FIRST_WORDS = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
+export const ALLOWED_FIRST_WORDS = new Set(["SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"]);
 
 server.tool(
   "sql_query",
