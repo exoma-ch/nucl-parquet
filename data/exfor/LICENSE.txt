@@ -1,0 +1,25 @@
+data/exfor/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+EXFOR (experimental reaction data)
+------------------------------------------------------------------------------
+  custodian       : International Network of Nuclear Reaction Data Centres (NRDC) / IAEA-NDS
+  licence         : CC-BY-4.0 (EXFOR Master File)
+  redistributable : yes
+  terms           : https://nds.iaea.org/nrdc/exfor-master/
+  cite            : N. Otuka et al., 'Towards a More Complete and Accurate Experimental Nuclear Reaction Data Library (EXFOR)...', Nuclear Data Sheets 120 (2014) 272.
+  notes           : Source from the Master File / exfor_master / exfor_json repos (CC-BY-4.0), not the live retrieval system.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.
