@@ -35,7 +35,7 @@ class TestVersion:
         import importlib.metadata
 
         expected = importlib.metadata.version("nucl-parquet-mcp")
-        assert mcp.settings.version == expected
+        assert mcp.version == expected
         assert expected  # not empty
 
 
@@ -65,7 +65,8 @@ class TestCatalog:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+# asyncio_mode = "auto" (pyproject.toml) runs the async tests; a class-level
+# asyncio mark would also claim the sync ones, which pytest-asyncio 1.x warns on.
 class TestDuckDB:
     def test_db_connects(self):
         db = _get_db()
@@ -101,10 +102,11 @@ class TestDuckDB:
         assert data["count"] >= 1  # Co-60 should exist
 
     async def test_get_radiation(self):
-        result = await get_radiation(z=27, a=60)
+        # `radiation` is keyed by the emitting nuclide: Co-60's famous 1173 keV
+        # gamma is emitted by excited Ni-60, the daughter, so it lives under Ni-60.
+        result = await get_radiation(z=28, a=60)
         data = json.loads(result)
         assert data["total"] > 0
-        # Co-60 has the famous 1173 keV gamma
         energies = [r.get("energy_keV") for r in data["rows"] if r.get("rad_type") == "gamma"]
         assert any(abs(e - 1173.2) < 1.0 for e in energies if e is not None)
 
@@ -122,7 +124,7 @@ class TestDuckDB:
         result = await get_compound_compositions()
         data = json.loads(result)
         assert data["count"] > 0
-        assert any("Water" in m for m in data["materials"])
+        assert "water" in data["materials"]
 
     async def test_get_stopping_power(self):
         result = await get_stopping_power("PSTAR", 29)
@@ -158,6 +160,38 @@ class TestDuckDB:
     async def test_sql_query_rejects_pragma(self):
         with pytest.raises(ValueError, match="Only read queries"):
             await sql_query("PRAGMA version")
+
+    async def test_sql_query_rejects_explain_analyze_write(self, tmp_path):
+        # EXPLAIN ANALYZE executes what it wraps. With a leading-keyword check
+        # alone this wrote into the data tree, which the connection may read.
+        with pytest.raises(ValueError, match="Only read queries"):
+            await sql_query("EXPLAIN ANALYZE COPY (SELECT 1 AS x) TO 'zz_probe.csv'")
+
+    async def test_sql_query_rejects_multiple_statements(self):
+        with pytest.raises(ValueError, match="one statement at a time"):
+            await sql_query("SELECT 1; DROP TABLE decay")
+
+    async def test_sql_query_allows_explain_and_describe(self):
+        assert json.loads(await sql_query("EXPLAIN SELECT COUNT(*) FROM decay"))["total"] > 0
+        assert json.loads(await sql_query("DESCRIBE decay"))["total"] > 0
+
+    async def test_connection_cannot_read_outside_the_data_tree(self):
+        # A single SELECT passes the statement guard; the connection must still
+        # refuse to open a file outside the data directory.
+        with pytest.raises(ValueError, match="SQL error"):
+            await sql_query("SELECT * FROM read_csv('/etc/passwd')")
+
+    def test_connection_configuration_is_locked(self):
+        import duckdb
+
+        with pytest.raises(duckdb.Error):
+            _get_db().sql("SET enable_external_access = true")
+
+    async def test_a_null_survives_as_none(self):
+        # #362: a null must reach the caller as JSON null, never as 0.
+        row = json.loads(await sql_query("SELECT CAST(NULL AS INTEGER) AS residual_Z, 30 AS z"))["rows"][0]
+        assert row["residual_Z"] is None
+        assert row["z"] == 30
 
     async def test_get_electron_stopping(self):
         result = await get_electron_stopping(target_z=29)

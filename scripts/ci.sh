@@ -72,6 +72,17 @@ ok "python tests passed"
 endgroup
 
 # ---------------------------------------------------------------------------
+group "python MCP server (clients/py/nucl-parquet-mcp)"
+# Its own distribution with its own dependencies (mcp 2.x is not in the root
+# environment), so it gets its own isolated run against this checkout's
+# nucl-parquet. It had no line here, and while it did not, the published server
+# failed every data tool. tests/test_ci_runs_everything.py now requires one run
+# per clients/py package.
+(cd clients/py/nucl-parquet-mcp && uv run --isolated --no-project --with-editable ../../.. --with-editable '.[dev]' pytest -q)
+ok "python MCP server tests passed"
+endgroup
+
+# ---------------------------------------------------------------------------
 group "rust (fmt + clippy + test)"
 # One workspace (#307) — a single lockfile and one resolution, so the two
 # crates cannot disagree about a shared dependency's version.

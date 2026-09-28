@@ -1,0 +1,25 @@
+data/brond-3.1/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+BROND-3.1
+------------------------------------------------------------------------------
+  custodian       : IPPE (Institute of Physics and Power Engineering), Obninsk
+  licence         : CC-BY-4.0 (site-wide)
+  redistributable : yes
+  terms           : https://vant.ippe.ru/en/brond-3-1
+  cite            : A.I. Blokhin et al., 'New version of neutron evaluated data library BROND-3.1', Yad. Reak. Konst. No.2 (2016) 62.
+  notes           : Russian-origin published scientific data: covered by the public-domain / basic-scientific-research export exemption (see COMPLIANCE.md).
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

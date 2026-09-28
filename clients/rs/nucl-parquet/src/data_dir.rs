@@ -2,8 +2,15 @@ use std::path::{Path, PathBuf};
 
 use crate::{Error, Result};
 
-/// Version tag for the data archive (matches crate version).
-const DATA_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// This crate's version. It keys the cache directory and nothing else: data
+/// releases are versioned independently (`data-2026.8.5`), and the one to
+/// fetch is whatever `catalog.json` names — see [`DataDir::remote_data_version`].
+const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Where `catalog.json` is read from to learn the current data release.
+#[cfg(feature = "fetch")]
+const CATALOG_URL: &str =
+    "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/catalog.json";
 
 /// GitHub release URL pattern.
 #[cfg(feature = "fetch")]
@@ -68,28 +75,14 @@ impl DataDir {
         let cache = Self::cache_dir();
         std::fs::create_dir_all(&cache)?;
 
-        // Fetch catalog.json from main to discover data_version + base_url.
-        // The catalog's base_url template resolves to a versioned tag, so
-        // actual data files are fetched from the pinned data release, not main.
-        let catalog_url =
-            "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/main/data/catalog.json";
-        let catalog_path = cache.join("catalog.json");
-        if !catalog_path.exists() {
-            eprintln!("Fetching catalog from {catalog_url} ...");
-            Self::fetch_url(catalog_url, &catalog_path)?;
-        }
-
-        // Parse catalog to build versioned base_url
-        let catalog_text =
-            std::fs::read_to_string(&catalog_path).map_err(|e| Error::Download(e.to_string()))?;
-        let catalog: serde_json::Value =
-            serde_json::from_str(&catalog_text).map_err(|e| Error::Download(e.to_string()))?;
-
-        let data_version = catalog["data_version"].as_str().unwrap_or("latest");
+        // The catalog's base_url template resolves to a versioned tag, so the
+        // data files come from the pinned data release, not from main.
+        let catalog = Self::remote_catalog(&cache)?;
+        let data_version = Self::remote_data_version(&catalog)?;
         let base_template = catalog["base_url"].as_str().unwrap_or(
             "https://raw.githubusercontent.com/exoma-ch/nucl-parquet/data-{version}/data",
         );
-        let base_url = base_template.replace("{version}", data_version);
+        let base_url = base_template.replace("{version}", &data_version);
 
         // Write lazy marker for fetch_file()
         let marker = cache.join(".lazy_base_url");
@@ -216,19 +209,45 @@ impl DataDir {
 
     // -- internals ----------------------------------------------------------
 
-    /// Cache directory: `~/.nucl-parquet/v{VERSION}/`
+    /// Cache directory: `~/.nucl-parquet/v{CRATE_VERSION}/`
     fn cache_dir() -> PathBuf {
         home_dir()
             .join(".nucl-parquet")
-            .join(format!("v{DATA_VERSION}"))
+            .join(format!("v{CRATE_VERSION}"))
+    }
+
+    /// `catalog.json` from main, cached in `cache` after the first fetch.
+    #[cfg(feature = "fetch")]
+    fn remote_catalog(cache: &Path) -> Result<serde_json::Value> {
+        let catalog_path = cache.join("catalog.json");
+        if !catalog_path.exists() {
+            eprintln!("Fetching catalog from {CATALOG_URL} ...");
+            Self::fetch_url(CATALOG_URL, &catalog_path)?;
+        }
+        let text =
+            std::fs::read_to_string(&catalog_path).map_err(|e| Error::Download(e.to_string()))?;
+        serde_json::from_str(&text).map_err(|e| Error::Download(e.to_string()))
+    }
+
+    /// The data release a catalog names, e.g. `2026.8.5`.
+    ///
+    /// An error rather than a default when it is missing: the old fallback,
+    /// `"latest"`, named a tag (`data-latest`) that has never existed, so every
+    /// file request then 404ed with nothing pointing back at the catalog.
+    #[cfg(feature = "fetch")]
+    fn remote_data_version(catalog: &serde_json::Value) -> Result<String> {
+        catalog["data_version"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| Error::Download("catalog.json has no `data_version`".into()))
     }
 
     #[cfg(feature = "fetch")]
     fn download() -> Result<()> {
-        let url =
-            format!("{RELEASE_URL}/v{DATA_VERSION}/nucl-parquet-data-v{DATA_VERSION}.tar.zst");
         let cache = Self::cache_dir();
         std::fs::create_dir_all(&cache)?;
+        let data_version = Self::remote_data_version(&Self::remote_catalog(&cache)?)?;
+        let url = release_asset_url(&data_version);
 
         eprintln!("Downloading nucl-parquet data from {url} ...");
 
@@ -267,6 +286,16 @@ impl DataDir {
     }
 }
 
+/// The full-data tarball for a data release, as release-data.yml publishes it.
+///
+/// This used to be built from the crate version (`v0.17.0/…-v0.17.0.tar.zst`),
+/// which is not a data release, so `DataDir::ensure()` 404ed on every
+/// download once data moved to its own CalVer tags.
+#[cfg(feature = "fetch")]
+fn release_asset_url(data_version: &str) -> String {
+    format!("{RELEASE_URL}/data-{data_version}/nucl-parquet-data-{data_version}.tar.zst")
+}
+
 /// Best-effort home directory lookup.
 fn home_dir() -> PathBuf {
     std::env::var("HOME")
@@ -277,6 +306,27 @@ fn home_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "fetch")]
+    #[test]
+    fn release_asset_url_names_the_data_release_not_the_crate() {
+        // The shape release-data.yml publishes, e.g.
+        // releases/download/data-2026.8.5/nucl-parquet-data-2026.8.5.tar.zst
+        assert_eq!(
+            release_asset_url("2026.8.5"),
+            "https://github.com/exoma-ch/nucl-parquet/releases/download/data-2026.8.5/nucl-parquet-data-2026.8.5.tar.zst"
+        );
+        assert!(!release_asset_url("2026.8.5").contains(CRATE_VERSION));
+    }
+
+    #[cfg(feature = "fetch")]
+    #[test]
+    fn a_catalog_without_data_version_is_an_error_not_latest() {
+        let catalog = serde_json::json!({ "base_url": "x" });
+        assert!(DataDir::remote_data_version(&catalog).is_err());
+        let catalog = serde_json::json!({ "data_version": "2026.8.5" });
+        assert_eq!(DataDir::remote_data_version(&catalog).unwrap(), "2026.8.5");
+    }
 
     #[test]
     fn cache_dir_contains_version() {

@@ -18,24 +18,45 @@ permission from the relevant custodian for the IAEA- and JAEA-sourced libraries.
 
 ## Summary
 
+The table below is generated from [`data/licenses.toml`](data/licenses.toml) by
+`scripts/build_notices.py`; do not hand-edit. Every tracked file under `data/`
+is claimed by exactly one manifest entry — CI fails the build on an unrecorded
+dataset. Per-library sidecars are written to `data/<library>/LICENSE.txt`.
+
+<!-- AUTO:libraries -->
 | Library | Custodian | Terms | Cite |
 |---|---|---|---|
-| 🟢 EXFOR | NRDC / IAEA-NDS | CC-BY-4.0 (Master File) | Otuka et al., NDS 120 (2014) 272 |
-| 🟢 JEFF-4.0 | OECD/NEA | CC-BY-4.0 | JEFF Project (2025), DOI 10.82555/e9ajn-a3p20 |
-| 🟢 ENDF/B-VIII.1 | NNDC/DOE | US public domain (17 USC §105) | Nobre et al., NDS 210 (2026) 1 |
-| 🟢 BROND-3.1 | IPPE | CC-BY-4.0 | Blokhin et al. (2016) |
-| 🟢 TENDL-2023-iso / 2025 | PSI (Koning/Rochman) | open, citation requested | Koning et al., NDS 155 (2019) 1 |
-| 🟡 NIST PSTAR/ASTAR/ESTAR | NIST | US PD + worldwide grant; needs notices | Berger et al., SRD 124, DOI 10.18434/T4NC7P; ICRU 37/49 |
-| 🟡 catima output | H. Rosiak / GSI ATIMA | computed data (code is AGPL — not shipped) | Lindhard-Sørensen (1996); Weaver et al. (2002) |
-| 🟡 hi-xs-prod | Geant4 (CERN) | computed data; Geant4 notice required | Agostinelli et al., NIM A 506 (2003) 250 |
-| 🟢 FENDL-3.2 | IAEA-NDS | non-commercial academic reuse granted (acknowledge IAEA) | NDS 193 (2024) 1 |
-| 🟡 IRDFF-II | IAEA-NDS | site copyright | Trkov et al., NDS 163 (2020) 1 |
-| 🟡 IAEA-Medical | IAEA-NDS | site copyright; per-sub-dataset cite | per sub-database paper |
-| 🟡 IAEA-PD-2019 | IAEA-NDS | no repo license | Kawano et al., NDS 163 (2020) 109 |
-| 🟡 JENDL-5 / AD-2017 / DEU-2020 | JAEA | copyright asserted, no explicit license; non-commercial + community practice | Iwamoto et al., JNST 60 (2023) 1; + per-sublibrary |
-| 🟡 CENDL-3.2 | CIAE/CNDC | no written terms; NRDC open-mirror | Ge et al., EPJ Web Conf. 239 (2020) 09001 |
-| 🟢 Swiss StSV Annex 3 | Swiss Confederation (BAG / Fedlex) | not copyrightable — URG Art. 5(1)(a) | StSV, SR 814.501, Anhang 3 (2026-07-01) |
-| 🟡 ENSDF / AME2020 / IUPAC (meta) | NNDC, AMDC, IUPAC | open evaluated/reference data | ENSDF; Huang et al. (2021); Meija et al. (2016) |
+| 🟢 BROND-3.1 | IPPE (Institute of Physics and Power Engineering), Obninsk | CC-BY-4.0 (site-wide) | A.I. Blokhin et al., 'New version of neutron evaluated data library BROND-3.1', Yad. Re… |
+| 🟡 CENDL-3.2 | China Nuclear Data Center / CIAE | No written terms; NRDC open-mirror convention | Z. Ge et al., 'CENDL-3.2: The new version of Chinese general purpose evaluated nuclear… |
+| 🟢 eXoma-computed derived tables (KERMA, neutron total/elastic, dose constants, spectrum-averaged XS) | Computed by exoma-ch from the bundled evaluated libraries | Computed output (data). Derived from ENDF/B-VIII.1, AME2020, ENSDF and NIST XCOM — the upstream attribution obligations flow through | nucl-parquet (eXoma, ETH Zürich) |
+| 🟢 ENDF/B-VIII.0 neutron (NJOY-processed) | NNDC / Brookhaven National Laboratory / CSEWG (US DOE); processed by the OpenMC project | US Government work — public domain in the US (17 U.S.C. §105); NJOY/OpenMC processing adds no separate claim (openmc-data-storage mirror carries NO explicit licence) | D.A. Brown et al., 'ENDF/B-VIII.0: The 8th Major Release of the Nuclear Reaction Data L… |
+| 🟢 ENDF/B-VIII.0 neutron transport channels | NNDC / Brookhaven National Laboratory / CSEWG (US DOE); processed by the OpenMC project | US Government work — public domain in the US (17 U.S.C. §105) | D.A. Brown et al., 'ENDF/B-VIII.0: The 8th Major Release of the Nuclear Reaction Data L… |
+| 🟢 ENDF/B-VIII.1 | NNDC / Brookhaven National Laboratory / CSEWG (US DOE) | US Government work — public domain in the US (17 U.S.C. §105) | G.P.A. Nobre et al., 'ENDF/B-VIII.1: Updated Nuclear Reaction Data Library', Nuclear Da… |
+| 🟡 EPDL97 / EADL / EEDL (EPICS — Evaluated Photon/Atomic/Electron Data Libraries) | D.E. Cullen (LLNL), distributed by the IAEA Nuclear Data Section | LLNL (US DOE) evaluation, openly distributed by IAEA-NDS; no CC license | D.E. Cullen, J.H. Hubbell, L. Kissel, 'EPDL97: the Evaluated Photon Data Library, '97 v… |
+| 🟢 EXFOR (experimental reaction data) | International Network of Nuclear Reaction Data Centres (NRDC) / IAEA-NDS | CC-BY-4.0 (EXFOR Master File) | N. Otuka et al., 'Towards a More Complete and Accurate Experimental Nuclear Reaction Da… |
+| 🟢 EXFOR (reaction channels) | International Network of Nuclear Reaction Data Centres (NRDC) / IAEA-NDS | CC-BY-4.0 (EXFOR Master File) | N. Otuka et al., 'Towards a More Complete and Accurate Experimental Nuclear Reaction Da… |
+| 🟢 FENDL-3.2 | IAEA Nuclear Data Section | IAEA website terms grant non-commercial reuse with acknowledgement (commercial use gated); no CC license | 'FENDL: A library for fusion research and applications', Nuclear Data Sheets 193 (2024) 1 |
+| 🟡 Geant4 G4EMLOW electron data (Seltzer-Berger brem DCS, electron stopping, density effect) | Geant4 Collaboration (CERN); underlying evaluation Seltzer & Berger (NIST) / ICRU-37 | Geant4 Software License v1.0 (NOT OSI) — notice + no-endorsement required | S.M. Seltzer, M.J. Berger, 'Bremsstrahlung energy spectra from electrons...', At. Data… |
+| 🟡 Geant4 nuclear-structure data (G4ENSDFSTATE, PhotonEvaporation, RadioactiveDecay) | Geant4 Collaboration (CERN); underlying evaluation ENSDF (NNDC/IAEA-NDS) | Geant4 Software License v1.0 (NOT OSI) — notice + no-endorsement required | S. Agostinelli et al., 'Geant4 — a simulation toolkit', Nucl. Instrum. Meth. A 506 (200… |
+| 🟢 HI-XS total reaction (Tripathi 1997) | Computed by exoma-ch (Tripathi 1997 parameterization) | Computed output (data) from a published parameterization | R.K. Tripathi, F.A. Cucinotta, J.W. Wilson, 'Accurate universal parameterization of abs… |
+| 🟡 HI-XS Production (Geant4 INCL++/ABLA07) | Computed by exoma-ch with Geant4 (CERN); normalized to Tripathi (1997) | Computed output (data). Geant4 Software License v1.0 (NOT OSI) governs the generator | S. Agostinelli et al., 'Geant4 — a simulation toolkit', Nucl. Instrum. Meth. A 506 (200… |
+| 🟡 IAEA-Medical | IAEA Nuclear Data Section (Coordinated Research Projects) | IAEA-NDS site copyright; per-sub-dataset citation; multi-institute contributions | Cite the specific sub-database evaluation paper(s) listed on each medical sub-page, plu… |
+| 🟡 IAEA-PD-2019 (Photonuclear) | IAEA Nuclear Data Section | No license (GitHub data repo is NO-LICENSE); IAEA-NDS site copyright | T. Kawano, Y.S. Cho, P. Dimitriou et al., Nuclear Data Sheets 163 (2020) 109 |
+| 🟡 IRDFF-II | IAEA Nuclear Data Section | IAEA-NDS site copyright (acknowledgment; 'no subsequent fee'); no CC license | A. Trkov, P.J. Griffin, S.P. Simakov et al., 'IRDFF-II: A New Neutron Metrology Library… |
+| 🟢 JEFF-4.0 | OECD Nuclear Energy Agency (NEA) Data Bank | CC-BY-4.0 | Joint Evaluated Fission and Fusion Project (2025), JEFF-4.0 Evaluated Data, OECD Nuclea… |
+| 🟡 JENDL-5 | Japan Atomic Energy Agency (JAEA), Nuclear Data Center | No explicit license on ENDF-6 source; copyright asserted, citation requested | O. Iwamoto et al., 'Japanese evaluated nuclear data library version 5: JENDL-5', J. Nuc… |
+| 🟡 JENDL/AD-2017 | JAEA, Nuclear Data Center | No explicit license; copyright asserted | K. Shibata, N. Iwamoto, S. Kunieda, F. Minato, O. Iwamoto, 'Activation Cross-section Fi… |
+| 🟡 JENDL/DEU-2020 | JAEA, Nuclear Data Center | No explicit license; copyright asserted | S. Nakayama, O. Iwamoto, Y. Watanabe, K. Ogata, 'JENDL/DEU-2020...', J. Nucl. Sci. Tech… |
+| 🟡 NIST XCOM — X-ray mass attenuation coefficients | NIST (Physical Measurement Laboratory) | US public domain (17 U.S.C. §105) + NIST worldwide royalty-free reuse grant | M.J. Berger, J.H. Hubbell, S.M. Seltzer et al., XCOM: Photon Cross Section Database (ve… |
+| 🟢 Swiss StSV Annex 3 (SR 814.501), consolidation 2026-07-01 | Swiss Confederation — Bundesamt für Gesundheit (BAG) / Federal Chancellery (Fedlex) | Not copyrightable subject matter — URG (SR 231.1) Art. 5(1)(a) | Strahlenschutzverordnung (StSV) vom 26. April 2017, SR 814.501, Anhang 3, Fassung vom 1… |
+| 🟢 TENDL-2023 (+ Aug-2024 isomeric correction) | PSI — A.J. Koning, D. Rochman | No explicit license; openly distributed, citation requested | A.J. Koning, D. Rochman, J. Sublet, N. Dzysiuk, M. Fleming, S. van der Marck, 'TENDL: C… |
+| 🟢 TENDL-2025 | PSI — A.J. Koning, D. Rochman | No explicit license; openly distributed, citation requested | D. Rochman, A. Koning, S. Goriely, S. Hilaire, 'TENDL-astro...', Nucl. Phys. A 1053 (20… |
+| 🟢 Isotopic compositions / abundances (IUPAC) | IUPAC (Commission on Isotopic Abundances and Atomic Weights) | Published reference data, citation requested | J. Meija et al., 'Isotopic compositions of the elements 2013', Pure Appl. Chem. 88 (201… |
+| 🟢 Atomic masses / binding energies (AME2020) + element symbol table | Atomic Mass Data Center (AMDC) — AME2020 | Openly distributed evaluated data, citation requested | W.J. Huang, M. Wang, F.G. Kondev, G. Audi, S. Naimi, 'The AME 2020 atomic mass evaluati… |
+| 🟡 NUDEX-derived statistical-model tables (level densities, PSF, ICC, capture gammas) | NUDEX (E. Mendoza et al., CIEMAT / IAEA CRP); underlying RIPL-3 and IAEA PSF database | IAEA-coordinated evaluated data, openly distributed; no CC license | E. Mendoza, D. Cano-Ott et al., NUDEX (nuclear de-excitation code) |
+| 🟡 catima-computed stopping (catima_*.parquet) | Computed by exoma-ch with catima (A. Prochazka), based on ATIMA (GSI) | Computed output (data). catima itself is AGPL-3.0 (code) | J. Lindhard, A.H. Sørensen, Phys. Rev. A 53 (1996) 2443 |
+| 🟡 PSTAR / ASTAR (+ derived dSTAR / tSTAR) and PSTAR/ASTAR compounds | NIST (Physical Measurement Laboratory) — SRD 124 | US public domain (17 U.S.C. §105) + NIST worldwide royalty-free reuse grant | M.J. Berger, J.S. Coursey, M.A. Zucker, J. Chang, ESTAR/PSTAR/ASTAR, NIST Standard Refe… |
+<!-- /AUTO:libraries -->
 
 🔴 **EAF-2010 was removed** (UKAEA licence forbids redistribution) — see issue #233.
 
@@ -53,8 +74,13 @@ permission from the relevant custodian for the IAEA- and JAEA-sourced libraries.
 
 As a non-commercial academic project we rely on the custodians' non-commercial /
 open-distribution grants above; **none of these emails is required to ship.**
-Drafts are kept for the record and for anyone who later needs a commercial grant:
+Only send if a commercial grant is ever required:
 
-- **IAEA-NDS** — *not needed* for non-commercial reuse (already granted with acknowledgement); send only if a commercial grant for FENDL/IRDFF/Medical/PD-2019 is ever required. Draft: [`docs/legal/permission-request-iaea.md`](docs/legal/permission-request-iaea.md)
-- **JAEA** (`jendl@jaea.go.jp`) — *optional* insurance; JENDL has no explicit license either way, so redistribution rests on universal community practice. Draft: [`docs/legal/permission-request-jaea.md`](docs/legal/permission-request-jaea.md)
-- **TENDL** (Koning/Rochman) — *courtesy* confirmation only. Draft: [`docs/legal/permission-request-tendl.md`](docs/legal/permission-request-tendl.md)
+- **IAEA-NDS** — *not needed* for non-commercial reuse (already granted with acknowledgement); send only if a commercial grant for FENDL/IRDFF/Medical/PD-2019 is ever required.
+- **JAEA** (`jendl@jaea.go.jp`) — *optional* insurance; JENDL has no explicit license either way, so redistribution rests on universal community practice.
+- **TENDL** (Koning/Rochman) — *courtesy* confirmation only.
+
+PR #243 announced ready-to-send drafts under `docs/legal/`, but the files were
+never committed; the previous links to them were dead. When drafts are needed
+they should be added under `docs/legal/permission-request-{iaea,jaea,tendl}.md`
+and the links restored.

@@ -38,6 +38,11 @@ _TESTS_DIR = Path(__file__).parent
 _ROOT = _TESTS_DIR.parent
 _CI_SH = _ROOT / "scripts" / "ci.sh"
 
+#: Python client packages that ship their own test suite. Each is a separate
+#: distribution with its own dependencies (the MCP server needs `mcp`, which the
+#: root environment does not install), so each gets its own pytest run.
+_PY_CLIENT_PACKAGES = sorted(p.parent.relative_to(_ROOT).as_posix() for p in (_ROOT / "clients" / "py").glob("*/tests"))
+
 #: A bare `pytest` word, not a prefix pattern.
 #:
 #: Matching `^\s*(?:uv run )?pytest` would have been the obvious thing and is
@@ -113,11 +118,29 @@ def test_ci_runs_pytest_exactly_once_over_the_suite() -> None:
     invocations means two filters to keep in step — the next gate lands under
     whichever one its author happened to read.
     """
-    invocations = _pytest_command_lines()
+    invocations = [inv for inv in _pytest_command_lines() if not any(pkg in inv for pkg in _PY_CLIENT_PACKAGES)]
     assert len(invocations) == 1, (
         f"scripts/ci.sh has {len(invocations)} pytest invocations; expected 1 over tests/:\n  "
         + "\n  ".join(inv.strip() for inv in invocations)
     )
+
+
+def test_ci_runs_every_python_client_package() -> None:
+    """Each `clients/py/*` package with a `tests/` directory runs in CI, once.
+
+    `clients/py/nucl-parquet-mcp` had 28 tests and no line in `ci.sh`. They were
+    never run, and while that was so the published server failed every data tool:
+    its hardening `SET` named a DuckDB setting that does not exist, and it needed
+    pandas without declaring it. A package's suite that CI does not run is the
+    allowlist problem #355 fixed for `tests/`, moved into `clients/`.
+    """
+    assert _PY_CLIENT_PACKAGES, "no clients/py/*/tests found; the scan is broken, not the tree"
+    invocations = _pytest_command_lines()
+    for pkg in _PY_CLIENT_PACKAGES:
+        runs = [inv.strip() for inv in invocations if pkg in inv]
+        assert len(runs) == 1, f"scripts/ci.sh runs {pkg}'s tests {len(runs)} times; expected once:\n  " + "\n  ".join(
+            runs
+        )
 
 
 def test_ci_does_not_filter_out_the_data_marker() -> None:

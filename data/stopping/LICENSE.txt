@@ -1,0 +1,45 @@
+data/stopping/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+Geant4 G4EMLOW electron data (Seltzer-Berger brem DCS, electron stopping, density effect)
+------------------------------------------------------------------------------
+  custodian       : Geant4 Collaboration (CERN); underlying evaluation Seltzer & Berger (NIST) / ICRU-37
+  licence         : Geant4 Software License v1.0 (NOT OSI) — notice + no-endorsement required
+  redistributable : attribution
+  terms           : https://geant4.web.cern.ch/download/license
+  cite            : S.M. Seltzer, M.J. Berger, 'Bremsstrahlung energy spectra from electrons...', At. Data Nucl. Data Tables 35 (1986) 345; ICRU Report 37 (1984); Geant4: Agostinelli et al., Nucl. Instrum. Meth. A 506 (2003) 250.
+  notes           : NOTE: data/stopping/ESTAR.parquet is NO LONGER a NIST ESTAR scrape — since the strata migration it is rebuilt from Geant4 EM data under the legacy `source='ESTAR'` label for query compatibility. Attribute it to Geant4/ICRU-37, not to NIST SRD 124.
+
+------------------------------------------------------------------------------
+catima-computed stopping (catima_*.parquet)
+------------------------------------------------------------------------------
+  custodian       : Computed by exoma-ch with catima (A. Prochazka), based on ATIMA (GSI)
+  licence         : Computed output (data). catima itself is AGPL-3.0 (code)
+  redistributable : yes
+  terms           : https://github.com/hrosiak/catima
+  cite            : J. Lindhard, A.H. Sørensen, Phys. Rev. A 53 (1996) 2443; H. Weaver et al., Nucl. Instrum. Meth. B 187 (2002); ATIMA (GSI).
+  notes           : Ship ONLY the computed Parquet output. Do NOT bundle catima source/binary in any artifact. Per #406 pycatima is a build-time-only extra, not a runtime dependency of the MIT wheel.
+
+------------------------------------------------------------------------------
+PSTAR / ASTAR (+ derived dSTAR / tSTAR) and PSTAR/ASTAR compounds
+------------------------------------------------------------------------------
+  custodian       : NIST (Physical Measurement Laboratory) — SRD 124
+  licence         : US public domain (17 U.S.C. §105) + NIST worldwide royalty-free reuse grant
+  redistributable : yes
+  terms           : https://www.nist.gov/pml/data/star/index.cfm
+  cite            : M.J. Berger, J.S. Coursey, M.A. Zucker, J. Chang, ESTAR/PSTAR/ASTAR, NIST Standard Reference Database 124. DOI 10.18434/T4NC7P. (Methodology: ICRU Reports 37 and 49.)
+  notes           : Source from FREE physics.nist.gov (NOT the paid SRD, 15 U.S.C. §290e). Carry: source acknowledgment, 'data reformatted by exoma-ch' modification notice, and no-endorsement statement (see NOTICE). SCOPE NARROWED: ESTAR.parquet is no longer NIST-sourced — see [libraries.g4-emlow].
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

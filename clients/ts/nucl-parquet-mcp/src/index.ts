@@ -709,7 +709,7 @@ server.tool(
   "get_compound_compositions",
   "Get elemental compositions (weight fractions) for NIST XCOM standard materials. Useful for Bragg-additive cross-section calculations.",
   {
-    material: z.string().optional().describe("Material name (e.g. 'Water, Liquid'). Omit to list all materials."),
+    material: z.string().optional().describe("Material key (e.g. 'water', 'air', 'concrete'). Omit to list all materials."),
   },
   async ({ material }) => {
     const db = getDb();
