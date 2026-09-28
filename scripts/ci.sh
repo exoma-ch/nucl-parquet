@@ -77,6 +77,11 @@ group "rust (fmt + clippy + test)"
 # crates cannot disagree about a shared dependency's version.
 cargo fmt --manifest-path clients/rs/Cargo.toml --all --check
 cargo clippy --manifest-path clients/rs/Cargo.toml --workspace --all-targets -- -D warnings
+# `fetch` is the download path consumers enable, and nothing above compiles it:
+# it is off by default. A breaking reqwest/zstd bump would otherwise reach
+# crates.io unbuilt. (`fetch-native-tls` needs a system OpenSSL the devShell
+# does not provide, so it stays out of this line.)
+cargo clippy --manifest-path clients/rs/Cargo.toml -p nucl-parquet --features fetch --all-targets -- -D warnings
 cargo test --manifest-path clients/rs/Cargo.toml --workspace
 ok "rust clean"
 endgroup
