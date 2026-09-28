@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 import nucl_parquet
 
@@ -47,11 +48,103 @@ def _get_db() -> duckdb.DuckDBPyConnection:
             data_path = nucl_parquet.data_dir()
 
         conn = nucl_parquet.connect(data_path)
-        # Harden against SQL escape hatch abuse
-        conn.sql("SET enable_external_access = false")
-        conn.sql("SET allow_extensions_autoloading = false")
+        _harden(conn, data_path)
         _db = conn
         return _db
+
+
+class RequestError(ToolError, ValueError):
+    """A caller's mistake, reported to the MCP client with its message.
+
+    mcp 2 surfaces a tool's exception text only for `ToolError`. Anything else
+    becomes `UnexpectedToolError("Error executing tool <name>")` and the message
+    ("Only read queries are allowed…", "Unknown material… Available: …") never
+    reaches the caller who needs it to fix the call. Also a `ValueError`, so
+    code importing these functions directly still catches what it did under mcp 1.
+    """
+
+
+def _harden(conn: duckdb.DuckDBPyConnection, data_path: Path) -> None:
+    """Confine the connection to reading the data tree, then freeze its settings.
+
+    `sql_query` hands callers a SQL prompt, so the connection itself must not
+    be able to reach anything else. Order matters:
+
+    * `allowed_directories` first. The views read Parquet files, which is itself
+      external access, so switching access off without an exception breaks every
+      tool with "Permission Error: Cannot access file".
+    * `enable_external_access = false`: no files outside `data_path`, no network,
+      no INSTALL.
+    * Extension auto-install/auto-load off. This used to be spelled
+      `allow_extensions_autoloading`, which is not a DuckDB setting. The `SET`
+      raised, so the first database access failed and every data tool errored.
+    * `lock_configuration` last, so a caller cannot `SET` any of this back.
+
+    Writes *inside* `data_path` (COPY, ATTACH) are still permitted at this
+    level, so `sql_query` also admits only a single read statement; see
+    `_require_read_only`.
+    """
+    conn.execute("SET allowed_directories = [?]", [str(data_path)])
+    conn.sql("SET enable_external_access = false")
+    conn.sql("SET autoinstall_known_extensions = false")
+    conn.sql("SET autoload_known_extensions = false")
+    conn.sql("SET lock_configuration = true")
+
+
+#: Leading keywords `sql_query` accepts. Necessary but not sufficient: see
+#: `_require_read_only`.
+_READ_KEYWORDS = frozenset({"SELECT", "WITH", "FROM", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"})
+_EXPLAIN_PREFIX = re.compile(r"^\s*EXPLAIN(\s+ANALYZE)?\s+", re.IGNORECASE)
+
+
+def _require_read_only(sql: str) -> None:
+    """Raise unless *sql* is exactly one read statement, as DuckDB's parser sees it.
+
+    A leading-keyword check alone is not enough. `EXPLAIN ANALYZE` *executes* the
+    statement it wraps, so `EXPLAIN ANALYZE COPY (...) TO '<data_path>/x.parquet'`
+    starts with an allowed word and writes into the data tree. The parser's
+    statement type closes that: one statement, of type SELECT (which is also how
+    DuckDB classifies DESCRIBE, SHOW and SUMMARIZE), and an EXPLAIN only when
+    what it wraps is itself a single SELECT.
+    """
+    stripped = sql.strip()
+    if not stripped:
+        raise RequestError("Empty SQL query")
+    first_word = stripped.split()[0].upper()
+    if first_word not in _READ_KEYWORDS:
+        raise RequestError(f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got: {first_word}")
+    try:
+        statements = duckdb.extract_statements(stripped)
+    except duckdb.Error as e:
+        raise RequestError(f"SQL error: {e}") from e
+    if len(statements) != 1:
+        raise RequestError(f"Only read queries are allowed, one statement at a time. Got {len(statements)} statements.")
+    kind = statements[0].type
+    if kind == duckdb.StatementType.EXPLAIN:
+        _require_read_only(_EXPLAIN_PREFIX.sub("", stripped, count=1))
+        return
+    if kind != duckdb.StatementType.SELECT:
+        raise RequestError(
+            f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got a {kind.name} statement."
+        )
+
+
+def _records(rel: duckdb.DuckDBPyRelation) -> list[dict[str, Any]]:
+    """Rows as dicts, straight from DuckDB's Python values.
+
+    This used to round-trip through pandas, which had two problems. pandas was
+    never a declared dependency, so an installed server failed every data tool
+    with "'pandas' is required". And a null's survival depended on pandas
+    picking a nullable dtype: a numpy int would have turned a null `residual_Z`
+    into 0 (#362). `fetchall()` returns SQL NULL as `None` with no dtype choice
+    in between.
+    """
+    columns = rel.columns
+    return [dict(zip(columns, row, strict=True)) for row in rel.fetchall()]
+
+
+def _materials(db: duckdb.DuckDBPyConnection) -> list[str]:
+    return [m for (m,) in db.sql("SELECT DISTINCT material FROM compound_compositions ORDER BY material").fetchall()]
 
 
 def _query(sql: str, params: dict[str, Any] | None = None, max_rows: int = 500) -> dict[str, Any]:
@@ -59,7 +152,7 @@ def _query(sql: str, params: dict[str, Any] | None = None, max_rows: int = 500) 
     db = _get_db()
     rel = db.sql(sql, params=params or {})
     total = rel.count("*").fetchone()[0]
-    rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
+    rows = _records(rel.limit(max_rows))
     truncated = total > max_rows
     return {"total": total, "truncated": truncated, "rows": rows}
 
@@ -100,7 +193,7 @@ try:
 except PackageNotFoundError:
     _VERSION = "0.0.0-dev"
 
-mcp = FastMCP("nucl-parquet", version=_VERSION)
+mcp = MCPServer("nucl-parquet", version=_VERSION)
 
 
 # ---------------------------------------------------------------------------
@@ -138,19 +231,19 @@ async def list_isotopes(library: str, projectile: str) -> str:
     cat = _ensure_catalog()
     lib = cat["libraries"].get(library)
     if lib is None:
-        raise ValueError(f"Unknown library: {library}. Use list_libraries to see options.")
+        raise RequestError(f"Unknown library: {library}. Use list_libraries to see options.")
     if projectile not in lib.get("projectiles", []):
-        raise ValueError(
+        raise RequestError(
             f"Projectile '{projectile}' not in {library}. Available: {', '.join(lib.get('projectiles', []))}"
         )
     # Manifests are JSON files alongside the parquet data — read from disk.
     data_path = nucl_parquet.data_dir()
     lib_path = lib["path"]
     if not lib_path.endswith("xs/"):
-        raise ValueError(f"Library {library} path '{lib_path}' does not end with 'xs/' — cannot derive manifest path")
+        raise RequestError(f"Library {library} path '{lib_path}' does not end with 'xs/' — cannot derive manifest path")
     manifest_path = Path(data_path) / lib_path.replace("xs/", "manifest.json")
     if not manifest_path.exists():
-        raise ValueError(f"Manifest not found at {manifest_path}")
+        raise RequestError(f"Manifest not found at {manifest_path}")
     with open(manifest_path) as f:
         manifest = json.load(f)
     elements = manifest.get("elements", [])
@@ -179,24 +272,24 @@ async def get_cross_sections(
     """
     # Validate inputs against strict patterns to prevent path traversal / injection.
     if not re.match(r"^[npdthag]$", projectile):
-        raise ValueError(f"Invalid projectile: {projectile!r}. Must be one of: n, p, d, t, h, a, g")
+        raise RequestError(f"Invalid projectile: {projectile!r}. Must be one of: n, p, d, t, h, a, g")
     if not re.match(r"^[A-Z][a-z]?$", element):
-        raise ValueError(f"Invalid element symbol: {element!r}. Must be 1-2 letters (e.g. 'Cu', 'Fe')")
+        raise RequestError(f"Invalid element symbol: {element!r}. Must be 1-2 letters (e.g. 'Cu', 'Fe')")
 
     cat = _ensure_catalog()
     lib = cat["libraries"].get(library)
     if lib is None:
-        raise ValueError(f"Unknown library: {library}")
+        raise RequestError(f"Unknown library: {library}")
 
     # Read the parquet file for this projectile + element combination.
     data_path = nucl_parquet.data_dir()
     parquet_path = Path(data_path) / f"{lib['path']}{projectile}_{element}.parquet"
     if not parquet_path.exists():
-        raise ValueError(f"No data for {projectile}_{element} in {library}")
+        raise RequestError(f"No data for {projectile}_{element} in {library}")
     db = _get_db()
     rel = db.sql("SELECT * FROM read_parquet($path)", params={"path": str(parquet_path)})
     total = rel.count("*").fetchone()[0]
-    rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
+    rows = _records(rel.limit(max_rows))
     truncated = total > max_rows
 
     return json.dumps(
@@ -227,7 +320,7 @@ async def get_decay_data(z: int | None = None, a: int | None = None) -> str:
         a: Mass number (e.g. 238).
     """
     if z is None and a is None:
-        raise ValueError("Provide at least z or a to filter decay data.")
+        raise RequestError("Provide at least z or a to filter decay data.")
 
     conditions = []
     params: dict[str, Any] = {}
@@ -281,7 +374,7 @@ async def get_stopping_power(source: str, target_z: int) -> str:
         "catima": "catima_stopping",
     }
     if source not in view_map:
-        raise ValueError(f"Unknown source {source!r}. Valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima")
+        raise RequestError(f"Unknown source {source!r}. Valid: PSTAR, ASTAR, ESTAR, dSTAR, tSTAR, catima")
 
     view = view_map[source]
     if source == "catima":
@@ -492,12 +585,11 @@ async def get_compound_compositions(material: str | None = None) -> str:
     Useful for Bragg-additive cross-section calculations.
 
     Args:
-        material: Material name (e.g. 'Water, Liquid', 'Air, Dry'). Omit to list all materials.
+        material: Material key (e.g. 'water', 'air', 'concrete'). Omit to list all materials.
     """
     db = _get_db()
     if material is None:
-        rows = db.sql("SELECT DISTINCT material FROM compound_compositions ORDER BY material").fetchdf()
-        materials = rows["material"].tolist()
+        materials = _materials(db)
         return json.dumps({"count": len(materials), "materials": materials}, indent=2)
 
     result = _query(
@@ -505,8 +597,7 @@ async def get_compound_compositions(material: str | None = None) -> str:
         {"mat": material},
     )
     if result["total"] == 0:
-        all_mats = db.sql("SELECT DISTINCT material FROM compound_compositions ORDER BY material").fetchdf()
-        raise ValueError(f"Unknown material: {material!r}. Available: {all_mats['material'].tolist()}")
+        raise RequestError(f"Unknown material: {material!r}. Available: {_materials(db)}")
     return json.dumps(
         {"material": material, "count": result["total"], "composition": result["rows"]},
         indent=2,
@@ -530,7 +621,7 @@ async def get_electron_stopping(
         max_rows: Maximum rows to return (default 500).
     """
     if target is None and target_z is None:
-        raise ValueError("Provide target (compound name) or target_z (atomic number).")
+        raise RequestError("Provide target (compound name) or target_z (atomic number).")
 
     if target_z is not None:
         result = _query(
@@ -572,26 +663,19 @@ async def sql_query(sql: str, max_rows: int = 10000) -> str:
         sql: Read-only SQL query. DDL/DML (DROP, CREATE, INSERT, UPDATE) will be rejected.
         max_rows: Maximum rows to return (default 10000).
     """
-    # Allowlist: only SELECT and WITH (CTEs) are permitted as leading keywords.
-    # Multi-statement attacks (SELECT ...; DROP ...) are caught by DuckDB which
-    # only executes the first statement via .sql(). The connection also has
-    # enable_external_access=false and allow_extensions_autoloading=false set
-    # at init time, blocking COPY TO, EXPORT, ATTACH, and extension loading.
-    stripped = sql.strip()
-    if not stripped:
-        raise ValueError("Empty SQL query")
-    first_word = stripped.split()[0].upper()
-    if first_word not in {"SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "SUMMARIZE"}:
-        raise ValueError(f"Only read queries are allowed (SELECT, WITH, EXPLAIN, DESCRIBE). Got: {first_word}")
+    # Two layers: `_require_read_only` admits one parsed read statement, and the
+    # connection (`_harden`) can only read inside the data tree with its
+    # configuration locked.
+    _require_read_only(sql)
 
     db = _get_db()
     try:
         rel = db.sql(sql)
     except duckdb.Error as e:
-        raise ValueError(f"SQL error: {e}") from e
+        raise RequestError(f"SQL error: {e}") from e
 
     total = rel.count("*").fetchone()[0]
-    rows = rel.limit(max_rows).fetchdf().to_dict(orient="records")
+    rows = _records(rel.limit(max_rows))
     truncated = total > max_rows
     return json.dumps(
         {"total": total, "truncated": truncated, "rows": rows},
