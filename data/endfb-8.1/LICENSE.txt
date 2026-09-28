@@ -1,0 +1,25 @@
+data/endfb-8.1/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+ENDF/B-VIII.1
+------------------------------------------------------------------------------
+  custodian       : NNDC / Brookhaven National Laboratory / CSEWG (US DOE)
+  licence         : US Government work — public domain in the US (17 U.S.C. §105)
+  redistributable : yes
+  terms           : https://www.osti.gov/biblio/2571019
+  cite            : G.P.A. Nobre et al., 'ENDF/B-VIII.1: Updated Nuclear Reaction Data Library', Nuclear Data Sheets 210 (2026) 1. DOI 10.11578/endf/2571019.
+  notes           : Carry the standard DOE work-product disclaimer (see NOTICE).
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

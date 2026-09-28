@@ -1,0 +1,25 @@
+data/iaea-medical/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+IAEA-Medical
+------------------------------------------------------------------------------
+  custodian       : IAEA Nuclear Data Section (Coordinated Research Projects)
+  licence         : IAEA-NDS site copyright; per-sub-dataset citation; multi-institute contributions
+  redistributable : attribution
+  terms           : https://www-nds.iaea.org/medical/
+  cite            : Cite the specific sub-database evaluation paper(s) listed on each medical sub-page, plus acknowledge IAEA-NDS.
+  notes           : Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use. Resolve citation per sub-dataset.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

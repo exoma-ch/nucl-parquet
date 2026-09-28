@@ -1,0 +1,25 @@
+data/irdff-2/ — redistribution terms
+
+GENERATED FILE — do not edit. Source of truth: data/licenses.toml
+Regenerate: python scripts/build_notices.py --write
+
+The MIT licence of nucl-parquet covers the code and the ENDF-6 -> Parquet
+conversion ONLY. The data in this directory is third-party material governed
+by the terms below.
+
+Copyright (c) 2024-2026 eXoma
+
+------------------------------------------------------------------------------
+IRDFF-II
+------------------------------------------------------------------------------
+  custodian       : IAEA Nuclear Data Section
+  licence         : IAEA-NDS site copyright (acknowledgment; 'no subsequent fee'); no CC license
+  redistributable : attribution
+  terms           : https://www-nds.iaea.org/IRDFF/
+  cite            : A. Trkov, P.J. Griffin, S.P. Simakov et al., 'IRDFF-II: A New Neutron Metrology Library', Nuclear Data Sheets 163 (2020) 1.
+  notes           : Non-commercial academic reuse granted (acknowledge IAEA); permission only needed for commercial use.
+
+------------------------------------------------------------------------------
+When you redistribute this directory you must keep this file, keep the
+top-level NOTICE, cite the works above, and state that the data was
+reformatted from its original format to Apache Parquet by eXoma.

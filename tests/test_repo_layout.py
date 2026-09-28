@@ -305,8 +305,10 @@ _OUTPUT_REQUIRED = {"fetch_exfor_master.py": "out", "fetch_stsv.py": "out"}
 
 #: Writes to a place that is not a data path: `sync_huggingface` pushes to the
 #: remote named by `--repo-id` (and has `--dry-run`); `build_readme` rewrites
-#: README.md and only when `--write` is passed.
-_WRITES_ELSEWHERE = {"sync_huggingface.py", "build_readme.py"}
+#: README.md and only when `--write` is passed; `build_notices` rewrites
+#: ATTRIBUTION.md's AUTO section and the per-library `data/<lib>/LICENSE.txt`
+#: sidecars, only when `--write` is passed (#232).
+_WRITES_ELSEWHERE = {"sync_huggingface.py", "build_readme.py", "build_notices.py"}
 
 #: Audits and reports; writes nothing.
 _READ_ONLY = {
