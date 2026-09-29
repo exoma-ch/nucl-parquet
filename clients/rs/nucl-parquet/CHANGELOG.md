@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.11.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.18.0...nucl-parquet-rs-v0.11.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rs:** nullable state fields in the Rust meta API (DecayEntry, EmissionEntry, CoincidenceEntry, GammaCandidate) are Option<String>, and parent_state / daughter_state no longer use the retired '' spelling; ground is 'g', undetermined is null.
+* **data:** rebuild all nine ENDF libraries, and bring every consumer up to the new shape ([#399](https://github.com/exoma-ch/nucl-parquet/issues/399))
+* **schema:** cross-section tables gain identity columns and use NULL rather than 0 for "no residual"; `exfor_entry` → `source_entry`; `data/exfor/` is rebuilt from a different source with different content, and `data/exfor-channels/` is new. Queries relying on `residual_Z=0`, or on one projectile per file, must be updated — a reaction is only fully specified by projectile + target + residual.
+* **data:** federate catima heavy-ion stopping into per-isotope shards ([#252](https://github.com/exoma-ch/nucl-parquet/issues/252)) (#254)
+* **rs-client:** catima isotope resolution + repair stale Rust tests ([#247](https://github.com/exoma-ch/nucl-parquet/issues/247))
+
+* Bump release to 0.11.0 ([#93](https://github.com/exoma-ch/nucl-parquet/issues/93)) ([17be938](https://github.com/exoma-ch/nucl-parquet/commit/17be938123238b7658ed7ae71567e85319ea45dd))
+
+
+### Features
+
+* **data:** Federate catima heavy-ion stopping into per-isotope shards ([#252](https://github.com/exoma-ch/nucl-parquet/issues/252)) ([#254](https://github.com/exoma-ch/nucl-parquet/issues/254)) ([e9fb00f](https://github.com/exoma-ch/nucl-parquet/commit/e9fb00f3d55c0ee95e3188b96a2f9037c9e63e14))
+* HTTP-backed lazy per-file fetch ([#223](https://github.com/exoma-ch/nucl-parquet/issues/223)) ([#224](https://github.com/exoma-ch/nucl-parquet/issues/224)) ([f5de182](https://github.com/exoma-ch/nucl-parquet/commit/f5de1825871e4405b682e5224ad5c39feec11e7e))
+* **parity:** Cross-language golden-file fixtures — closes [#176](https://github.com/exoma-ch/nucl-parquet/issues/176) ([#191](https://github.com/exoma-ch/nucl-parquet/issues/191)) ([179476d](https://github.com/exoma-ch/nucl-parquet/commit/179476d13d3466fd1e513563a95304a6b303a86a))
+* **release:** Path B — per-package semver across 7 code packages (closes [#150](https://github.com/exoma-ch/nucl-parquet/issues/150)) ([#153](https://github.com/exoma-ch/nucl-parquet/issues/153)) ([1f14f52](https://github.com/exoma-ch/nucl-parquet/commit/1f14f52658949449d6fea4c11fb623d18bfd67e5))
+* **rs-client:** Add from_bytes constructors to all typed DBs ([#221](https://github.com/exoma-ch/nucl-parquet/issues/221)) ([5691319](https://github.com/exoma-ch/nucl-parquet/commit/5691319264ba73f9152243f61bddf43c121635ba))
+* **rs-client:** CoincidencesDb + RadiationDb with lazy loading — Sub-A of [#173](https://github.com/exoma-ch/nucl-parquet/issues/173), refs [#175](https://github.com/exoma-ch/nucl-parquet/issues/175) ([#180](https://github.com/exoma-ch/nucl-parquet/issues/180)) ([a76d52f](https://github.com/exoma-ch/nucl-parquet/commit/a76d52f1a2ca4033db478a845f6c68e369985603))
+* **rs-client:** Compound stopping power + dose source attribution ([#199](https://github.com/exoma-ch/nucl-parquet/issues/199), [#200](https://github.com/exoma-ch/nucl-parquet/issues/200)) ([#201](https://github.com/exoma-ch/nucl-parquet/issues/201)) ([8a2928f](https://github.com/exoma-ch/nucl-parquet/commit/8a2928f4fdfd47d91423e45279546bf1b8130064))
+* **rs-client:** Compound_table() + rustls TLS backend ([#226](https://github.com/exoma-ch/nucl-parquet/issues/226), [#227](https://github.com/exoma-ch/nucl-parquet/issues/227)) ([#228](https://github.com/exoma-ch/nucl-parquet/issues/228)) ([0549b8a](https://github.com/exoma-ch/nucl-parquet/commit/0549b8aa744fb4dc870cebb714f42b5bc509c381))
+* **rs-client:** ParquetStore — generic cached Parquet→JSON reader ([#210](https://github.com/exoma-ch/nucl-parquet/issues/210)) ([#213](https://github.com/exoma-ch/nucl-parquet/issues/213)) ([e851056](https://github.com/exoma-ch/nucl-parquet/commit/e851056382a91a74492cbc248fc3a2120a8b87b8))
+* **rs-client:** Raw table accessors for StoppingDb + CrossSectionDb ([#202](https://github.com/exoma-ch/nucl-parquet/issues/202)) ([#205](https://github.com/exoma-ch/nucl-parquet/issues/205)) ([8727c46](https://github.com/exoma-ch/nucl-parquet/commit/8727c46bd164d0d727d4f3c35bdd5703257e3a07))
+* **rs:** Add DataDir auto-download + cache from GitHub Releases, closes [#31](https://github.com/exoma-ch/nucl-parquet/issues/31) ([bddff8d](https://github.com/exoma-ch/nucl-parquet/commit/bddff8d3266ccc514ce9907b41b76ad6aeb36cca))
+* **rs:** Add SubshellPeDb, XcomDb, ElectronDb ([23d9c34](https://github.com/exoma-ch/nucl-parquet/commit/23d9c34c06821de7a1f3bf60c3479c3aaf290456))
+* **rs:** Add SubshellPeDb, XcomDb, ElectronDb, closes [#29](https://github.com/exoma-ch/nucl-parquet/issues/29) ([95c99a8](https://github.com/exoma-ch/nucl-parquet/commit/95c99a828edbf0cbf955c3274d95c56cd1abd0ee))
+* **rs:** Cargo workspace, publish-race fix, and unblock the TS majors ([#311](https://github.com/exoma-ch/nucl-parquet/issues/311)) ([5799222](https://github.com/exoma-ch/nucl-parquet/commit/5799222ce3466e711029a7c14eb39b31264145b8))
+* **rs:** Extend crate with StoppingDb, CrossSectionDb, AbundancesDb, DecayDb, DoseDb ([b6b3d9d](https://github.com/exoma-ch/nucl-parquet/commit/b6b3d9de1eca5bad4fd5199618b2fb49fcb28120)), closes [#19](https://github.com/exoma-ch/nucl-parquet/issues/19)
+* **rs:** Extend Rust crate with StoppingDb, CrossSectionDb, AbundancesDb, DecayDb, DoseDb ([42fded0](https://github.com/exoma-ch/nucl-parquet/commit/42fded0ff4de451d56507f241e93ee17aeaccc2b))
+* **schema:** Canonical cross-section schema, transport channels, EXFOR from exfor_master ([#280](https://github.com/exoma-ch/nucl-parquet/issues/280)) ([8c8e414](https://github.com/exoma-ch/nucl-parquet/commit/8c8e414f644f1ca4fc822aa1c9d9e15785886477))
+* **stopping:** Add energy straggling column to catima tables ([742694e](https://github.com/exoma-ch/nucl-parquet/commit/742694e6e8eddafb0c2b4634757a38b7523e18bf))
+* **stopping:** Add energy straggling column to catima tables, closes [#25](https://github.com/exoma-ch/nucl-parquet/issues/25) ([bf75828](https://github.com/exoma-ch/nucl-parquet/commit/bf7582865e6ab66280adf5008a05f5639ff03a8e))
+
+
+### Bug Fixes
+
+* **data:** Rebuild all nine ENDF libraries, and bring every consumer up to the new shape ([#399](https://github.com/exoma-ch/nucl-parquet/issues/399)) ([3e16c5d](https://github.com/exoma-ch/nucl-parquet/commit/3e16c5d378d64852b2c5c8fbae25eb37b88fa3b8))
+* **exfor:** Fission product yields are production rows, not MT=18 ([#282](https://github.com/exoma-ch/nucl-parquet/issues/282)) ([3880b5a](https://github.com/exoma-ch/nucl-parquet/commit/3880b5a21809ec04c05af145c2bfac16977f8919))
+* Log_log_interp handles zero energies and q=0 form factor queries ([a253fc5](https://github.com/exoma-ch/nucl-parquet/commit/a253fc5f5006aa2f32f56d0221b79f8139767424))
+* Repair data delivery pipeline end-to-end (closes [#35](https://github.com/exoma-ch/nucl-parquet/issues/35)) ([12eb037](https://github.com/exoma-ch/nucl-parquet/commit/12eb03788bcbfe9c38e90f16c6f7dcd88205a24a))
+* **rs-client:** Catima isotope resolution + repair stale Rust tests ([#247](https://github.com/exoma-ch/nucl-parquet/issues/247)) ([97be5aa](https://github.com/exoma-ch/nucl-parquet/commit/97be5aa2eed5c84c0809b26e234e87e55eb36d2f))
+* **rs:** DataDir::ensure() downloads the data release, not a crate-version URL ([#423](https://github.com/exoma-ch/nucl-parquet/issues/423)) ([38c6cdb](https://github.com/exoma-ch/nucl-parquet/commit/38c6cdb8af890f0423fea79aac356bca8077fe09))
+* **rs:** Enable parquet zstd codec, handle LargeStringArray + macOS ._ files ([4eca511](https://github.com/exoma-ch/nucl-parquet/commit/4eca511dd25252a3ebeeff6846248712eb612e4b))
+* **rs:** Extend the state vocabulary to parent_state and daughter_state ([d6985f5](https://github.com/exoma-ch/nucl-parquet/commit/d6985f5ed15bbaadc580cae36f335bb8aa2b584a))
+
+
+### Refactoring
+
+* **layout:** Move data → data/, SDKs → clients/, bump v0.3.14 ([a61afc9](https://github.com/exoma-ch/nucl-parquet/commit/a61afc918ae7c832302cbf77e7f2d3bc8597d8ba))
+* **rs:** Clean up pre-existing clippy warnings (closes [#41](https://github.com/exoma-ch/nucl-parquet/issues/41)) ([05d700a](https://github.com/exoma-ch/nucl-parquet/commit/05d700aa86c384e127fca172b33475e8e38fbc9b))
+* **rs:** Clean up pre-existing clippy warnings (closes [#41](https://github.com/exoma-ch/nucl-parquet/issues/41)) ([4abe440](https://github.com/exoma-ch/nucl-parquet/commit/4abe440e6ad87437fd63bc0942fc2fd49f00789b))
+
 ## [0.18.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-rs-v0.17.1...nucl-parquet-rs-v0.18.0) (2026-09-29)
 
 
