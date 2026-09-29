@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.0](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.17.2...nucl-parquet-ts-v0.18.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rs:** nullable state fields in the Rust meta API (DecayEntry, EmissionEntry, CoincidenceEntry, GammaCandidate) are Option<String>, and parent_state / daughter_state no longer use the retired '' spelling; ground is 'g', undetermined is null.
+
+### Bug Fixes
+
+* **rs:** Extend the state vocabulary to parent_state and daughter_state ([d6985f5](https://github.com/exoma-ch/nucl-parquet/commit/d6985f5ed15bbaadc580cae36f335bb8aa2b584a))
+
 ## [0.17.2](https://github.com/exoma-ch/nucl-parquet/compare/nucl-parquet-ts-v0.17.1...nucl-parquet-ts-v0.17.2) (2026-09-28)
 
 
