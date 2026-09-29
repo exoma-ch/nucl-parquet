@@ -30,7 +30,7 @@ Schema (output, per element ``meta/ensdf/summing_partners/{Symbol}.parquet``)
 
     Z                            Int64    — daughter nucleus (filing convention)
     A                            Int64
-    parent_state                 Utf8     — '' | 'm' | 'm2'
+    parent_state                 Utf8     — 'g' | 'm' | 'm2' | NULL (per #357-b/#380)
     parent_decay_mode            Utf8     — 'beta-' | 'beta+' | 'KshellEC' | ...
     emission1_rad_type           Utf8     — 'gamma' | 'xray' | 'auger'
     emission1_energy_keV         Float64
@@ -145,7 +145,10 @@ def _build_gamma_gamma(coinc: pl.DataFrame) -> pl.DataFrame:
     return gg.select(
         pl.col("Z"),
         pl.col("A"),
-        pl.col("parent_state").fill_null(""),
+        # No fill_null — NULL means "parent couldn't be identified" (γ-γ pair
+        # without a fed-level match in `annotate_gamma_gamma`). `''` was retired
+        # in #357-b; a NULL that gets coerced to `''` here would reintroduce it.
+        pl.col("parent_state"),
         pl.col("parent_decay_mode"),
         pl.lit("gamma").alias("emission1_rad_type"),
         pl.col("emission1_energy_keV"),
@@ -181,7 +184,8 @@ def _build_mixed(coinc: pl.DataFrame) -> pl.DataFrame:
     return mixed.select(
         pl.col("Z"),
         pl.col("A"),
-        pl.col("parent_state").fill_null(""),
+        # No fill_null — see the twin block in `_build_gamma_gamma` above.
+        pl.col("parent_state"),
         pl.col("parent_decay_mode"),
         pl.col("emission1_rad_type"),
         pl.col("emission1_energy_keV"),

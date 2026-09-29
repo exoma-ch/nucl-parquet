@@ -375,6 +375,98 @@ def allowed_target_states(table: str) -> frozenset[str]:
     return TABLE_TARGET_STATES[table]
 
 
+# ---------------------------------------------------------------------------
+# `parent_state` and `daughter_state` — same vocabulary, other columns (#357-b)
+# ---------------------------------------------------------------------------
+#
+# `state`, `parent_state` and `daughter_state` are three spellings of one
+# question — "which isomeric state of a nuclide is this row about?" — so they
+# share NUCLIDE_STATES. Named separately per (table, column) because when the
+# gate scanned only for `state`, the `parent_state` in coincidences / emissions
+# / summing_partners shipped ~18 M rows of `''` and `daughter_state` in
+# decay.parquet shipped 6,431 more, with nothing asserting either. That is the
+# same benign-default failure #367 removed from the `state` column, one column
+# name over.
+#
+# Each *_state column gets its own map so a new one cannot inherit `state`'s
+# rules by accident; a `(table, column)` a builder ships that is not declared
+# here fails `tests/test_state_vocabulary.py` until it is.
+
+
+#: Every shipped table that carries a `parent_state` column, and what it may
+#: hold. Named "parent state" because `parent_state` names the state of the
+#: nuclide that decayed, and a decay row is *about* that nuclide in that state.
+#:
+#: All entries use NUCLIDE_STATES: the g4 builders emit these tables per parent
+#: (Z, A, state) and the only vocabulary that makes sense is nuclide identity.
+TABLE_PARENT_STATES: dict[str, frozenset[str]] = {
+    "meta/ensdf/coincidences": NUCLIDE_STATES,
+    "meta/ensdf/emissions": NUCLIDE_STATES,
+    "meta/ensdf/summing_partners": NUCLIDE_STATES,
+}
+
+#: Every shipped table that carries a `daughter_state` column. Same
+#: vocabulary — Br-80m as a decay daughter is spelled the same as Br-80m as a
+#: decay parent, and the same join key.
+TABLE_DAUGHTER_STATES: dict[str, frozenset[str]] = {
+    "meta": NUCLIDE_STATES,  # decay.parquet lives directly under meta/
+}
+
+
+#: A `parent_state` migration debt — the shipped parquet still carries `''`,
+#: pending a rebuild. Same self-cleaning contract as `PENDING_MIGRATION` for
+#: `state`: `PendingMigration.legacy` names which retired values are tolerated,
+#: and `test_pending_parent_state_ledger_is_self_cleaning` fails on a stale entry.
+#:
+#: Empty as of 2026.8.6 — the migration in `scripts/migrate_state_vocabulary.py`
+#: rewrote the three g4 tables (`coincidences`, `emissions`, `summing_partners`)
+#: from `''` to `'g'` (or NULL where a γ-γ pair could not be attributed to a
+#: parent decay channel, and for the 48+47 Ga-73 β⁻ rows where ground and
+#: isomer both support β⁻ per decay.parquet). The ledger cleaning itself is the
+#: contract's whole point.
+PENDING_PARENT_STATE_MIGRATION: dict[str, PendingMigration] = {}
+
+#: A `daughter_state` migration debt — decay.parquet's `daughter_state` shipped
+#: `''` on all 6,431 rows because the summary row's daughter can be many levels
+#: at once; the summary cannot name a single one. The 2026.8.6 rebuild rewrote
+#: those `''` to NULL, so this ledger is empty. Kept as an anchor so the future
+#: `daughter_state` migration has a home; the self-cleaning tests still guard
+#: it even while empty.
+PENDING_DAUGHTER_STATE_MIGRATION: dict[str, PendingMigration] = {}
+
+
+def allowed_parent_states(table: str) -> frozenset[str]:
+    """The values `table.parent_state` may hold today, pending migrations included.
+
+    Raises for a table that has not declared itself, so a new `parent_state`
+    column cannot arrive with an undeclared vocabulary.
+    """
+    if table not in TABLE_PARENT_STATES:
+        raise KeyError(
+            f"{table!r} has a `parent_state` column but no entry in TABLE_PARENT_STATES. "
+            "Declare what its parent states mean before shipping it."
+        )
+    allowed = TABLE_PARENT_STATES[table]
+    pending = PENDING_PARENT_STATE_MIGRATION.get(table)
+    if pending is not None:
+        allowed = allowed | pending.legacy
+    return allowed
+
+
+def allowed_daughter_states(table: str) -> frozenset[str]:
+    """The values `table.daughter_state` may hold today, pending migrations included."""
+    if table not in TABLE_DAUGHTER_STATES:
+        raise KeyError(
+            f"{table!r} has a `daughter_state` column but no entry in TABLE_DAUGHTER_STATES. "
+            "Declare what its daughter states mean before shipping it."
+        )
+    allowed = TABLE_DAUGHTER_STATES[table]
+    pending = PENDING_DAUGHTER_STATE_MIGRATION.get(table)
+    if pending is not None:
+        allowed = allowed | pending.legacy
+    return allowed
+
+
 def allowed_states(table: str) -> frozenset[str]:
     """The values `table` may hold today, pending migrations included.
 

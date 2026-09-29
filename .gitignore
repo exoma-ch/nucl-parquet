@@ -55,3 +55,5 @@ docs/theranostics/*
 # per-directory .gitignore files did not cover either location.
 node_modules/
 clients/rs/target/
+
+.cargo-home/

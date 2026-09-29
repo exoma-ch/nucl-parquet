@@ -33,10 +33,14 @@
 //!
 //! ## Quick start (with `fetch` feature)
 //!
-//! ```ignore
-//! // requires `fetch` feature
-//! let data = nucl_parquet::DataDir::ensure()?;
+//! ```no_run
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Downloads and caches the pinned data release if not present.
+//! let data = nucl_parquet::DataDir::resolve()?;
 //! let photon = data.photon_db()?;
+//! # let _ = photon;
+//! # Ok(())
+//! # }
 //! ```
 
 mod data_dir;
@@ -59,7 +63,7 @@ pub use interp::XYTable;
 pub use meta::{
     z_to_symbol, AbundanceEntry, AbundancesDb, CoincidenceEntry, CoincidenceFilter, CoincidencesDb,
     DecayDb, DecayEntry, DoseConstant, DoseDb, Emission, EmissionEntry, GammaCandidate,
-    RadiationDb,
+    RadiationDb, GROUND,
 };
 pub use photon::{PhotonDb, Process};
 pub use relaxation::{RelaxationDb, Transition, TransitionType};

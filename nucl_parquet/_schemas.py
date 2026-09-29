@@ -254,6 +254,14 @@ ABUNDANCES_SCHEMA = {
     "atomic_mass": "Float64",
 }
 
+#: `meta/decay.parquet` — per (Z, A, state, decay_mode, daughter (Z, A, state))
+#: total branching. `state` uses the #380/#357-b vocabulary (`'g'` / `'m'` /
+#: `'m2'` / NULL, no `''`). `daughter_state` is always NULL, deliberately:
+#: a summary row aggregates over every daughter level a decay populates, so no
+#: single state names them (2,283 of 5,855 summary rows never even reach the
+#: daughter's ground state per `min_daughter_ex_kev`). Spectroscopy consumers
+#: read `decay_detailed.parquet::daughter_ex_kev` for the per-transition
+#: daughter level.
 DECAY_SCHEMA = {
     "Z": "Int32",
     "A": "Int32",

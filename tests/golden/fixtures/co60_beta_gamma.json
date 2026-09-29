@@ -13,7 +13,7 @@
     "emission2_shell": null,
     "pair_intensity": 7.6e-05,
     "parent_decay_mode": "beta-",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 60,
@@ -29,7 +29,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.9986,
     "parent_decay_mode": "beta-",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 60,
@@ -45,7 +45,7 @@
     "emission2_shell": null,
     "pair_intensity": 0.0,
     "parent_decay_mode": "beta-",
-    "parent_state": ""
+    "parent_state": "g"
   },
   {
     "A": 60,
@@ -61,6 +61,6 @@
     "emission2_shell": null,
     "pair_intensity": 0.0012,
     "parent_decay_mode": "beta-",
-    "parent_state": ""
+    "parent_state": "g"
   }
 ]

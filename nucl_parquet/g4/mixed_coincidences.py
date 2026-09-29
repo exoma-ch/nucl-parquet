@@ -22,7 +22,7 @@ v0.10.x columns are preserved (``gamma_energy_keV``, ``coinc_energy_keV``,
 ``dataset``) — populated for γ-γ rows and NULL for mixed-emission rows.
 
 New columns (nullable, additive per ADR-0002):
-    parent_state                Utf8     '' | 'm' | 'm2'  (from parent_ex_kev)
+    parent_state                Utf8     'g' | 'm' | 'm2' | NULL  (per #357-b/#380)
     parent_decay_mode           Utf8     'beta-' | 'beta+' | 'KshellEC' | ...
     daughter_ex_keV             Float64  level fed by parent decay (NULL for γ-γ before back-fill)
     emission1_rad_type          Utf8     'gamma' | 'beta' | 'annihilation_511' | 'xray' | 'auger'
@@ -121,15 +121,21 @@ _MIN_PARENT_XRAY_INTENSITY_PCT: Final[float] = 1e-4
 def _label_parent_state(parent_ex_kev: pl.Expr) -> pl.Expr:
     """Coarse parent-state label from parent_ex_kev.
 
-    Matches the convention used by ``decay.parquet``: ground state is ``''``
-    (parent_ex_kev ≈ 0); excited states are labelled ``'m'`` (any non-zero
-    excitation). A more granular ``'m'`` vs ``'m2'`` mapping would require
-    cross-referencing ``nuclides.parquet`` ordering; that lookup is handled
-    by the post-build state-merge stage (out of scope for this module).
+    Ground state (parent_ex_kev ≈ 0) is spelled ``'g'`` per the #357/#380
+    vocabulary; excited states are ``'m'`` (any non-zero excitation). A more
+    granular ``'m'`` vs ``'m2'`` mapping would require cross-referencing
+    ``nuclides.parquet`` ordering; that lookup is handled by the post-build
+    state-merge stage (out of scope for this module).
+
+    Before 2026.8.6 this emitted ``''`` for ground, matching the pre-#380
+    decay.parquet convention. That value carried three meanings across the
+    tree — "summed", "not stated" and "the ground state" — and #357 retired
+    it. Emitting it here would put 8.7 M rows back into that collision on a
+    rebuild.
     """
     return (
         pl.when(parent_ex_kev.abs() < _PARENT_STATE_KEV_TOL)
-        .then(pl.lit(""))
+        .then(pl.lit("g"))
         .otherwise(pl.lit("m"))
         .alias("parent_state")
     )
@@ -534,7 +540,11 @@ def annotate_gamma_gamma(gg_pairs: pl.DataFrame, parent_channels: pl.DataFrame) 
         gg_idx.join(matches, on="_row_idx", how="left")
         .drop("_row_idx")
         .with_columns(
-            pl.col("parent_state").fill_null(""),
+            # No fill_null here: γ-γ rows where `annotate_gamma_gamma` could
+            # not resolve a parent channel now surface as `parent_state = NULL`
+            # rather than a fabricated `''`/`'g'`. `''` was retired in #357-b;
+            # NULL is the honest answer for "we could not identify the parent".
+            pl.col("parent_state"),
             pl.lit("gamma").alias("emission1_rad_type"),
             pl.col("gamma1_energy_keV").alias("emission1_energy_keV"),
             pl.col("gamma1_intensity").alias("emission1_intensity"),
