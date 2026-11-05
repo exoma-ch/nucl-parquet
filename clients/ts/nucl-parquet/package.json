@@ -38,7 +38,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@types/node": "^26.2.0",
-    "hyparquet-writer": "^0.16.6",
+    "hyparquet-writer": "^0.18.0",
     "tsup": "^8.0.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
